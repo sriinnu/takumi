@@ -1,0 +1,47 @@
+{
+	"name": "takumi",
+	"private": true,
+	"type": "module",
+	"version": "0.1.0",
+	"license": "MIT",
+	"description": "Terminal UI for AI coding agents — reactive rendering, double-buffered output, and agent orchestration",
+	"keywords": [
+		"ai",
+		"tui",
+		"terminal",
+		"agent",
+		"typescript",
+		"cli",
+		"coding-agent",
+		"reactive"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/sriinnu/takumi.git"
+	},
+	"scripts": {
+		"build": "pnpm -r run build",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"clean": "pnpm -r run clean",
+		"dev": "pnpm -r --parallel run dev",
+		"check": "biome check --write --error-on-warnings .",
+		"takumi": "tsx bin/takumi.ts"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.3.14",
+		"@types/node": "^22.0.0",
+		"tsx": "^4.21.0",
+		"typescript": "^5.7.0",
+		"vitest": "^4.0.18"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"pnpm": {
+		"onlyBuiltDependencies": [
+			"esbuild"
+		]
+	}
+}
