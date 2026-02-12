@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+*.tsbuildinfo
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+
+# Runtime state
+.takumi/
+
+# Claude Code local config
+.claude/
+
+# Local machine-specific config
+.mcp.json
+settings.local.json
+
+# Compiled output in src/ (should only be in dist/)
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+
+# Lock files (pnpm is canonical)
+package-lock.json
+
+# OS
+.DS_Store
+Thumbs.db

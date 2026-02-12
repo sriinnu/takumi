@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <defs>
+    <!-- Subtle glow for kanji -->
+    <filter id="badgeGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
+      <feColorMatrix in="blur" type="matrix"
+        values="0.8 0 0 0 0
+                0 0.65 0 0 0
+                0 0 0.97 0 0
+                0 0 0 0.3 0" result="glow" />
+      <feMerge>
+        <feMergeNode in="glow" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background pill -->
+  <rect width="200" height="60" rx="12" ry="12" fill="#1e1e2e" />
+
+  <!-- Subtle top border accent -->
+  <rect x="0.5" y="0.5" width="199" height="59" rx="11.5" ry="11.5" fill="none" stroke="#313244" stroke-width="1" />
+
+  <!-- Left section: kanji area -->
+  <rect x="8" y="8" width="44" height="44" rx="8" ry="8" fill="#262640" />
+
+  <!-- Corner bracket accents on kanji box -->
+  <path d="M 14 14 L 14 11 L 17 11" fill="none" stroke="#89b4fa" stroke-width="1" stroke-linecap="round" opacity="0.5" />
+  <path d="M 46 11 L 49 11 L 49 14" fill="none" stroke="#89b4fa" stroke-width="1" stroke-linecap="round" opacity="0.5" />
+  <path d="M 14 46 L 14 49 L 17 49" fill="none" stroke="#89b4fa" stroke-width="1" stroke-linecap="round" opacity="0.5" />
+  <path d="M 46 49 L 49 49 L 49 46" fill="none" stroke="#89b4fa" stroke-width="1" stroke-linecap="round" opacity="0.5" />
+
+  <!-- Kanji -->
+  <text
+    x="30"
+    y="33"
+    text-anchor="middle"
+    dominant-baseline="central"
+    font-family="'Noto Sans JP', 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'MS Gothic', sans-serif"
+    font-size="28"
+    font-weight="700"
+    fill="#cba6f7"
+    filter="url(#badgeGlow)"
+  >匠</text>
+
+  <!-- Divider line -->
+  <line x1="62" y1="16" x2="62" y2="44" stroke="#45475a" stroke-width="1" opacity="0.5" />
+
+  <!-- "takumi" text -->
+  <text
+    x="72"
+    y="28"
+    font-family="'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace"
+    font-size="18"
+    font-weight="600"
+    fill="#cdd6f4"
+    letter-spacing="2"
+  >takumi</text>
+
+  <!-- Subtitle -->
+  <text
+    x="72"
+    y="44"
+    font-family="'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace"
+    font-size="9"
+    fill="#6c7086"
+    letter-spacing="0.5"
+  >terminal coding agent</text>
+
+  <!-- Small green dot — active/online indicator -->
+  <circle cx="185" cy="14" r="3" fill="#a6e3a1" opacity="0.8" />
+  <circle cx="185" cy="14" r="3" fill="#a6e3a1" opacity="0.4">
+    <animate attributeName="r" values="3;5;3" dur="2s" repeatCount="indefinite" />
+    <animate attributeName="opacity" values="0.4;0.1;0.4" dur="2s" repeatCount="indefinite" />
+  </circle>
+</svg>

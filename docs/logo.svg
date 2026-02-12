@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <!-- Subtle gradient for the background -->
+    <radialGradient id="bgGlow" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#262640" />
+      <stop offset="100%" stop-color="#1e1e2e" />
+    </radialGradient>
+
+    <!-- Mauve glow for the kanji -->
+    <filter id="kanjiGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur" />
+      <feColorMatrix in="blur" type="matrix"
+        values="0.8 0 0 0 0
+                0 0.65 0 0 0
+                0 0 0.97 0 0
+                0 0 0 0.35 0" result="glow" />
+      <feMerge>
+        <feMergeNode in="glow" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Subtle scanline effect -->
+    <pattern id="scanlines" patternUnits="userSpaceOnUse" width="400" height="4">
+      <rect width="400" height="2" fill="transparent" />
+      <rect y="2" width="400" height="2" fill="#000000" opacity="0.04" />
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="400" height="400" rx="24" ry="24" fill="url(#bgGlow)" />
+
+  <!-- Scanline overlay -->
+  <rect width="400" height="400" rx="24" ry="24" fill="url(#scanlines)" />
+
+  <!-- Outer geometric frame — terminal window suggestion -->
+  <!-- Top-left bracket -->
+  <path d="M 60 80 L 60 60 L 80 60" fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+  <!-- Top-right bracket -->
+  <path d="M 320 60 L 340 60 L 340 80" fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+  <!-- Bottom-left bracket -->
+  <path d="M 60 280 L 60 300 L 80 300" fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+  <!-- Bottom-right bracket -->
+  <path d="M 320 300 L 340 300 L 340 280" fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+
+  <!-- Inner subtle border lines — code aesthetic -->
+  <line x1="90" y1="68" x2="310" y2="68" stroke="#45475a" stroke-width="0.75" opacity="0.5" />
+  <line x1="90" y1="292" x2="310" y2="292" stroke="#45475a" stroke-width="0.75" opacity="0.5" />
+
+  <!-- Terminal dots at top -->
+  <circle cx="96" cy="48" r="4" fill="#f38ba8" opacity="0.7" />
+  <circle cx="112" cy="48" r="4" fill="#f9e2af" opacity="0.7" />
+  <circle cx="128" cy="48" r="4" fill="#a6e3a1" opacity="0.7" />
+
+  <!-- Prompt cursor blinking line -->
+  <rect x="68" y="308" width="2" height="14" fill="#a6e3a1" opacity="0.8">
+    <animate attributeName="opacity" values="0.8;0.2;0.8" dur="1.5s" repeatCount="indefinite" />
+  </rect>
+  <text x="78" y="320" font-family="'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace" font-size="12" fill="#6c7086" letter-spacing="0.5">~/takumi</text>
+
+  <!-- Kanji character -->
+  <text
+    x="200"
+    y="205"
+    text-anchor="middle"
+    dominant-baseline="central"
+    font-family="'Noto Sans JP', 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'MS Gothic', sans-serif"
+    font-size="150"
+    font-weight="700"
+    fill="#cba6f7"
+    filter="url(#kanjiGlow)"
+  >匠</text>
+
+  <!-- Subtle decorative hexagon behind kanji -->
+  <polygon
+    points="200,90 270,130 270,230 200,270 130,230 130,130"
+    fill="none"
+    stroke="#cba6f7"
+    stroke-width="1"
+    opacity="0.12"
+  />
+
+  <!-- Second layer hexagon, rotated slightly -->
+  <polygon
+    points="200,100 262,136 262,224 200,260 138,224 138,136"
+    fill="none"
+    stroke="#89b4fa"
+    stroke-width="0.75"
+    opacity="0.08"
+  />
+
+  <!-- TAKUMI text -->
+  <text
+    x="200"
+    y="352"
+    text-anchor="middle"
+    font-family="'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace"
+    font-size="32"
+    font-weight="600"
+    fill="#cdd6f4"
+    letter-spacing="12"
+  >TAKUMI</text>
+
+  <!-- Subtle underline accent -->
+  <line x1="130" y1="364" x2="270" y2="364" stroke="#cba6f7" stroke-width="1.5" opacity="0.4" />
+
+  <!-- Small decorative dots — constellation pattern -->
+  <circle cx="100" cy="120" r="1.5" fill="#89b4fa" opacity="0.3" />
+  <circle cx="310" cy="140" r="1" fill="#a6e3a1" opacity="0.25" />
+  <circle cx="290" cy="260" r="1.5" fill="#89b4fa" opacity="0.2" />
+  <circle cx="115" cy="250" r="1" fill="#cba6f7" opacity="0.3" />
+  <circle cx="320" cy="100" r="1" fill="#f9e2af" opacity="0.2" />
+  <circle cx="85" cy="200" r="1" fill="#a6e3a1" opacity="0.2" />
+</svg>

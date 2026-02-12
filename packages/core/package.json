@@ -1,0 +1,39 @@
+{
+	"name": "@takumi/core",
+	"version": "0.1.0",
+	"description": "Core types, configuration, errors, and utilities for the Takumi TUI agent platform",
+	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/sriinnu/takumi.git",
+		"directory": "packages/core"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./*": {
+			"types": "./dist/*.d.ts",
+			"import": "./dist/*.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"dev": "tsc -p tsconfig.json --watch",
+		"clean": "rm -rf dist"
+	},
+	"files": [
+		"dist",
+		"README.md"
+	]
+}
