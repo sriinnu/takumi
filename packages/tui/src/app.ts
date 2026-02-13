@@ -5,11 +5,12 @@
  * input handling, and agent interaction.
  */
 
-import type { TakumiConfig, KeyEvent, AgentEvent, ToolDefinition } from "@takumi/core";
+import type { TakumiConfig, KeyEvent, MouseEvent, AgentEvent, ToolDefinition, Message } from "@takumi/core";
 import { ANSI, LIMITS, createLogger } from "@takumi/core";
 import { RenderScheduler, initYoga } from "@takumi/render";
-import { ToolRegistry } from "@takumi/agent";
+import { ToolRegistry, compactHistory } from "@takumi/agent";
 import type { MessagePayload } from "@takumi/agent";
+import { gitDiff } from "@takumi/bridge";
 import { AppState } from "./state.js";
 import { KeyBindingRegistry } from "./keybinds.js";
 import { SlashCommandRegistry } from "./commands.js";
@@ -167,6 +168,14 @@ export class TakumiApp {
 	/** Handle raw input bytes from stdin. */
 	private handleInput(data: Buffer): void {
 		const raw = data.toString("utf-8");
+
+		// Try mouse event first
+		const mouseEvent = parseMouseEvent(raw);
+		if (mouseEvent) {
+			this.handleMouse(mouseEvent);
+			return;
+		}
+
 		const event = parseKeyEvent(raw);
 
 		// Ctrl+C: cancel streaming or quit
@@ -184,6 +193,29 @@ export class TakumiApp {
 
 		// Route input through the root view (which delegates to chat/sidebar)
 		this.rootView.handleKey(event);
+	}
+
+	/** Handle parsed mouse events. */
+	private handleMouse(event: MouseEvent): void {
+		// Wheel: scroll message list
+		if (event.type === "wheel") {
+			this.rootView.chatView.scrollMessages(event.wheelDelta > 0 ? -3 : 3);
+			return;
+		}
+
+		// Click: focus panel based on position
+		if (event.type === "mousedown") {
+			const { width } = this.state.terminalSize.value;
+			const sidebarWidth = this.state.sidebarVisible.value
+				? Math.min(30, Math.floor(width * 0.25))
+				: 0;
+
+			if (event.x >= width - sidebarWidth && this.state.sidebarVisible.value) {
+				this.state.focusedPanel.value = "sidebar";
+			} else {
+				this.state.focusedPanel.value = "input";
+			}
+		}
 	}
 
 	private write(data: string): void {
@@ -264,8 +296,19 @@ export class TakumiApp {
 			);
 		});
 		this.commands.register("/compact", "Trigger conversation compaction", () => {
-			// Stub: will integrate with compactHistory from @takumi/agent
-			log.info("Compact: not yet implemented");
+			const messages = this.state.messages.value;
+			if (messages.length === 0) {
+				log.info("Nothing to compact");
+				return;
+			}
+			const result = compactHistory(messages, { keepRecent: 10 });
+			if (result.compactedTurns === 0) {
+				log.info("No compaction needed");
+				return;
+			}
+			this.state.messages.value = result.messages;
+			this.agentRunner?.clearHistory();
+			log.info(`Compacted ${result.compactedTurns} turns`);
 		});
 		this.commands.register("/session", "Show current session info", () => {
 			log.info(
@@ -276,8 +319,18 @@ export class TakumiApp {
 			);
 		});
 		this.commands.register("/diff", "Show git diff", () => {
-			// Stub: will integrate with gitDiff from @takumi/bridge
-			log.info("Diff: not yet implemented");
+			const diff = gitDiff(process.cwd());
+			if (!diff) {
+				log.info("No changes");
+				return;
+			}
+			const diffMessage: Message = {
+				id: `diff-${Date.now()}`,
+				role: "assistant",
+				content: [{ type: "text", text: `\`\`\`diff\n${diff}\n\`\`\`` }],
+				timestamp: Date.now(),
+			};
+			this.state.addMessage(diffMessage);
 		});
 		this.commands.register("/cost", "Show token costs breakdown", () => {
 			const inCost = this.state.totalInputTokens.value * 3 / 1_000_000;
@@ -293,6 +346,69 @@ export class TakumiApp {
 			this.state.sidebarVisible.value = !this.state.sidebarVisible.value;
 		});
 	}
+}
+
+/**
+ * Parse SGR-encoded mouse escape sequences into a MouseEvent.
+ *
+ * SGR mouse format: \x1b[<button;x;y[Mm]
+ *   M = press/move, m = release
+ *   button encoding: 0=left, 1=middle, 2=right, 32+button=move, 64=wheel up, 65=wheel down
+ *   Modifiers: +4=shift, +8=alt, +16=ctrl
+ */
+export function parseMouseEvent(raw: string): MouseEvent | null {
+	const match = raw.match(/\x1b\[<(\d+);(\d+);(\d+)([Mm])/);
+	if (!match) return null;
+
+	const code = parseInt(match[1], 10);
+	const x = parseInt(match[2], 10) - 1; // 1-based to 0-based
+	const y = parseInt(match[3], 10) - 1;
+	const isRelease = match[4] === "m";
+
+	const shift = (code & 4) !== 0;
+	const alt = (code & 8) !== 0;
+	const ctrl = (code & 16) !== 0;
+	const baseCode = code & ~(4 | 8 | 16);
+
+	// Wheel events
+	if (baseCode === 64 || baseCode === 65) {
+		return {
+			type: "wheel",
+			x,
+			y,
+			button: 0,
+			shift,
+			alt,
+			ctrl,
+			wheelDelta: baseCode === 64 ? 1 : -1,
+		};
+	}
+
+	// Move events (button + 32)
+	if (baseCode >= 32 && baseCode < 64) {
+		return {
+			type: "mousemove",
+			x,
+			y,
+			button: baseCode - 32,
+			shift,
+			alt,
+			ctrl,
+			wheelDelta: 0,
+		};
+	}
+
+	// Click events
+	return {
+		type: isRelease ? "mouseup" : "mousedown",
+		x,
+		y,
+		button: baseCode,
+		shift,
+		alt,
+		ctrl,
+		wheelDelta: 0,
+	};
 }
 
 /** Parse raw terminal input into a KeyEvent. */

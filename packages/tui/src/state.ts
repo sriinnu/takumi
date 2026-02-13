@@ -3,7 +3,7 @@
  * All UI components observe these signals and re-render when they change.
  */
 
-import type { Message, Usage, Size } from "@takumi/core";
+import type { Message, Usage, Size, PermissionDecision } from "@takumi/core";
 import { signal, computed } from "@takumi/render";
 import type { Signal, ReadonlySignal } from "@takumi/render";
 
@@ -35,6 +35,13 @@ export class AppState {
 	// ── Tool execution ────────────────────────────────────────────────────────
 	readonly activeTool: Signal<string | null> = signal(null);
 	readonly toolOutput: Signal<string> = signal("");
+
+	// ── Permissions ───────────────────────────────────────────────────────────
+	readonly pendingPermission: Signal<{
+		tool: string;
+		args: Record<string, unknown>;
+		resolve: (decision: PermissionDecision) => void;
+	} | null> = signal(null);
 
 	// ── File tracking ─────────────────────────────────────────────────────────
 	readonly modifiedFiles: Signal<string[]> = signal<string[]>([]);
@@ -91,6 +98,7 @@ export class AppState {
 		this.turnCount.value = 0;
 		this.activeTool.value = null;
 		this.toolOutput.value = "";
+		this.pendingPermission.value = null;
 		this.modifiedFiles.value = [];
 	}
 }

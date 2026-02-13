@@ -41,6 +41,18 @@ export interface KeyEvent {
 	raw: string;
 }
 
+export interface MouseEvent {
+	type: "mousedown" | "mouseup" | "mousemove" | "wheel";
+	x: number;
+	y: number;
+	button: number; // 0=left, 1=middle, 2=right
+	shift: boolean;
+	alt: boolean;
+	ctrl: boolean;
+	/** Wheel direction: 1=up, -1=down (only for wheel events) */
+	wheelDelta: number;
+}
+
 // ── Agent events ──────────────────────────────────────────────────────────────
 
 export type AgentEvent =

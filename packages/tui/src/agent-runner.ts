@@ -3,9 +3,9 @@
  * Handles message submission, streaming, and state updates.
  */
 
-import type { TakumiConfig, AgentEvent, Message, ToolDefinition } from "@takumi/core";
+import type { TakumiConfig, AgentEvent, Message, ToolDefinition, PermissionDecision } from "@takumi/core";
 import { createLogger } from "@takumi/core";
-import { agentLoop, type MessagePayload } from "@takumi/agent";
+import { agentLoop, PermissionEngine, type MessagePayload } from "@takumi/agent";
 import { ToolRegistry } from "@takumi/agent";
 import type { AppState } from "./state.js";
 
@@ -23,6 +23,8 @@ export class AgentRunner {
 		tools?: ToolDefinition[],
 	) => AsyncIterable<AgentEvent>;
 
+	readonly permissions: PermissionEngine;
+
 	constructor(
 		state: AppState,
 		config: TakumiConfig,
@@ -37,6 +39,10 @@ export class AgentRunner {
 		this.config = config;
 		this.sendMessageFn = sendMessageFn;
 		this.tools = tools;
+
+		// Set up permission engine with TUI prompt callback
+		this.permissions = new PermissionEngine();
+		this.permissions.setPromptCallback((tool, args) => this.promptPermission(tool, args));
 	}
 
 	/** Submit a user message and start the agent loop. */
@@ -131,6 +137,26 @@ export class AgentRunner {
 	/** Clear conversation history (for /clear). */
 	clearHistory(): void {
 		this.history = [];
+	}
+
+	/** Check permissions before executing a tool. Returns true if allowed. */
+	async checkToolPermission(tool: string, args: Record<string, unknown>): Promise<boolean> {
+		const decision = await this.permissions.check(tool, args);
+		if (!decision.allowed) {
+			log.info(`Permission denied for ${tool}: ${decision.reason ?? "no reason"}`);
+		}
+		return decision.allowed;
+	}
+
+	/**
+	 * Prompt the user for permission via the TUI dialog.
+	 * Sets pendingPermission on the state and waits for the user to respond.
+	 */
+	private promptPermission(tool: string, args: Record<string, unknown>): Promise<PermissionDecision> {
+		return new Promise<PermissionDecision>((resolve) => {
+			this.state.pendingPermission.value = { tool, args, resolve };
+			this.state.activeDialog.value = "permission";
+		});
 	}
 
 	private handleEvent(event: AgentEvent): void {

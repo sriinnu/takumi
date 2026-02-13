@@ -1,5 +1,5 @@
 // App
-export { TakumiApp } from "./app.js";
+export { TakumiApp, parseMouseEvent } from "./app.js";
 export type { TakumiAppOptions } from "./app.js";
 
 // Agent runner

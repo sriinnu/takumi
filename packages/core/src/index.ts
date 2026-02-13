@@ -4,6 +4,7 @@ export type {
 	Size,
 	Position,
 	KeyEvent,
+	MouseEvent,
 	AgentEvent,
 	AgentTextDelta,
 	AgentTextDone,
