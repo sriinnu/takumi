@@ -162,10 +162,43 @@ async function main(): Promise<void> {
 		process.chdir(config.workingDirectory);
 	}
 
-	// Dynamic import to avoid loading heavy modules for --help/--version
-	const { TakumiApp } = await import("@takumi/tui");
+	// Set up SIGTERM handling
+	const cleanup = () => {
+		process.stdout.write("\x1b[?1049l"); // alt screen off
+		process.stdout.write("\x1b[?25h");   // cursor show
+		process.stdout.write("\x1b[?1000l\x1b[?1006l"); // mouse off
+		process.stdout.write("\x1b[?2004l"); // bracketed paste off
+		process.exit(0);
+	};
+	process.on("uncaughtException", (err) => {
+		cleanup();
+		console.error(`Fatal: ${err.message}`);
+		process.exit(1);
+	});
+	process.on("unhandledRejection", (err) => {
+		cleanup();
+		console.error(`Fatal: ${err instanceof Error ? err.message : String(err)}`);
+		process.exit(1);
+	});
 
-	const app = new TakumiApp({ config });
+	// Dynamic imports to avoid loading heavy modules for --help/--version
+	const { TakumiApp } = await import("@takumi/tui");
+	const { DirectProvider, DarpanaProvider, ToolRegistry, registerBuiltinTools } = await import("@takumi/agent");
+
+	// Set up provider
+	const provider = config.proxyUrl
+		? new DarpanaProvider(config)
+		: new DirectProvider(config);
+
+	// Set up tools
+	const tools = new ToolRegistry();
+	registerBuiltinTools(tools);
+
+	const app = new TakumiApp({
+		config,
+		sendMessage: (messages, system, toolDefs) => provider.sendMessage(messages, system, toolDefs),
+		tools,
+	});
 	await app.start();
 }
 
