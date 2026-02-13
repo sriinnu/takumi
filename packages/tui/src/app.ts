@@ -5,12 +5,16 @@
  * input handling, and agent interaction.
  */
 
-import type { TakumiConfig, KeyEvent, AgentEvent } from "@takumi/core";
+import type { TakumiConfig, KeyEvent, AgentEvent, ToolDefinition } from "@takumi/core";
 import { ANSI, LIMITS, createLogger } from "@takumi/core";
 import { RenderScheduler, initYoga } from "@takumi/render";
+import { ToolRegistry } from "@takumi/agent";
+import type { MessagePayload } from "@takumi/agent";
 import { AppState } from "./state.js";
 import { KeyBindingRegistry } from "./keybinds.js";
 import { SlashCommandRegistry } from "./commands.js";
+import { ChatView } from "./views/chat.js";
+import { AgentRunner } from "./agent-runner.js";
 
 const log = createLogger("app");
 
@@ -18,6 +22,9 @@ export interface TakumiAppOptions {
 	config: TakumiConfig;
 	stdin?: NodeJS.ReadableStream;
 	stdout?: NodeJS.WritableStream;
+	/** Optional: provide a sendMessage function and tool registry to enable the agent loop. */
+	sendMessage?: (messages: MessagePayload[], system: string, tools?: ToolDefinition[]) => AsyncIterable<AgentEvent>;
+	tools?: ToolRegistry;
 }
 
 export class TakumiApp {
@@ -25,6 +32,8 @@ export class TakumiApp {
 	readonly state: AppState;
 	readonly keybinds: KeyBindingRegistry;
 	readonly commands: SlashCommandRegistry;
+	readonly chatView: ChatView;
+	readonly agentRunner: AgentRunner | null;
 
 	private scheduler: RenderScheduler | null = null;
 	private stdin: NodeJS.ReadableStream;
@@ -39,6 +48,22 @@ export class TakumiApp {
 		this.state = new AppState();
 		this.keybinds = new KeyBindingRegistry();
 		this.commands = new SlashCommandRegistry();
+
+		// Create the chat view with command registry
+		this.chatView = new ChatView({ state: this.state, commands: this.commands });
+
+		// Wire up the agent runner if sendMessage + tools are provided
+		if (options.sendMessage && options.tools) {
+			this.agentRunner = new AgentRunner(
+				this.state,
+				this.config,
+				options.sendMessage,
+				options.tools,
+			);
+			this.chatView.agentRunner = this.agentRunner;
+		} else {
+			this.agentRunner = null;
+		}
 
 		this.registerDefaultKeybinds();
 		this.registerDefaultCommands();
@@ -127,8 +152,12 @@ export class TakumiApp {
 		const raw = data.toString("utf-8");
 		const event = parseKeyEvent(raw);
 
-		// Ctrl+C always quits
+		// Ctrl+C: cancel streaming or quit
 		if (event.ctrl && event.key === "c") {
+			if (this.agentRunner?.isRunning) {
+				this.agentRunner.cancel();
+				return;
+			}
 			this.quit();
 			return;
 		}
@@ -136,8 +165,8 @@ export class TakumiApp {
 		// Try keybindings first
 		if (this.keybinds.handle(event)) return;
 
-		// Pass to focused component
-		// (TUI panels will handle this in the full implementation)
+		// Route input to the chat view (editor/message-list)
+		this.chatView.handleKey(event);
 	}
 
 	private write(data: string): void {
@@ -160,9 +189,10 @@ export class TakumiApp {
 	}
 
 	private registerDefaultCommands(): void {
-		this.commands.register("/quit", "Exit Takumi", () => this.quit());
+		this.commands.register("/quit", "Exit Takumi", () => this.quit(), ["/exit"]);
 		this.commands.register("/clear", "Clear conversation", () => {
 			this.state.messages.value = [];
+			this.agentRunner?.clearHistory();
 		});
 		this.commands.register("/model", "Change model", (args) => {
 			if (args) {
@@ -180,6 +210,45 @@ export class TakumiApp {
 				.map((cmd) => `  ${cmd.name.padEnd(16)} ${cmd.description}`)
 				.join("\n");
 			log.info("Available commands:\n" + helpText);
+		});
+		this.commands.register("/status", "Show session statistics", () => {
+			log.info(
+				`Session: ${this.state.sessionId.value || "(none)"}\n` +
+				`Turns: ${this.state.turnCount.value}\n` +
+				`Tokens: ${this.state.totalTokens.value} (in: ${this.state.totalInputTokens.value}, out: ${this.state.totalOutputTokens.value})\n` +
+				`Cost: ${this.state.formattedCost.value}\n` +
+				`Messages: ${this.state.messageCount.value}\n` +
+				`Model: ${this.state.model.value}`,
+			);
+		});
+		this.commands.register("/compact", "Trigger conversation compaction", () => {
+			// Stub: will integrate with compactHistory from @takumi/agent
+			log.info("Compact: not yet implemented");
+		});
+		this.commands.register("/session", "Show current session info", () => {
+			log.info(
+				`Session ID: ${this.state.sessionId.value || "(none)"}\n` +
+				`Model: ${this.state.model.value}\n` +
+				`Streaming: ${this.state.isStreaming.value}\n` +
+				`Active tool: ${this.state.activeTool.value ?? "none"}`,
+			);
+		});
+		this.commands.register("/diff", "Show git diff", () => {
+			// Stub: will integrate with gitDiff from @takumi/bridge
+			log.info("Diff: not yet implemented");
+		});
+		this.commands.register("/cost", "Show token costs breakdown", () => {
+			const inCost = this.state.totalInputTokens.value * 3 / 1_000_000;
+			const outCost = this.state.totalOutputTokens.value * 15 / 1_000_000;
+			log.info(
+				`Cost breakdown:\n` +
+				`  Input:  ${this.state.totalInputTokens.value} tokens  ($${inCost.toFixed(4)})\n` +
+				`  Output: ${this.state.totalOutputTokens.value} tokens  ($${outCost.toFixed(4)})\n` +
+				`  Total:  ${this.state.formattedCost.value}`,
+			);
+		});
+		this.commands.register("/sidebar", "Toggle sidebar", () => {
+			this.state.sidebarVisible.value = !this.state.sidebarVisible.value;
 		});
 	}
 }

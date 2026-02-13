@@ -3,16 +3,22 @@
  */
 
 import type { Rect, Message, KeyEvent } from "@takumi/core";
+import { createLogger } from "@takumi/core";
 import { Component, Box, Input, Scroll } from "@takumi/render";
 import type { Screen } from "@takumi/render";
 import type { AppState } from "../state.js";
+import type { AgentRunner } from "../agent-runner.js";
+import type { SlashCommandRegistry } from "../commands.js";
 import { MessageListPanel } from "../panels/message-list.js";
 import { EditorPanel } from "../panels/editor.js";
 import { StatusBarPanel } from "../panels/status-bar.js";
 import { HeaderPanel } from "../panels/header.js";
 
+const log = createLogger("chat-view");
+
 export interface ChatViewProps {
 	state: AppState;
+	commands?: SlashCommandRegistry;
 }
 
 export class ChatView extends Component {
@@ -21,10 +27,15 @@ export class ChatView extends Component {
 	private messageList: MessageListPanel;
 	private editor: EditorPanel;
 	private statusBar: StatusBarPanel;
+	private commands: SlashCommandRegistry | null;
+
+	/** Set this to connect the chat to the agent loop. */
+	agentRunner: AgentRunner | null = null;
 
 	constructor(props: ChatViewProps) {
 		super();
 		this.state = props.state;
+		this.commands = props.commands ?? null;
 
 		this.header = new HeaderPanel({ state: this.state });
 		this.messageList = new MessageListPanel({ state: this.state });
@@ -43,6 +54,16 @@ export class ChatView extends Component {
 	private handleSubmit(text: string): void {
 		if (!text.trim()) return;
 
+		// Try slash commands first
+		if (text.startsWith("/") && this.commands) {
+			this.commands.execute(text).then((handled) => {
+				if (!handled) {
+					log.warn(`Unknown command: ${text.split(" ")[0]}`);
+				}
+			});
+			return;
+		}
+
 		const message: Message = {
 			id: `msg-${Date.now()}`,
 			role: "user",
@@ -52,6 +73,13 @@ export class ChatView extends Component {
 
 		this.state.addMessage(message);
 		this.state.turnCount.value++;
+
+		// Kick off the agent loop if connected
+		if (this.agentRunner) {
+			this.agentRunner.submit(text).catch((err) => {
+				log.error("Agent submit failed", err);
+			});
+		}
 	}
 
 	/** Handle key events for the chat view. */
