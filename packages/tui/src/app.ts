@@ -13,7 +13,8 @@ import type { MessagePayload } from "@takumi/agent";
 import { AppState } from "./state.js";
 import { KeyBindingRegistry } from "./keybinds.js";
 import { SlashCommandRegistry } from "./commands.js";
-import { ChatView } from "./views/chat.js";
+import { RootView } from "./views/root.js";
+import type { ChatView } from "./views/chat.js";
 import { AgentRunner } from "./agent-runner.js";
 
 const log = createLogger("app");
@@ -32,8 +33,13 @@ export class TakumiApp {
 	readonly state: AppState;
 	readonly keybinds: KeyBindingRegistry;
 	readonly commands: SlashCommandRegistry;
-	readonly chatView: ChatView;
+	readonly rootView: RootView;
 	readonly agentRunner: AgentRunner | null;
+
+	/** Convenience accessor — delegates to rootView.chatView. */
+	get chatView(): ChatView {
+		return this.rootView.chatView;
+	}
 
 	private scheduler: RenderScheduler | null = null;
 	private stdin: NodeJS.ReadableStream;
@@ -49,8 +55,8 @@ export class TakumiApp {
 		this.keybinds = new KeyBindingRegistry();
 		this.commands = new SlashCommandRegistry();
 
-		// Create the chat view with command registry
-		this.chatView = new ChatView({ state: this.state, commands: this.commands });
+		// Create the root view (which owns ChatView + SidebarPanel)
+		this.rootView = new RootView({ state: this.state, commands: this.commands });
 
 		// Wire up the agent runner if sendMessage + tools are provided
 		if (options.sendMessage && options.tools) {
@@ -60,7 +66,7 @@ export class TakumiApp {
 				options.sendMessage,
 				options.tools,
 			);
-			this.chatView.agentRunner = this.agentRunner;
+			this.rootView.chatView.agentRunner = this.agentRunner;
 		} else {
 			this.agentRunner = null;
 		}
@@ -118,6 +124,9 @@ export class TakumiApp {
 		process.on("SIGINT", () => this.quit());
 		process.on("SIGTERM", () => this.quit());
 
+		// Connect the root component to the scheduler's render tree
+		this.scheduler.setRoot(this.rootView);
+
 		this.running = true;
 		this.scheduler.start();
 
@@ -147,6 +156,14 @@ export class TakumiApp {
 		process.exit(0);
 	}
 
+	/**
+	 * Force an immediate render frame outside the scheduler's timing loop.
+	 * Useful after input handling or state changes that need instant visual feedback.
+	 */
+	renderFrame(): void {
+		this.scheduler?.forceRender();
+	}
+
 	/** Handle raw input bytes from stdin. */
 	private handleInput(data: Buffer): void {
 		const raw = data.toString("utf-8");
@@ -165,8 +182,8 @@ export class TakumiApp {
 		// Try keybindings first
 		if (this.keybinds.handle(event)) return;
 
-		// Route input to the chat view (editor/message-list)
-		this.chatView.handleKey(event);
+		// Route input through the root view (which delegates to chat/sidebar)
+		this.rootView.handleKey(event);
 	}
 
 	private write(data: string): void {
@@ -185,6 +202,31 @@ export class TakumiApp {
 		this.keybinds.register("ctrl+l", "Clear screen", () => {
 			this.scheduler?.getScreen().invalidate();
 			this.scheduler?.scheduleRender();
+		});
+
+		// Command palette
+		this.keybinds.register("ctrl+k", "Command palette", () => {
+			if (this.state.activeDialog.value === "command-palette") {
+				this.state.activeDialog.value = null;
+			} else {
+				this.state.activeDialog.value = "command-palette";
+			}
+		});
+
+		// Toggle sidebar
+		this.keybinds.register("ctrl+b", "Toggle sidebar", () => {
+			this.state.sidebarVisible.value = !this.state.sidebarVisible.value;
+		});
+
+		// Session list
+		this.keybinds.register("ctrl+o", "Session list", () => {
+			this.state.activeDialog.value = "session-list";
+		});
+
+		// Exit on empty input (Ctrl+D)
+		this.keybinds.register("ctrl+d", "Exit", () => {
+			const value = this.chatView.getEditorValue();
+			if (!value) this.quit();
 		});
 	}
 

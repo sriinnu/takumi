@@ -36,6 +36,9 @@ export class AppState {
 	readonly activeTool: Signal<string | null> = signal(null);
 	readonly toolOutput: Signal<string> = signal("");
 
+	// ── File tracking ─────────────────────────────────────────────────────────
+	readonly modifiedFiles: Signal<string[]> = signal<string[]>([]);
+
 	// ── Computed values ───────────────────────────────────────────────────────
 
 	readonly messageCount: ReadonlySignal<number> = computed(() => this.messages.value.length);
@@ -88,5 +91,6 @@ export class AppState {
 		this.turnCount.value = 0;
 		this.activeTool.value = null;
 		this.toolOutput.value = "";
+		this.modifiedFiles.value = [];
 	}
 }

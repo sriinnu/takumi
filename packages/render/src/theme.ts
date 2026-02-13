@@ -3,6 +3,8 @@
  * Each theme defines colors and styles for all UI components.
  */
 
+import { builtinThemes } from "./theme-variants.js";
+
 export interface Theme {
 	name: string;
 
@@ -128,4 +130,9 @@ export function registerTheme(theme: Theme): void {
 /** List all registered theme names. */
 export function listThemes(): string[] {
 	return [...themes.keys()];
+}
+
+// Auto-register all built-in theme variants
+for (const theme of builtinThemes) {
+	registerTheme(theme);
 }
