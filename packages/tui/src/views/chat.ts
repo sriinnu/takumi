@@ -82,6 +82,15 @@ export class ChatView extends Component {
 		}
 	}
 
+	/** Scroll the message list by a number of lines (+down, -up). */
+	scrollMessages(lines: number): void {
+		if (lines > 0) {
+			this.messageList.scrollDown(lines);
+		} else {
+			this.messageList.scrollUp(-lines);
+		}
+	}
+
 	/** Get the current editor input value. */
 	getEditorValue(): string {
 		return this.editor.getValue();
