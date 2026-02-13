@@ -2,6 +2,9 @@
 export { TakumiApp } from "./app.js";
 export type { TakumiAppOptions } from "./app.js";
 
+// Agent runner
+export { AgentRunner } from "./agent-runner.js";
+
 // State
 export { AppState } from "./state.js";
 
