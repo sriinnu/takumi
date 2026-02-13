@@ -6,6 +6,7 @@
 import type { ToolDefinition } from "@takumi/core";
 import { buildSystemPrompt } from "../message.js";
 import { detectProject, type ProjectInfo } from "./project.js";
+import { loadSoul, formatSoulPrompt } from "./soul.js";
 
 export interface ContextOptions {
 	/** Working directory. */
@@ -49,6 +50,14 @@ export async function buildContext(options: ContextOptions): Promise<string> {
 			parts.push("## Project Instructions");
 			parts.push(project.instructions);
 		}
+	}
+
+	// Soul data (personality, preferences, identity)
+	const soul = loadSoul(project?.root ?? cwd);
+	const soulPrompt = formatSoulPrompt(soul);
+	if (soulPrompt) {
+		parts.push("");
+		parts.push(soulPrompt);
 	}
 
 	// Custom prompt from config

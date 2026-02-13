@@ -20,6 +20,7 @@ export { bashDefinition, bashHandler } from "./tools/bash.js";
 export { globDefinition, globHandler } from "./tools/glob.js";
 export { grepDefinition, grepHandler } from "./tools/grep.js";
 export { askDefinition, createAskHandler } from "./tools/ask.js";
+export { registerBuiltinTools } from "./tools/builtin.js";
 
 // Safety
 export { validateCommand, SAFE_COMMANDS, DANGEROUS_PATTERNS } from "./safety/sandbox.js";
@@ -27,10 +28,13 @@ export { PermissionEngine } from "./safety/permissions.js";
 
 // Context
 export { buildContext } from "./context/builder.js";
+export type { ContextOptions } from "./context/builder.js";
 export { detectProject } from "./context/project.js";
 export type { ProjectInfo } from "./context/project.js";
 export { compactHistory } from "./context/compact.js";
 export type { CompactOptions, CompactResult } from "./context/compact.js";
+export { loadSoul, formatSoulPrompt } from "./context/soul.js";
+export type { SoulData } from "./context/soul.js";
 
 // Providers
 export { DarpanaProvider } from "./providers/darpana.js";
