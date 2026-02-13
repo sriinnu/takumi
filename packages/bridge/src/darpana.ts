@@ -129,7 +129,7 @@ export class DarpanaClient {
 				signal: AbortSignal.timeout(5000),
 			});
 			if (!response.ok) return [];
-			const data = await response.json();
+			const data: any = await response.json();
 			return data.models ?? [];
 		} catch {
 			return [];

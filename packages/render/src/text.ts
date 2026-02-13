@@ -76,7 +76,7 @@ export function wrapText(text: string, maxWidth: number): string[] {
 			} else if (wordWidth > maxWidth) {
 				// Word itself is wider than maxWidth — break it character by character
 				if (currentLine) {
-					result.push(currentLine);
+					result.push(currentLine.trimEnd());
 					currentLine = "";
 					currentWidth = 0;
 				}
@@ -94,7 +94,7 @@ export function wrapText(text: string, maxWidth: number): string[] {
 			} else {
 				// Start a new line
 				if (currentLine) {
-					result.push(currentLine);
+					result.push(currentLine.trimEnd());
 				}
 				// Skip leading whitespace on new line
 				if (/^\s+$/.test(word)) {
