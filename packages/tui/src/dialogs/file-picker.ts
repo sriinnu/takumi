@@ -1,185 +1,119 @@
 /**
- * FilePicker — dialog for browsing and selecting files.
+ * FilePicker — dialog for @-reference file browsing.
+ * Shows files matching a typed query, with filter input.
+ * Pure logic/state class — no rendering.
  */
 
-import type { Rect, KeyEvent } from "@takumi/core";
+import { signal } from "@takumi/render";
+import type { Signal } from "@takumi/render";
+import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
-import { Component, Border, List, Input } from "@takumi/render";
-import type { Screen, ListItem } from "@takumi/render";
-import { readdirSync, statSync } from "node:fs";
-import { join, basename, dirname } from "node:path";
 
-export interface FilePickerProps {
-	initialPath: string;
-	onSelect: (filePath: string) => void;
-	onClose: () => void;
-	filter?: (name: string) => boolean;
-}
+export class FilePicker {
+	private readonly _isOpen: Signal<boolean> = signal(false);
+	private readonly _filterText: Signal<string> = signal("");
+	private readonly _selectedIndex: Signal<number> = signal(0);
+	private readonly _files: Signal<string[]> = signal([]);
 
-export class FilePicker extends Component {
-	private props: FilePickerProps;
-	private currentDir: string;
-	private border: Border;
-	private list: List;
-	private input: Input;
-	private items: ListItem[] = [];
+	/** Called when a file is selected. */
+	onSelect?: (filePath: string) => void;
 
-	constructor(props: FilePickerProps) {
-		super();
-		this.props = props;
-		this.currentDir = props.initialPath;
+	constructor() {}
 
-		this.border = new Border({
-			style: "rounded",
-			title: "File Picker",
-			color: 5,
-			titleColor: 15,
-		});
-
-		this.input = new Input({
-			prefix: "Filter: ",
-			placeholder: "Type to filter...",
-			onChange: (value) => this.filterItems(value),
-		});
-
-		this.list = new List({
-			items: [],
-			selectedColor: 15,
-			selectedBg: 5,
-			onSelect: (item) => this.handleItemSelect(item),
-		});
-
-		this.loadDirectory(this.currentDir);
+	/** Show the picker and reset state. */
+	open(): void {
+		this._isOpen.value = true;
+		this._filterText.value = "";
+		this._selectedIndex.value = 0;
 	}
 
-	private loadDirectory(dir: string): void {
-		try {
-			const entries = readdirSync(dir, { withFileTypes: true });
-			this.items = [];
-
-			// Parent directory
-			if (dirname(dir) !== dir) {
-				this.items.push({ id: "..", label: "..", icon: "\u{1F4C1}", description: "Parent directory" });
-			}
-
-			// Directories first, then files
-			const dirs: ListItem[] = [];
-			const files: ListItem[] = [];
-
-			for (const entry of entries) {
-				if (entry.name.startsWith(".")) continue; // skip hidden
-
-				if (entry.isDirectory()) {
-					dirs.push({
-						id: join(dir, entry.name),
-						label: entry.name + "/",
-						icon: "\u{1F4C1}",
-					});
-				} else {
-					if (this.props.filter && !this.props.filter(entry.name)) continue;
-					files.push({
-						id: join(dir, entry.name),
-						label: entry.name,
-						icon: "\u{1F4C4}",
-					});
-				}
-			}
-
-			this.items.push(
-				...dirs.sort((a, b) => a.label.localeCompare(b.label)),
-				...files.sort((a, b) => a.label.localeCompare(b.label)),
-			);
-
-			this.list.setItems(this.items);
-			this.currentDir = dir;
-			this.border.update({ title: `File Picker: ${basename(dir) || dir}` });
-			this.markDirty();
-		} catch {
-			// Can't read directory
-		}
+	/** Hide the picker. */
+	close(): void {
+		this._isOpen.value = false;
+		this._filterText.value = "";
+		this._selectedIndex.value = 0;
 	}
 
-	private filterItems(query: string): void {
-		if (!query) {
-			this.list.setItems(this.items);
-			return;
-		}
-		const lower = query.toLowerCase();
-		const filtered = this.items.filter((item) =>
-			item.label.toLowerCase().includes(lower),
-		);
-		this.list.setItems(filtered);
-		this.markDirty();
+	/** Set the full list of available files. */
+	setFiles(files: string[]): void {
+		this._files.value = files;
+		this._selectedIndex.value = 0;
 	}
 
-	private handleItemSelect(item: ListItem): void {
-		if (item.id === "..") {
-			this.loadDirectory(dirname(this.currentDir));
-			return;
-		}
-
-		try {
-			const stat = statSync(item.id);
-			if (stat.isDirectory()) {
-				this.loadDirectory(item.id);
-			} else {
-				this.props.onSelect(item.id);
-				this.props.onClose();
-			}
-		} catch {
-			this.props.onSelect(item.id);
-		}
-	}
-
+	/** Process a key event. Returns true if the event was consumed. */
 	handleKey(event: KeyEvent): boolean {
+		if (!this._isOpen.value) return false;
+
+		// Escape closes
 		if (event.raw === KEY_CODES.ESCAPE) {
-			this.props.onClose();
+			this.close();
 			return true;
 		}
 
+		// Up arrow
 		if (event.raw === KEY_CODES.UP) {
-			this.list.selectPrev();
+			const filtered = this.filteredFiles;
+			if (filtered.length > 0) {
+				this._selectedIndex.value = Math.max(0, this._selectedIndex.value - 1);
+			}
 			return true;
 		}
 
+		// Down arrow
 		if (event.raw === KEY_CODES.DOWN) {
-			this.list.selectNext();
+			const filtered = this.filteredFiles;
+			if (filtered.length > 0) {
+				this._selectedIndex.value = Math.min(filtered.length - 1, this._selectedIndex.value + 1);
+			}
 			return true;
 		}
 
+		// Enter — select file
 		if (event.raw === KEY_CODES.ENTER) {
-			this.list.confirm();
+			const filtered = this.filteredFiles;
+			if (filtered.length > 0 && this._selectedIndex.value < filtered.length) {
+				const file = filtered[this._selectedIndex.value];
+				this.close();
+				this.onSelect?.(file);
+			}
 			return true;
 		}
 
-		return this.input.handleKey(event);
+		// Backspace — remove last filter character
+		if (event.raw === KEY_CODES.BACKSPACE) {
+			if (this._filterText.value.length > 0) {
+				this._filterText.value = this._filterText.value.slice(0, -1);
+				this._selectedIndex.value = 0;
+			}
+			return true;
+		}
+
+		// Printable character — append to filter
+		if (event.key.length === 1 && !event.ctrl && !event.alt && !event.meta) {
+			this._filterText.value += event.key;
+			this._selectedIndex.value = 0;
+			return true;
+		}
+
+		return true; // Consume all keys while open
 	}
 
-	render(screen: Screen, rect: Rect): void {
-		const width = Math.min(60, rect.width - 4);
-		const height = Math.min(20, rect.height - 4);
-		const x = rect.x + Math.floor((rect.width - width) / 2);
-		const y = rect.y + Math.floor((rect.height - height) / 2);
+	get filterText(): string {
+		return this._filterText.value;
+	}
 
-		this.border.render(screen, { x, y, width, height });
+	/** Get the filtered file list based on current filter text. */
+	get filteredFiles(): string[] {
+		const filter = this._filterText.value.toLowerCase();
+		if (!filter) return this._files.value;
+		return this._files.value.filter((f) => f.toLowerCase().includes(filter));
+	}
 
-		if (height > 4) {
-			this.input.render(screen, {
-				x: x + 1,
-				y: y + 1,
-				width: width - 2,
-				height: 1,
-			});
+	get selectedIndex(): number {
+		return this._selectedIndex.value;
+	}
 
-			const sep = "\u2500".repeat(width - 2);
-			screen.writeText(y + 2, x + 1, sep, { fg: 8 });
-
-			this.list.render(screen, {
-				x: x + 1,
-				y: y + 3,
-				width: width - 2,
-				height: height - 4,
-			});
-		}
+	get isOpen(): boolean {
+		return this._isOpen.value;
 	}
 }

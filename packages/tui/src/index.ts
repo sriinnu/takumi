@@ -34,10 +34,12 @@ export { ToolOutputPanel } from "./panels/tool-output.js";
 
 // Dialogs
 export { CommandPalette } from "./dialogs/command-palette.js";
+export type { CommandPaletteItem } from "./dialogs/command-palette.js";
 export { PermissionDialog } from "./dialogs/permission.js";
 export type { PermissionResponse } from "./dialogs/permission.js";
 export { ModelPicker } from "./dialogs/model-picker.js";
 export { SessionList } from "./dialogs/session-list.js";
+export type { SessionEntry } from "./dialogs/session-list.js";
 export { FilePicker } from "./dialogs/file-picker.js";
 
 // Formatters

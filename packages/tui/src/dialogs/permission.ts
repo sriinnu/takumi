@@ -1,128 +1,88 @@
 /**
- * PermissionDialog — modal asking the user to allow/deny a tool action.
- * Shows tool name, action details, and allow/deny/always-allow options.
+ * PermissionDialog — modal for tool permission approval.
+ * Shows tool name, args preview, and allow/deny/always-allow options.
+ * Pure logic/state class — no rendering.
  */
 
-import type { Rect, KeyEvent } from "@takumi/core";
+import { signal } from "@takumi/render";
+import type { Signal } from "@takumi/render";
+import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
-import { Component, Border } from "@takumi/render";
-import type { Screen } from "@takumi/render";
-import { wrapText } from "@takumi/render";
 
-export type PermissionResponse = "allow" | "deny" | "always_allow" | "always_deny";
-
-export interface PermissionDialogProps {
-	toolName: string;
-	description: string;
-	details?: string;
-	onRespond: (response: PermissionResponse) => void;
+export interface PermissionResponse {
+	allowed: boolean;
+	remember: boolean;
 }
 
-export class PermissionDialog extends Component {
-	private props: PermissionDialogProps;
-	private selectedIndex = 0;
-	private border: Border;
+export class PermissionDialog {
+	private readonly _isOpen: Signal<boolean> = signal(false);
+	private readonly _toolName: Signal<string> = signal("");
+	private readonly _argsPreview: Signal<string> = signal("");
+	private _resolve: ((response: PermissionResponse) => void) | null = null;
 
-	private readonly options: Array<{ label: string; key: string; response: PermissionResponse }> = [
-		{ label: "(y) Allow once", key: "y", response: "allow" },
-		{ label: "(n) Deny", key: "n", response: "deny" },
-		{ label: "(a) Always allow this tool", key: "a", response: "always_allow" },
-		{ label: "(d) Always deny this tool", key: "d", response: "always_deny" },
-	];
+	/**
+	 * Show the permission dialog for a tool invocation.
+	 * Returns a promise that resolves when the user responds.
+	 */
+	show(tool: string, args: Record<string, unknown>): Promise<PermissionResponse> {
+		this._toolName.value = tool;
+		this._argsPreview.value = truncateArgs(args, 200);
+		this._isOpen.value = true;
 
-	constructor(props: PermissionDialogProps) {
-		super();
-		this.props = props;
-		this.border = new Border({
-			style: "rounded",
-			title: "Permission Required",
-			color: 3,
-			titleColor: 3,
+		return new Promise<PermissionResponse>((resolve) => {
+			this._resolve = resolve;
 		});
 	}
 
+	/** Process a key event. Returns true if the event was consumed. */
 	handleKey(event: KeyEvent): boolean {
-		// Quick keys
-		for (const opt of this.options) {
-			if (event.key === opt.key) {
-				this.props.onRespond(opt.response);
-				return true;
-			}
-		}
+		if (!this._isOpen.value) return false;
 
-		if (event.raw === KEY_CODES.UP) {
-			this.selectedIndex = Math.max(0, this.selectedIndex - 1);
-			this.markDirty();
+		// y or Enter = Allow once
+		if (event.key === "y" || event.raw === KEY_CODES.ENTER) {
+			this.respond({ allowed: true, remember: false });
 			return true;
 		}
 
-		if (event.raw === KEY_CODES.DOWN) {
-			this.selectedIndex = Math.min(this.options.length - 1, this.selectedIndex + 1);
-			this.markDirty();
+		// a = Always allow
+		if (event.key === "a") {
+			this.respond({ allowed: true, remember: true });
 			return true;
 		}
 
-		if (event.raw === KEY_CODES.ENTER) {
-			this.props.onRespond(this.options[this.selectedIndex].response);
+		// n or Escape = Deny
+		if (event.key === "n" || event.raw === KEY_CODES.ESCAPE) {
+			this.respond({ allowed: false, remember: false });
 			return true;
 		}
 
-		if (event.raw === KEY_CODES.ESCAPE) {
-			this.props.onRespond("deny");
-			return true;
-		}
-
-		return false;
+		return true; // Consume all keys while open
 	}
 
-	render(screen: Screen, rect: Rect): void {
-		const width = Math.min(50, rect.width - 4);
-		const height = Math.min(14, rect.height - 4);
-		const x = rect.x + Math.floor((rect.width - width) / 2);
-		const y = rect.y + Math.floor((rect.height - height) / 2);
-
-		const dialogRect = { x, y, width, height };
-		this.border.render(screen, dialogRect);
-
-		let row = y + 1;
-		const innerWidth = width - 2;
-
-		// Tool name
-		screen.writeText(row, x + 1, `Tool: ${this.props.toolName}`, { fg: 3, bold: true });
-		row += 2;
-
-		// Description
-		const descLines = wrapText(this.props.description, innerWidth);
-		for (const line of descLines) {
-			if (row >= y + height - 1) break;
-			screen.writeText(row, x + 1, line, { fg: 7 });
-			row++;
-		}
-
-		// Details
-		if (this.props.details) {
-			row++;
-			const detailLines = wrapText(this.props.details, innerWidth);
-			for (const line of detailLines) {
-				if (row >= y + height - 1) break;
-				screen.writeText(row, x + 1, line, { fg: 8, dim: true });
-				row++;
-			}
-		}
-
-		row++;
-
-		// Options
-		for (let i = 0; i < this.options.length; i++) {
-			if (row >= y + height - 1) break;
-			const opt = this.options[i];
-			const isSelected = i === this.selectedIndex;
-			screen.writeText(row, x + 2, opt.label, {
-				fg: isSelected ? 15 : 7,
-				bg: isSelected ? 4 : -1,
-				bold: isSelected,
-			});
-			row++;
-		}
+	/** Resolve the pending promise and close the dialog. */
+	private respond(response: PermissionResponse): void {
+		this._isOpen.value = false;
+		const resolve = this._resolve;
+		this._resolve = null;
+		resolve?.(response);
 	}
+
+	get isOpen(): boolean {
+		return this._isOpen.value;
+	}
+
+	get toolName(): string {
+		return this._toolName.value;
+	}
+
+	get argsPreview(): string {
+		return this._argsPreview.value;
+	}
+}
+
+/** Truncate a JSON representation of args to maxLen characters. */
+function truncateArgs(args: Record<string, unknown>, maxLen: number): string {
+	const json = JSON.stringify(args, null, 2);
+	if (json.length <= maxLen) return json;
+	return json.slice(0, maxLen) + "...";
 }

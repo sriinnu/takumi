@@ -1,92 +1,95 @@
 /**
  * ModelPicker — dialog for selecting the AI model.
+ * Shows available models with provider info.
+ * Pure logic/state class — no rendering.
  */
 
-import type { Rect, KeyEvent } from "@takumi/core";
+import { signal } from "@takumi/render";
+import type { Signal } from "@takumi/render";
+import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
-import { Component, Border, List } from "@takumi/render";
-import type { Screen, ListItem } from "@takumi/render";
 
-const AVAILABLE_MODELS: ListItem[] = [
-	{ id: "claude-opus-4-20250514", label: "Claude Opus 4", description: "Most capable, highest quality" },
-	{ id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4", description: "Best balance of speed and quality" },
-	{ id: "claude-haiku-3-20250307", label: "Claude Haiku 3", description: "Fastest, most affordable" },
+const DEFAULT_MODELS = [
+	"claude-opus-4-20250514",
+	"claude-sonnet-4-20250514",
+	"claude-haiku-3-20250307",
 ];
 
-export interface ModelPickerProps {
-	currentModel: string;
-	onSelect: (model: string) => void;
-	onClose: () => void;
-}
+export class ModelPicker {
+	private readonly _isOpen: Signal<boolean> = signal(false);
+	private readonly _selectedIndex: Signal<number> = signal(0);
+	private readonly _models: Signal<string[]>;
 
-export class ModelPicker extends Component {
-	private props: ModelPickerProps;
-	private border: Border;
-	private list: List;
+	/** Called when a model is selected. */
+	onSelect?: (model: string) => void;
 
-	constructor(props: ModelPickerProps) {
-		super();
-		this.props = props;
-
-		this.border = new Border({
-			style: "rounded",
-			title: "Select Model",
-			color: 5,
-			titleColor: 15,
-		});
-
-		const currentIdx = AVAILABLE_MODELS.findIndex((m) => m.id === props.currentModel);
-		this.list = new List({
-			items: AVAILABLE_MODELS,
-			selectedIndex: currentIdx >= 0 ? currentIdx : 0,
-			selectedColor: 15,
-			selectedBg: 5,
-			onSelect: (item) => {
-				this.props.onSelect(item.id);
-				this.props.onClose();
-			},
-		});
+	constructor(models?: string[]) {
+		this._models = signal(models ?? DEFAULT_MODELS);
 	}
 
+	/** Show the picker and reset selection. */
+	open(): void {
+		this._isOpen.value = true;
+		this._selectedIndex.value = 0;
+	}
+
+	/** Hide the picker. */
+	close(): void {
+		this._isOpen.value = false;
+	}
+
+	/** Process a key event. Returns true if the event was consumed. */
 	handleKey(event: KeyEvent): boolean {
+		if (!this._isOpen.value) return false;
+
+		// Escape closes
 		if (event.raw === KEY_CODES.ESCAPE) {
-			this.props.onClose();
+			this.close();
 			return true;
 		}
 
+		// Up arrow
 		if (event.raw === KEY_CODES.UP) {
-			this.list.selectPrev();
+			const models = this._models.value;
+			if (models.length > 0) {
+				this._selectedIndex.value = Math.max(0, this._selectedIndex.value - 1);
+			}
 			return true;
 		}
 
+		// Down arrow
 		if (event.raw === KEY_CODES.DOWN) {
-			this.list.selectNext();
+			const models = this._models.value;
+			if (models.length > 0) {
+				this._selectedIndex.value = Math.min(models.length - 1, this._selectedIndex.value + 1);
+			}
 			return true;
 		}
 
+		// Enter — select model
 		if (event.raw === KEY_CODES.ENTER) {
-			this.list.confirm();
+			const models = this._models.value;
+			if (models.length > 0 && this._selectedIndex.value < models.length) {
+				const model = models[this._selectedIndex.value];
+				this.close();
+				this.onSelect?.(model);
+			}
 			return true;
 		}
 
-		return false;
+		return true; // Consume all keys while open
 	}
 
-	render(screen: Screen, rect: Rect): void {
-		const width = Math.min(50, rect.width - 4);
-		const height = Math.min(10, rect.height - 4);
-		const x = rect.x + Math.floor((rect.width - width) / 2);
-		const y = rect.y + Math.floor((rect.height - height) / 2);
+	/** Get the list of available models. */
+	getModels(): string[] {
+		return this._models.value;
+	}
 
-		this.border.render(screen, { x, y, width, height });
+	get selectedIndex(): number {
+		return this._selectedIndex.value;
+	}
 
-		if (height > 2) {
-			this.list.render(screen, {
-				x: x + 1,
-				y: y + 1,
-				width: width - 2,
-				height: height - 2,
-			});
-		}
+	get isOpen(): boolean {
+		return this._isOpen.value;
 	}
 }

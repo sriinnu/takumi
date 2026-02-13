@@ -8,6 +8,14 @@ export { buildSystemPrompt, buildUserMessage, buildToolResult } from "./message.
 // SSE stream parser
 export { parseSSEStream } from "./stream.js";
 
+// Retry logic
+export { withRetry, RetryableError, computeDelay, isRetryableError, getRetryAfterMs, DEFAULT_RETRY_OPTIONS } from "./retry.js";
+export type { RetryOptions } from "./retry.js";
+
+// Error types and categorization
+export { ContextOverflowError, ProviderUnavailableError, isRetryable, categorizeError, friendlyErrorMessage } from "./errors.js";
+export type { ErrorCategory } from "./errors.js";
+
 // Tool registry
 export { ToolRegistry } from "./tools/registry.js";
 export type { ToolHandler } from "./tools/registry.js";
@@ -31,8 +39,14 @@ export { buildContext } from "./context/builder.js";
 export type { ContextOptions } from "./context/builder.js";
 export { detectProject } from "./context/project.js";
 export type { ProjectInfo } from "./context/project.js";
-export { compactHistory } from "./context/compact.js";
-export type { CompactOptions, CompactResult } from "./context/compact.js";
+export {
+	compactHistory,
+	shouldCompact,
+	compactMessages,
+	estimatePayloadTokens,
+	estimateTotalPayloadTokens,
+} from "./context/compact.js";
+export type { CompactOptions, CompactResult, PayloadCompactOptions } from "./context/compact.js";
 export { loadSoul, formatSoulPrompt } from "./context/soul.js";
 export type { SoulData } from "./context/soul.js";
 

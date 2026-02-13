@@ -1,97 +1,95 @@
 /**
- * SessionList — dialog for browsing and restoring past sessions.
+ * SessionListDialog — dialog for browsing and resuming past sessions.
+ * Shows recent sessions with date, turn count, and preview.
+ * Pure logic/state class — no rendering.
  */
 
-import type { Rect, KeyEvent, SessionInfo } from "@takumi/core";
+import { signal } from "@takumi/render";
+import type { Signal } from "@takumi/render";
+import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
-import { Component, Border, List } from "@takumi/render";
-import type { Screen, ListItem } from "@takumi/render";
 
-export interface SessionListProps {
-	sessions: SessionInfo[];
-	onSelect: (session: SessionInfo) => void;
-	onClose: () => void;
+export interface SessionEntry {
+	id: string;
+	date: string;
+	turns: number;
+	preview: string;
 }
 
-export class SessionList extends Component {
-	private props: SessionListProps;
-	private border: Border;
-	private list: List;
+export class SessionList {
+	private readonly _isOpen: Signal<boolean> = signal(false);
+	private readonly _selectedIndex: Signal<number> = signal(0);
+	private readonly _sessions: Signal<SessionEntry[]> = signal([]);
 
-	constructor(props: SessionListProps) {
-		super();
-		this.props = props;
+	/** Called when a session is selected for resume. */
+	onSelect?: (sessionId: string) => void;
 
-		this.border = new Border({
-			style: "rounded",
-			title: "Sessions",
-			color: 5,
-			titleColor: 15,
-		});
+	constructor() {}
 
-		const items: ListItem[] = props.sessions.map((s) => {
-			const date = new Date(s.startedAt).toLocaleDateString();
-			const time = new Date(s.startedAt).toLocaleTimeString();
-			return {
-				id: s.id,
-				label: s.id,
-				description: `${date} ${time} | ${s.turnCount} turns | ${s.model}`,
-			};
-		});
-
-		this.list = new List({
-			items,
-			selectedColor: 15,
-			selectedBg: 5,
-			onSelect: (item) => {
-				const session = props.sessions.find((s) => s.id === item.id);
-				if (session) {
-					this.props.onSelect(session);
-					this.props.onClose();
-				}
-			},
-		});
+	/** Show the dialog with a list of sessions. */
+	open(sessions: SessionEntry[]): void {
+		this._sessions.value = sessions;
+		this._selectedIndex.value = 0;
+		this._isOpen.value = true;
 	}
 
+	/** Hide the dialog. */
+	close(): void {
+		this._isOpen.value = false;
+	}
+
+	/** Process a key event. Returns true if the event was consumed. */
 	handleKey(event: KeyEvent): boolean {
+		if (!this._isOpen.value) return false;
+
+		// Escape closes
 		if (event.raw === KEY_CODES.ESCAPE) {
-			this.props.onClose();
+			this.close();
 			return true;
 		}
 
+		// Up arrow
 		if (event.raw === KEY_CODES.UP) {
-			this.list.selectPrev();
+			const sessions = this._sessions.value;
+			if (sessions.length > 0) {
+				this._selectedIndex.value = Math.max(0, this._selectedIndex.value - 1);
+			}
 			return true;
 		}
 
+		// Down arrow
 		if (event.raw === KEY_CODES.DOWN) {
-			this.list.selectNext();
+			const sessions = this._sessions.value;
+			if (sessions.length > 0) {
+				this._selectedIndex.value = Math.min(sessions.length - 1, this._selectedIndex.value + 1);
+			}
 			return true;
 		}
 
+		// Enter — select session
 		if (event.raw === KEY_CODES.ENTER) {
-			this.list.confirm();
+			const sessions = this._sessions.value;
+			if (sessions.length > 0 && this._selectedIndex.value < sessions.length) {
+				const session = sessions[this._selectedIndex.value];
+				this.close();
+				this.onSelect?.(session.id);
+			}
 			return true;
 		}
 
-		return false;
+		return true; // Consume all keys while open
 	}
 
-	render(screen: Screen, rect: Rect): void {
-		const width = Math.min(70, rect.width - 4);
-		const height = Math.min(20, rect.height - 4);
-		const x = rect.x + Math.floor((rect.width - width) / 2);
-		const y = rect.y + Math.floor((rect.height - height) / 2);
+	/** Get the current sessions list. */
+	getSessions(): SessionEntry[] {
+		return this._sessions.value;
+	}
 
-		this.border.render(screen, { x, y, width, height });
+	get selectedIndex(): number {
+		return this._selectedIndex.value;
+	}
 
-		if (height > 2) {
-			this.list.render(screen, {
-				x: x + 1,
-				y: y + 1,
-				width: width - 2,
-				height: height - 2,
-			});
-		}
+	get isOpen(): boolean {
+		return this._isOpen.value;
 	}
 }

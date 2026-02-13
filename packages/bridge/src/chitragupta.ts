@@ -1,208 +1,203 @@
 /**
- * ChitraguptaClient — MCP client for the Chitragupta memory server.
- * Spawns the Chitragupta MCP server process and communicates via JSON-RPC
- * over stdio.
+ * ChitraguptaBridge -- High-level bridge to the Chitragupta MCP memory server.
+ * Wraps McpClient with typed methods for each Chitragupta tool.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
 import { createLogger } from "@takumi/core";
+import { McpClient, type McpClientOptions } from "./mcp-client.js";
 
-const log = createLogger("chitragupta-client");
+const log = createLogger("chitragupta-bridge");
 
-interface JsonRpcRequest {
-	jsonrpc: "2.0";
-	id: number;
-	method: string;
-	params?: Record<string, unknown>;
+// ── Return types ─────────────────────────────────────────────────────────────
+
+export interface MemoryResult {
+	content: string;
+	relevance: number;
+	source?: string;
 }
 
-interface JsonRpcResponse {
-	jsonrpc: "2.0";
-	id: number;
-	result?: any;
-	error?: { code: number; message: string; data?: any };
+export interface ChitraguptaSessionInfo {
+	id: string;
+	title: string;
+	timestamp: number;
+	turns: number;
 }
 
-export class ChitraguptaClient {
-	private process: ChildProcess | null = null;
-	private nextId = 1;
-	private pendingRequests = new Map<number, {
-		resolve: (value: any) => void;
-		reject: (error: Error) => void;
-	}>();
-	private buffer = "";
-	private connected = false;
+export interface SessionDetail {
+	id: string;
+	title: string;
+	turns: Array<{ role: string; content: string; timestamp: number }>;
+}
 
-	constructor(
-		private binaryPath: string = "chitragupta-mcp",
-		private args: string[] = ["--transport", "stdio"],
-	) {}
+export interface HandoverSummary {
+	originalRequest: string;
+	filesModified: string[];
+	filesRead: string[];
+	decisions: string[];
+	errors: string[];
+	recentContext: string;
+}
 
-	/** Spawn the MCP server and establish connection. */
+export interface AkashaTrace {
+	content: string;
+	type: string;
+	topics: string[];
+	strength: number;
+}
+
+// ── MCP tool response wrappers ───────────────────────────────────────────────
+
+interface ToolCallResult {
+	content?: Array<{ type: string; text?: string }>;
+}
+
+// ── Bridge options ───────────────────────────────────────────────────────────
+
+export interface ChitraguptaBridgeOptions {
+	/** Path to the chitragupta-mcp binary. Default: "chitragupta-mcp". */
+	command?: string;
+	/** Arguments for the binary. Default: ["--transport", "stdio"]. */
+	args?: string[];
+	/** Project path passed as environment variable. */
+	projectPath?: string;
+	/** Startup timeout in ms. Default: 5000. */
+	startupTimeoutMs?: number;
+	/** Per-request timeout in ms. Default: 10000. */
+	requestTimeoutMs?: number;
+}
+
+// ── ChitraguptaBridge ────────────────────────────────────────────────────────
+
+export class ChitraguptaBridge {
+	private client: McpClient;
+
+	constructor(options?: ChitraguptaBridgeOptions) {
+		const command = options?.command ?? "chitragupta-mcp";
+		const args = options?.args ?? ["--transport", "stdio"];
+
+		const mcpOptions: McpClientOptions = {
+			command,
+			args,
+			startupTimeoutMs: options?.startupTimeoutMs ?? 5_000,
+			requestTimeoutMs: options?.requestTimeoutMs ?? 10_000,
+		};
+
+		if (options?.projectPath) {
+			mcpOptions.env = { CHITRAGUPTA_PROJECT: options.projectPath };
+		}
+
+		this.client = new McpClient(mcpOptions);
+
+		// Forward events for observability
+		this.client.on("disconnected", (code) => {
+			log.warn(`Chitragupta disconnected (exit code ${code})`);
+		});
+		this.client.on("error", (err) => {
+			log.error(`Chitragupta error: ${(err as Error).message}`);
+		});
+		this.client.on("connected", () => {
+			log.info("Chitragupta connected");
+		});
+	}
+
+	/** Start the Chitragupta MCP server and establish the connection. */
 	async connect(): Promise<void> {
-		if (this.connected) return;
+		await this.client.start();
+	}
 
-		log.info(`Spawning Chitragupta MCP: ${this.binaryPath} ${this.args.join(" ")}`);
+	/** Disconnect from Chitragupta. */
+	async disconnect(): Promise<void> {
+		await this.client.stop();
+	}
 
-		this.process = spawn(this.binaryPath, this.args, {
-			stdio: ["pipe", "pipe", "pipe"],
-			env: { ...process.env },
-		});
+	/** Search project memory via GraphRAG. */
+	async memorySearch(query: string, limit?: number): Promise<MemoryResult[]> {
+		const params: Record<string, unknown> = { query };
+		if (limit !== undefined) params.limit = limit;
 
-		this.process.stdout?.on("data", (data: Buffer) => {
-			this.handleData(data.toString());
-		});
+		const raw = await this.callTool("chitragupta_memory_search", params);
+		return this.parseResults<MemoryResult[]>(raw) ?? [];
+	}
 
-		this.process.stderr?.on("data", (data: Buffer) => {
-			log.warn(`MCP stderr: ${data.toString().trim()}`);
-		});
+	/** List recent sessions for this project. */
+	async sessionList(limit?: number): Promise<ChitraguptaSessionInfo[]> {
+		const params: Record<string, unknown> = {};
+		if (limit !== undefined) params.limit = limit;
 
-		this.process.on("close", (code) => {
-			log.info(`MCP process exited with code ${code}`);
-			this.connected = false;
-			// Reject all pending requests
-			for (const [, pending] of this.pendingRequests) {
-				pending.reject(new Error("MCP process exited"));
+		const raw = await this.callTool("chitragupta_session_list", params);
+		return this.parseResults<ChitraguptaSessionInfo[]>(raw) ?? [];
+	}
+
+	/** Show the full contents of a specific session. */
+	async sessionShow(sessionId: string): Promise<SessionDetail> {
+		const raw = await this.callTool("chitragupta_session_show", { sessionId });
+		return this.parseResults<SessionDetail>(raw) ?? { id: sessionId, title: "", turns: [] };
+	}
+
+	/** Get a work-state handover summary for context continuity. */
+	async handover(): Promise<HandoverSummary> {
+		const raw = await this.callTool("chitragupta_handover", {});
+		return (
+			this.parseResults<HandoverSummary>(raw) ?? {
+				originalRequest: "",
+				filesModified: [],
+				filesRead: [],
+				decisions: [],
+				errors: [],
+				recentContext: "",
 			}
-			this.pendingRequests.clear();
-		});
-
-		this.process.on("error", (err) => {
-			log.error(`MCP process error: ${err.message}`);
-			this.connected = false;
-		});
-
-		// Initialize the connection
-		await this.initialize();
-		this.connected = true;
-		log.info("Connected to Chitragupta MCP");
+		);
 	}
 
-	/** Initialize the MCP protocol handshake. */
-	private async initialize(): Promise<void> {
-		const result = await this.sendRequest("initialize", {
-			protocolVersion: "2024-11-05",
-			capabilities: {},
-			clientInfo: {
-				name: "takumi",
-				version: "0.1.0",
-			},
-		});
-
-		log.info("MCP initialized", result);
-
-		// Send initialized notification
-		this.sendNotification("notifications/initialized");
+	/** Deposit a knowledge trace into the Akasha shared field. */
+	async akashaDeposit(content: string, type: string, topics: string[]): Promise<void> {
+		await this.callTool("akasha_deposit", { content, type, topics });
 	}
 
-	/** Call an MCP tool. */
-	async callTool(name: string, args: Record<string, unknown>): Promise<any> {
-		return this.sendRequest("tools/call", {
+	/** Query knowledge traces from the Akasha shared field. */
+	async akashaTraces(query: string, limit?: number): Promise<AkashaTrace[]> {
+		const params: Record<string, unknown> = { query };
+		if (limit !== undefined) params.limit = limit;
+
+		const raw = await this.callTool("akasha_traces", params);
+		return this.parseResults<AkashaTrace[]>(raw) ?? [];
+	}
+
+	/** Check connection status. */
+	get isConnected(): boolean {
+		return this.client.isConnected;
+	}
+
+	/** Access the underlying McpClient (for advanced use). */
+	get mcpClient(): McpClient {
+		return this.client;
+	}
+
+	// ── Internal helpers ──────────────────────────────────────────────────
+
+	private async callTool(name: string, args: Record<string, unknown>): Promise<ToolCallResult> {
+		return this.client.call<ToolCallResult>("tools/call", {
 			name,
 			arguments: args,
 		});
 	}
 
-	/** List available MCP tools. */
-	async listTools(): Promise<any[]> {
-		const result = await this.sendRequest("tools/list", {});
-		return result.tools ?? [];
-	}
-
-	/** Search Chitragupta memory. */
-	async memorySearch(query: string): Promise<any> {
-		return this.callTool("chitragupta_memory_search", { query });
-	}
-
-	/** List recent sessions. */
-	async sessionList(limit?: number): Promise<any> {
-		return this.callTool("chitragupta_session_list", { limit });
-	}
-
-	/** Get a work-state handover summary. */
-	async handover(): Promise<any> {
-		return this.callTool("chitragupta_handover", {});
-	}
-
-	/** Disconnect from the MCP server. */
-	disconnect(): void {
-		if (this.process) {
-			this.process.kill();
-			this.process = null;
-		}
-		this.connected = false;
-		this.pendingRequests.clear();
-	}
-
-	/** Check if connected. */
-	isConnected(): boolean {
-		return this.connected;
-	}
-
-	// ── Internal JSON-RPC ─────────────────────────────────────────────────────
-
-	private sendRequest(method: string, params?: Record<string, unknown>): Promise<any> {
-		return new Promise((resolve, reject) => {
-			const id = this.nextId++;
-			const request: JsonRpcRequest = {
-				jsonrpc: "2.0",
-				id,
-				method,
-				params,
-			};
-
-			this.pendingRequests.set(id, { resolve, reject });
-
-			const data = JSON.stringify(request) + "\n";
-			this.process?.stdin?.write(data, (err) => {
-				if (err) {
-					this.pendingRequests.delete(id);
-					reject(new Error(`Failed to send request: ${err.message}`));
-				}
-			});
-
-			// Timeout after 30 seconds
-			setTimeout(() => {
-				if (this.pendingRequests.has(id)) {
-					this.pendingRequests.delete(id);
-					reject(new Error(`Request ${method} timed out`));
-				}
-			}, 30_000);
-		});
-	}
-
-	private sendNotification(method: string, params?: Record<string, unknown>): void {
-		const notification = {
-			jsonrpc: "2.0",
-			method,
-			params,
-		};
-		this.process?.stdin?.write(JSON.stringify(notification) + "\n");
-	}
-
-	private handleData(data: string): void {
-		this.buffer += data;
-		const lines = this.buffer.split("\n");
-		this.buffer = lines.pop() ?? "";
-
-		for (const line of lines) {
-			if (!line.trim()) continue;
-			try {
-				const response: JsonRpcResponse = JSON.parse(line);
-				if (response.id !== undefined) {
-					const pending = this.pendingRequests.get(response.id);
-					if (pending) {
-						this.pendingRequests.delete(response.id);
-						if (response.error) {
-							pending.reject(new Error(response.error.message));
-						} else {
-							pending.resolve(response.result);
-						}
-					}
-				}
-			} catch (err) {
-				log.warn(`Failed to parse MCP response: ${line.slice(0, 100)}`);
+	/**
+	 * Parse the MCP tool result.
+	 * MCP tool responses come as { content: [{ type: "text", text: "..." }] }.
+	 * The text field contains the JSON payload we need to parse.
+	 */
+	private parseResults<T>(raw: ToolCallResult): T | null {
+		try {
+			const textBlock = raw?.content?.find((c) => c.type === "text");
+			if (textBlock?.text) {
+				return JSON.parse(textBlock.text) as T;
 			}
+			// Fallback: try to use the raw result directly if it has the right shape
+			return raw as unknown as T;
+		} catch {
+			log.warn("Failed to parse tool result");
+			return null;
 		}
 	}
 }
