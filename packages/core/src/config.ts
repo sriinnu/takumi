@@ -4,6 +4,17 @@ import { homedir } from "node:os";
 import type { TakumiConfig } from "./types.js";
 import { ConfigError } from "./errors.js";
 
+/** Default API endpoints per provider (OpenAI-compatible chat completions). */
+export const PROVIDER_ENDPOINTS: Record<string, string> = {
+	openai: "https://api.openai.com/v1/chat/completions",
+	groq: "https://api.groq.com/openai/v1/chat/completions",
+	deepseek: "https://api.deepseek.com/v1/chat/completions",
+	mistral: "https://api.mistral.ai/v1/chat/completions",
+	together: "https://api.together.xyz/v1/chat/completions",
+	openrouter: "https://openrouter.ai/api/v1/chat/completions",
+	ollama: "http://localhost:11434/v1/chat/completions",
+};
+
 const DEFAULT_CONFIG: TakumiConfig = {
 	apiKey: "",
 	model: "claude-sonnet-4-20250514",
@@ -13,6 +24,8 @@ const DEFAULT_CONFIG: TakumiConfig = {
 	systemPrompt: "",
 	workingDirectory: process.cwd(),
 	proxyUrl: "",
+	provider: "anthropic",
+	endpoint: "",
 	permissions: [],
 	theme: "default",
 	logLevel: "info",
@@ -48,13 +61,51 @@ function readConfigFile(path: string): Partial<TakumiConfig> | null {
 	}
 }
 
-/** Map environment variables to config fields. */
+/**
+ * Map environment variables to config fields.
+ *
+ * API key priority: TAKUMI_API_KEY > provider-specific key > ANTHROPIC_API_KEY
+ * Provider detection: TAKUMI_PROVIDER > inferred from env key present
+ */
 function envOverrides(): Partial<TakumiConfig> {
 	const overrides: Partial<TakumiConfig> = {};
 	const env = process.env;
 
-	if (env.ANTHROPIC_API_KEY) overrides.apiKey = env.ANTHROPIC_API_KEY;
+	// ── Provider-specific API keys (lowest to highest priority) ────────────
+	// Each sets both apiKey and provider, later entries override earlier ones.
+	// Order: provider-specific keys (alphabetical), then ANTHROPIC, then TAKUMI.
+	const providerKeys: Array<{ envVar: string; provider: string }> = [
+		{ envVar: "DEEPSEEK_API_KEY", provider: "deepseek" },
+		{ envVar: "GROQ_API_KEY", provider: "groq" },
+		{ envVar: "MISTRAL_API_KEY", provider: "mistral" },
+		{ envVar: "TOGETHER_API_KEY", provider: "together" },
+		{ envVar: "OPENROUTER_API_KEY", provider: "openrouter" },
+		{ envVar: "OPENAI_API_KEY", provider: "openai" },
+		{ envVar: "GOOGLE_API_KEY", provider: "gemini" },
+		{ envVar: "GEMINI_API_KEY", provider: "gemini" },
+	];
+
+	for (const { envVar, provider } of providerKeys) {
+		if (env[envVar]) {
+			overrides.apiKey = env[envVar];
+			overrides.provider = provider;
+		}
+	}
+
+	// ANTHROPIC_API_KEY overrides provider-specific keys
+	if (env.ANTHROPIC_API_KEY) {
+		overrides.apiKey = env.ANTHROPIC_API_KEY;
+		overrides.provider = "anthropic";
+	}
+
+	// TAKUMI_API_KEY is highest priority for the key itself (but doesn't set provider)
 	if (env.TAKUMI_API_KEY) overrides.apiKey = env.TAKUMI_API_KEY;
+
+	// ── Explicit provider/endpoint overrides ──────────────────────────────
+	if (env.TAKUMI_PROVIDER) overrides.provider = env.TAKUMI_PROVIDER;
+	if (env.TAKUMI_ENDPOINT) overrides.endpoint = env.TAKUMI_ENDPOINT;
+
+	// ── Other env vars ────────────────────────────────────────────────────
 	if (env.TAKUMI_MODEL) overrides.model = env.TAKUMI_MODEL;
 	if (env.TAKUMI_MAX_TOKENS) overrides.maxTokens = Number.parseInt(env.TAKUMI_MAX_TOKENS, 10);
 	if (env.TAKUMI_PROXY_URL) overrides.proxyUrl = env.TAKUMI_PROXY_URL;
@@ -65,6 +116,25 @@ function envOverrides(): Partial<TakumiConfig> {
 	if (env.TAKUMI_THINKING_BUDGET) overrides.thinkingBudget = Number.parseInt(env.TAKUMI_THINKING_BUDGET, 10);
 
 	return overrides;
+}
+
+/**
+ * Auto-detect provider from model name when no explicit provider is set.
+ * Returns the provider name if detected, undefined otherwise.
+ */
+export function detectProviderFromModel(model: string): string | undefined {
+	if (!model) return undefined;
+	const m = model.toLowerCase();
+
+	if (m.startsWith("gpt-") || m.startsWith("o1-") || m.startsWith("o3-") || m.startsWith("o4-")) return "openai";
+	if (m.startsWith("gemini-")) return "gemini";
+	if (m.startsWith("claude-")) return "anthropic";
+	if (m.startsWith("deepseek-")) return "deepseek";
+	if (m.startsWith("mistral-")) return "mistral";
+	// llama/mixtral without an API key likely means local ollama
+	if (m.startsWith("llama") || m.startsWith("mixtral")) return "ollama";
+
+	return undefined;
 }
 
 /**
@@ -91,6 +161,19 @@ export function loadConfig(cliOverrides?: Partial<TakumiConfig>): TakumiConfig {
 	// 4. Merge CLI overrides
 	if (cliOverrides) {
 		config = { ...config, ...cliOverrides };
+	}
+
+	// 5. Auto-detect provider from model name if provider is still the default
+	if (config.provider === "anthropic" && !cliOverrides?.provider && !env.provider) {
+		const detected = detectProviderFromModel(config.model);
+		if (detected) {
+			config.provider = detected;
+		}
+	}
+
+	// 6. Resolve default endpoint for the provider if none explicitly set
+	if (!config.endpoint && config.provider !== "anthropic") {
+		config.endpoint = PROVIDER_ENDPOINTS[config.provider] || "";
 	}
 
 	return config;

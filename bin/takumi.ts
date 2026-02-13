@@ -10,12 +10,13 @@
  *   takumi --model <model>          Use a specific model
  *   takumi --thinking               Enable extended thinking
  *   takumi --proxy <url>            Use Darpana proxy
+ *   takumi --provider <name>        Use a specific provider
  *   takumi --resume <id>             Resume a previous session
  *   takumi --help                   Show help
  *   takumi --version                Show version
  */
 
-import { loadConfig } from "@takumi/core";
+import { loadConfig, PROVIDER_ENDPOINTS } from "@takumi/core";
 import type { TakumiConfig } from "@takumi/core";
 
 const VERSION = "0.1.0";
@@ -27,6 +28,9 @@ interface CliArgs {
 	thinking: boolean;
 	thinkingBudget?: number;
 	proxy?: string;
+	provider?: string;
+	apiKey?: string;
+	endpoint?: string;
 	theme?: string;
 	logLevel?: string;
 	workingDirectory?: string;
@@ -71,6 +75,16 @@ function parseArgs(argv: string[]): CliArgs {
 			case "--proxy":
 			case "-p":
 				args.proxy = argv[++i];
+				break;
+			case "--provider":
+			case "-P":
+				args.provider = argv[++i];
+				break;
+			case "--api-key":
+				args.apiKey = argv[++i];
+				break;
+			case "--endpoint":
+				args.endpoint = argv[++i];
 				break;
 			case "--theme":
 				args.theme = argv[++i];
@@ -118,6 +132,9 @@ Options:
   -h, --help                Show this help message
   -v, --version             Show version number
   -m, --model <model>       AI model to use (default: claude-sonnet-4-20250514)
+  -P, --provider <name>     Provider name (see below)
+  --api-key <key>           API key (overrides environment)
+  --endpoint <url>          Custom API endpoint URL
   -t, --thinking            Enable extended thinking
   --thinking-budget <n>     Thinking token budget (default: 10000)
   -p, --proxy <url>         Darpana proxy URL
@@ -127,6 +144,17 @@ Options:
   -C, --cwd <dir>           Working directory
   -r, --resume <id>         Resume a previous session by ID
 
+Providers:
+  anthropic (default)    Direct Anthropic API
+  openai                 OpenAI (GPT-4.1, etc.)
+  gemini                 Google Gemini
+  groq                   Groq (fast inference)
+  deepseek               DeepSeek
+  mistral                Mistral AI
+  together               Together AI
+  openrouter             OpenRouter (multi-provider)
+  ollama                 Local Ollama (no key needed)
+
 One-Shot Mode:
   Providing a positional prompt, using --print, or piping to stdin
   will bypass the TUI and run the agent directly, streaming output
@@ -134,7 +162,17 @@ One-Shot Mode:
 
 Environment Variables:
   ANTHROPIC_API_KEY          Anthropic API key
-  TAKUMI_API_KEY             Override API key
+  OPENAI_API_KEY             OpenAI API key (auto-sets provider=openai)
+  GEMINI_API_KEY             Gemini API key (auto-sets provider=gemini)
+  GOOGLE_API_KEY             Google API key (auto-sets provider=gemini)
+  GROQ_API_KEY               Groq API key (auto-sets provider=groq)
+  DEEPSEEK_API_KEY           DeepSeek API key (auto-sets provider=deepseek)
+  MISTRAL_API_KEY            Mistral API key (auto-sets provider=mistral)
+  TOGETHER_API_KEY           Together API key (auto-sets provider=together)
+  OPENROUTER_API_KEY         OpenRouter API key (auto-sets provider=openrouter)
+  TAKUMI_API_KEY             Override API key (highest priority)
+  TAKUMI_PROVIDER            Explicit provider override
+  TAKUMI_ENDPOINT            Explicit endpoint override
   TAKUMI_MODEL               Default model
   TAKUMI_PROXY_URL           Darpana proxy URL
   TAKUMI_THINKING            Enable thinking (true/false)
@@ -144,7 +182,78 @@ Config Files (first found wins):
   takumi.config.json         Project root config
   ~/.takumi/config.json      User config
   ~/.config/takumi/config.json  XDG config
+
+Examples:
+  ANTHROPIC_API_KEY=... pnpm takumi
+  OPENAI_API_KEY=... pnpm takumi --provider openai --model gpt-4.1
+  GROQ_API_KEY=... pnpm takumi -P groq -m llama-3.3-70b
+  pnpm takumi -P ollama -m llama3
+  pnpm takumi --endpoint http://localhost:8080/v1/chat/completions --api-key test
 `);
+}
+
+/**
+ * Check whether the given provider/endpoint combination can skip API key auth.
+ * Ollama and local endpoints (localhost / 127.0.0.1) don't require keys.
+ */
+function canSkipApiKey(config: TakumiConfig): boolean {
+	if (config.provider === "ollama") return true;
+	if (config.endpoint) {
+		try {
+			const url = new URL(config.endpoint);
+			if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return true;
+		} catch {
+			// invalid URL, don't skip
+		}
+	}
+	return false;
+}
+
+/**
+ * Create the appropriate provider for the given config.
+ * Uses dynamic imports so missing provider modules don't crash at startup.
+ */
+async function createProvider(config: TakumiConfig): Promise<any> {
+	const agent = await import("@takumi/agent");
+
+	// Priority: --proxy > --provider > default (anthropic)
+	if (config.proxyUrl) {
+		return new agent.DarpanaProvider(config);
+	}
+
+	if (config.provider === "anthropic" || !config.provider) {
+		return new agent.DirectProvider(config);
+	}
+
+	if (config.provider === "gemini") {
+		// GeminiProvider may be built in parallel — try dynamic import
+		try {
+			const { GeminiProvider } = await import("@takumi/agent");
+			return new GeminiProvider({
+				...config,
+				endpoint: config.endpoint || PROVIDER_ENDPOINTS[config.provider] || "",
+			});
+		} catch {
+			// Fallback: if GeminiProvider not available, error clearly
+			throw new Error(
+				`GeminiProvider is not yet available. Install or build @takumi/agent with Gemini support.`,
+			);
+		}
+	}
+
+	// openai, groq, deepseek, mistral, together, openrouter, ollama, custom
+	try {
+		const { OpenAIProvider } = await import("@takumi/agent");
+		return new OpenAIProvider({
+			...config,
+			endpoint: config.endpoint || PROVIDER_ENDPOINTS[config.provider] || config.endpoint,
+		});
+	} catch {
+		throw new Error(
+			`OpenAIProvider is not yet available for provider "${config.provider}". ` +
+			`Install or build @takumi/agent with OpenAI-compatible support.`,
+		);
+	}
 }
 
 async function main(): Promise<void> {
@@ -166,6 +275,9 @@ async function main(): Promise<void> {
 	if (args.thinking) overrides.thinking = true;
 	if (args.thinkingBudget) overrides.thinkingBudget = args.thinkingBudget;
 	if (args.proxy) overrides.proxyUrl = args.proxy;
+	if (args.provider) overrides.provider = args.provider;
+	if (args.apiKey) overrides.apiKey = args.apiKey;
+	if (args.endpoint) overrides.endpoint = args.endpoint;
 	if (args.theme) overrides.theme = args.theme;
 	if (args.logLevel) overrides.logLevel = args.logLevel as TakumiConfig["logLevel"];
 	if (args.workingDirectory) overrides.workingDirectory = args.workingDirectory;
@@ -173,14 +285,18 @@ async function main(): Promise<void> {
 	// Load merged config
 	const config = loadConfig(overrides);
 
-	// Check for API key
-	if (!config.apiKey && !config.proxyUrl) {
+	// Check for API key (skip for ollama / local endpoints)
+	if (!config.apiKey && !config.proxyUrl && !canSkipApiKey(config)) {
 		console.error(
 			"Error: No API key configured.\n\n" +
-			"Set ANTHROPIC_API_KEY environment variable, or configure apiKey in:\n" +
+			"Set an API key environment variable for your provider:\n" +
+			"  ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, etc.\n\n" +
+			"Or pass --api-key <key> on the command line.\n" +
+			"Or configure apiKey in:\n" +
 			"  .takumi/config.json\n" +
 			"  ~/.takumi/config.json\n\n" +
-			"Or use --proxy to connect through Darpana.",
+			"Or use --proxy to connect through Darpana.\n" +
+			"Or use --provider ollama for local models (no key needed).",
 		);
 		process.exit(1);
 	}
@@ -232,12 +348,10 @@ async function main(): Promise<void> {
 
 	// Dynamic imports to avoid loading heavy modules for --help/--version
 	const { TakumiApp } = await import("@takumi/tui");
-	const { DirectProvider, DarpanaProvider, ToolRegistry, registerBuiltinTools } = await import("@takumi/agent");
+	const { ToolRegistry, registerBuiltinTools } = await import("@takumi/agent");
 
 	// Set up provider
-	const provider = config.proxyUrl
-		? new DarpanaProvider(config)
-		: new DirectProvider(config);
+	const provider = await createProvider(config);
 
 	// Set up tools
 	const tools = new ToolRegistry();
@@ -245,7 +359,7 @@ async function main(): Promise<void> {
 
 	const app = new TakumiApp({
 		config,
-		sendMessage: (messages, system, toolDefs) => provider.sendMessage(messages, system, toolDefs),
+		sendMessage: (messages: any, system: any, toolDefs: any) => provider.sendMessage(messages, system, toolDefs),
 		tools,
 		resumeSessionId: args.resume,
 	});
@@ -268,11 +382,9 @@ async function readStdin(): Promise<string> {
  * Text output streams to stdout; tool calls log to stderr.
  */
 async function runOneShot(config: TakumiConfig, prompt: string): Promise<void> {
-	const { DirectProvider, DarpanaProvider, ToolRegistry, registerBuiltinTools, agentLoop, buildContext } = await import("@takumi/agent");
+	const { ToolRegistry, registerBuiltinTools, agentLoop, buildContext } = await import("@takumi/agent");
 
-	const provider = config.proxyUrl
-		? new DarpanaProvider(config)
-		: new DirectProvider(config);
+	const provider = await createProvider(config);
 
 	const tools = new ToolRegistry();
 	registerBuiltinTools(tools);
@@ -284,7 +396,7 @@ async function runOneShot(config: TakumiConfig, prompt: string): Promise<void> {
 	});
 
 	const loop = agentLoop(prompt, [], {
-		sendMessage: (messages, sys, toolDefs) => provider.sendMessage(messages, sys, toolDefs),
+		sendMessage: (messages: any, sys: any, toolDefs: any) => provider.sendMessage(messages, sys, toolDefs),
 		tools,
 		systemPrompt: system,
 		maxTurns: config.maxTurns,

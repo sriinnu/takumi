@@ -55,3 +55,7 @@ export type { TokenBudget } from "./context/budget.js";
 // Providers
 export { DarpanaProvider } from "./providers/darpana.js";
 export { DirectProvider } from "./providers/direct.js";
+export { GeminiProvider } from "./providers/gemini.js";
+export type { GeminiProviderConfig } from "./providers/gemini.js";
+export { OpenAIProvider } from "./providers/openai.js";
+export type { OpenAIProviderConfig } from "./providers/openai.js";
