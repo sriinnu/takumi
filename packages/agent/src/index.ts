@@ -35,10 +35,10 @@ export { validateCommand, SAFE_COMMANDS, DANGEROUS_PATTERNS } from "./safety/san
 export { PermissionEngine } from "./safety/permissions.js";
 
 // Context
-export { buildContext } from "./context/builder.js";
-export type { ContextOptions } from "./context/builder.js";
-export { detectProject } from "./context/project.js";
-export type { ProjectInfo } from "./context/project.js";
+export { buildContext, buildSystemPrompt as buildRichSystemPrompt } from "./context/builder.js";
+export type { ContextOptions, SystemPromptOptions } from "./context/builder.js";
+export { detectProject, detectProjectContext, detectLanguage, detectFramework, detectPackageManager } from "./context/project.js";
+export type { ProjectInfo, ProjectContext } from "./context/project.js";
 export {
 	compactHistory,
 	shouldCompact,
@@ -49,6 +49,8 @@ export {
 export type { CompactOptions, CompactResult, PayloadCompactOptions } from "./context/compact.js";
 export { loadSoul, formatSoulPrompt } from "./context/soul.js";
 export type { SoulData } from "./context/soul.js";
+export { estimateTokens, allocateTokenBudget, truncateToTokenBudget } from "./context/budget.js";
+export type { TokenBudget } from "./context/budget.js";
 
 // Providers
 export { DarpanaProvider } from "./providers/darpana.js";

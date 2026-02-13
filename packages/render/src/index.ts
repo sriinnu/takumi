@@ -121,11 +121,22 @@ export type { BorderProps, BorderStyle } from "./components/border.js";
 export { Markdown } from "./components/markdown.js";
 export type { MarkdownProps } from "./components/markdown.js";
 
-export { Syntax } from "./components/syntax.js";
-export type { SyntaxProps, TokenType } from "./components/syntax.js";
+export { Syntax, tokenizeLine, LANGUAGE_MAP } from "./components/syntax.js";
+export type { SyntaxProps, TokenType, Token, LanguageRules } from "./components/syntax.js";
 
 export { Diff } from "./components/diff.js";
 export type { DiffProps, DiffLine, DiffLineType } from "./components/diff.js";
+
+// Standalone markdown renderer
+export { renderMarkdown } from "./markdown.js";
+
+// Clipboard (OSC 52)
+export {
+	copyToClipboard,
+	requestClipboard,
+	parseClipboardResponse,
+	clearClipboard,
+} from "./clipboard.js";
 
 export { List } from "./components/list.js";
 export type { ListProps, ListItem } from "./components/list.js";
