@@ -86,7 +86,7 @@ pnpm takumi
 ### Quick Start with API Key
 
 ```bash
-# Option 1: Direct API key
+# Option 1: Direct Anthropic API key (simplest)
 ANTHROPIC_API_KEY=sk-ant-... pnpm takumi
 
 # Option 2: Via Darpana proxy (supports any provider)
@@ -94,6 +94,46 @@ OPENAI_API_KEY=sk-... pnpm takumi --proxy http://localhost:8082
 
 # Option 3: Local Ollama (no key needed)
 pnpm takumi --proxy http://localhost:8082 --model local/llama3
+```
+
+### One-Shot Mode (no TUI)
+
+```bash
+# Run a single prompt, output streams to stdout
+ANTHROPIC_API_KEY=sk-ant-... pnpm takumi "explain what this project does"
+
+# Non-interactive mode (--print)
+ANTHROPIC_API_KEY=sk-ant-... pnpm takumi --print "list all TypeScript files"
+
+# Piped input
+echo "review this code" | ANTHROPIC_API_KEY=sk-ant-... pnpm takumi
+```
+
+### Session Persistence
+
+```bash
+# Sessions auto-save to ~/.config/takumi/sessions/
+# Resume a previous session:
+pnpm takumi --resume session-2026-02-12-a1b2
+
+# Inside the TUI:
+#   /session list     — show saved sessions
+#   /session resume   — reload a session
+#   /session save     — force-save now
+```
+
+### Verify Everything Works
+
+```bash
+# Run the test suite (1537 tests)
+pnpm test
+
+# Build all packages
+pnpm build
+
+# Check your environment
+pnpm takumi --version    # → takumi v0.1.0
+pnpm takumi --help       # → shows all options
 ```
 
 ### Configuration
@@ -360,20 +400,82 @@ Provides: model aliasing (sonnet/haiku/opus), format conversion (Anthropic ↔ O
 
 ---
 
+## Testing Locally
+
+### Minimum Setup (Direct Anthropic)
+
+```bash
+cd /mnt/c/sriinnu/personal/Kaala-brahma/takumi
+
+# 1. Install + build
+pnpm install && pnpm build
+
+# 2. Set your API key
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# 3. Launch interactive TUI
+pnpm takumi
+```
+
+You'll get a full-screen terminal UI. Type a message and press Enter. The agent will:
+- Stream the LLM response with **markdown formatting** and **syntax-highlighted code blocks**
+- Execute tool calls (read/write/edit/bash/glob/grep) with **permission prompts**
+- Show token usage and cost in the status bar
+
+### Key Shortcuts
+
+| Key | Action |
+|---|---|
+| `Enter` | Send message |
+| `Shift+Enter` | New line in editor |
+| `Ctrl+K` | Command palette |
+| `Ctrl+B` | Toggle sidebar |
+| `Ctrl+O` | Session list |
+| `Ctrl+Q` | Quit |
+| `Ctrl+C` | Cancel running agent / quit |
+| Mouse wheel | Scroll messages |
+
+### Quick Smoke Test (No API Key Needed)
+
+```bash
+# Just verify build + tests
+pnpm build && pnpm test
+
+# Check CLI works
+pnpm takumi --version
+pnpm takumi --help
+```
+
+### With Darpana Proxy (Any LLM Provider)
+
+If you have Darpana running on port 8082:
+
+```bash
+pnpm takumi --proxy http://localhost:8082
+```
+
+This routes through Darpana which can translate to OpenAI, Gemini, Groq, Ollama, etc.
+
+### With Chitragupta Memory
+
+If `chitragupta-mcp` is installed and on PATH, Takumi auto-connects on startup. You'll see a green **चि** in the status bar. Use `/memory <query>` to search past session context.
+
+If not installed, Takumi works fine without it (graceful degradation).
+
+---
+
 ## Roadmap
 
-| Phase | Status | Description |
-|---|---|---|
-| **Phase 0** — Scaffold | Done | Package structure, config, types, CLI entry |
-| **Phase 1** — Kagami Renderer | Planned | ANSI, Yoga, signals, screen buffer, components |
-| **Phase 2** — Core Components | Planned | Box, Text, Input, Scroll, Markdown, Syntax, Diff |
-| **Phase 3** — Agent Loop | Planned | LLM provider, tools, sandbox, context management |
-| **Phase 4** — TUI Application | Planned | Panels, dialogs, commands, keybinds |
-| **Phase 5** — Bridge & Integration | Planned | Chitragupta MCP, Darpana HTTP, git |
-| **Phase 6** — CLI & Polish | Planned | Error handling, first-run, shutdown, signals |
-| **Phase 7** — Advanced | Planned | Mouse, themes, vim mode, coding agent mode |
-
-See [TODO.md](TODO.md) for the full checklist.
+| Phase | Status | Tests | Description |
+|---|---|---|---|
+| **Phase 0** — Scaffold | Done | 55 | Package structure, config, types, CLI entry |
+| **Phase 1** — Kagami Renderer | Done | 824 | ANSI, Yoga, signals, screen buffer, components |
+| **Phase 2** — Core Components | Done | 850 | Markdown, Syntax (12 langs), Diff, Clipboard, Editor |
+| **Phase 3** — Agent Loop | Done | 1109 | LLM providers, 6 tools, sandbox, retry, compaction |
+| **Phase 4** — TUI Application | Done | 1458 | Panels, 5 dialogs, 13 commands, keybinds, mouse |
+| **Phase 5** — Bridge & Integration | Done | 1537 | Chitragupta MCP, Darpana HTTP, git, sessions |
+| **Phase 6** — CLI & Polish | Done | 1537 | Markdown rendering, session persistence, auto-connect |
+| **Phase 7** — Remaining | Planned | — | Image/vision, provider failover, mid-stream recovery |
 
 ---
 
