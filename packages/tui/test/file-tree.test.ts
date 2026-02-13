@@ -88,13 +88,15 @@ vi.mock("node:fs/promises", () => {
 
 	return {
 		readdir: vi.fn(async (path: string, _opts?: unknown) => {
-			const entries = dirStructure[path];
-			if (!entries) throw new Error(`ENOENT: no such directory '${path}'`);
+			const normalized = path.replace(/\\/g, "/");
+			const entries = dirStructure[normalized];
+			if (!entries) throw new Error(`ENOENT: no such directory '${normalized}'`);
 			return entries;
 		}),
 		readFile: vi.fn(async (path: string, _encoding?: string) => {
-			const content = mockFS[path];
-			if (content === undefined) throw new Error(`ENOENT: no such file '${path}'`);
+			const normalized = path.replace(/\\/g, "/");
+			const content = mockFS[normalized];
+			if (content === undefined) throw new Error(`ENOENT: no such file '${normalized}'`);
 			return content;
 		}),
 		stat: vi.fn(async (_path: string) => ({ isDirectory: () => false, isFile: () => true })),

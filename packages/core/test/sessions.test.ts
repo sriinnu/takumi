@@ -288,6 +288,8 @@ describe("createAutoSaver", () => {
 		// Advance past the interval using the async variant so the
 		// async save callback (file I/O) can settle between ticks
 		await vi.advanceTimersByTimeAsync(1100);
+		// Allow any remaining I/O promises (mkdir, writeFile) to settle
+		await vi.advanceTimersByTimeAsync(50);
 
 		loaded = await loadSession("session-periodic", tmpDir);
 		expect(loaded).not.toBeNull();

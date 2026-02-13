@@ -399,8 +399,8 @@ export class FileTreePanel extends Component {
 			return null;
 		}
 
-		// File selected -- notify callback
-		const fullPath = join(this.rootPath.value, row.node.path);
+		// File selected -- notify callback (normalize to forward slashes for cross-platform)
+		const fullPath = join(this.rootPath.value, row.node.path).replace(/\\/g, "/");
 		this.onFileSelect?.(fullPath);
 		return fullPath;
 	}

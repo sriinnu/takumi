@@ -51,8 +51,9 @@ vi.mock("node:fs/promises", () => {
 
 	return {
 		readdir: vi.fn(async (dir: string, _opts?: unknown) => {
-			const entries = dirStructure[dir];
-			if (!entries) throw new Error(`ENOENT: ${dir}`);
+			const normalized = dir.replace(/\\/g, "/");
+			const entries = dirStructure[normalized];
+			if (!entries) throw new Error(`ENOENT: ${normalized}`);
 			return entries;
 		}),
 		readFile: vi.fn(async () => ""),
