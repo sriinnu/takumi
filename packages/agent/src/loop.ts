@@ -3,6 +3,11 @@
  *
  * An async generator that yields AgentEvents as it processes messages,
  * calls tools, and streams responses from the LLM provider.
+ *
+ * Includes:
+ * - Automatic retry on transient API failures
+ * - Context compaction when approaching token limits
+ * - Cumulative token tracking from usage_update events
  */
 
 import type {
@@ -15,6 +20,13 @@ import type {
 import { LIMITS, createLogger } from "@takumi/core";
 import type { ToolRegistry } from "./tools/registry.js";
 import { buildSystemPrompt, buildUserMessage, buildToolResult } from "./message.js";
+import { withRetry, type RetryOptions } from "./retry.js";
+import {
+	shouldCompact,
+	compactMessages,
+	estimateTotalPayloadTokens,
+	type PayloadCompactOptions,
+} from "./context/compact.js";
 
 const log = createLogger("agent-loop");
 
@@ -33,6 +45,15 @@ export interface AgentLoopOptions {
 
 	/** Abort signal for cancellation. */
 	signal?: AbortSignal;
+
+	/** Retry options for API calls (set to false to disable retries). */
+	retryOptions?: Partial<RetryOptions> | false;
+
+	/** Context compaction options (set to false to disable compaction). */
+	compactOptions?: Partial<PayloadCompactOptions> | false;
+
+	/** Maximum context window size in tokens (for compaction). */
+	maxContextTokens?: number;
 }
 
 export interface MessagePayload {
@@ -57,14 +78,20 @@ export async function* agentLoop(
 		systemPrompt,
 		maxTurns = LIMITS.MAX_TURNS,
 		signal,
+		retryOptions,
+		compactOptions,
+		maxContextTokens = 200_000,
 	} = options;
 
 	const toolDefs = tools.getDefinitions();
 	const system = systemPrompt ?? buildSystemPrompt(toolDefs);
-	const messages: MessagePayload[] = [
+	let messages: MessagePayload[] = [
 		...history,
 		{ role: "user", content: buildUserMessage(userMessage) },
 	];
+
+	// Cumulative token tracking from usage_update events
+	let cumulativeTokens = 0;
 
 	let turn = 0;
 
@@ -77,6 +104,23 @@ export async function* agentLoop(
 		turn++;
 		log.info(`Starting turn ${turn}`);
 
+		// Context compaction check before each turn
+		if (compactOptions !== false) {
+			const estimatedTokens = cumulativeTokens > 0
+				? cumulativeTokens
+				: estimateTotalPayloadTokens(messages);
+
+			if (shouldCompact(messages, estimatedTokens, maxContextTokens)) {
+				log.info(`Context compaction triggered: ~${estimatedTokens} tokens`);
+				messages = compactMessages(messages, {
+					maxTokens: maxContextTokens,
+					...(typeof compactOptions === "object" ? compactOptions : {}),
+				});
+				// Re-estimate after compaction
+				cumulativeTokens = estimateTotalPayloadTokens(messages);
+			}
+		}
+
 		// Accumulate the full assistant response
 		let fullText = "";
 		let fullThinking = "";
@@ -84,9 +128,27 @@ export async function* agentLoop(
 		let stopReason: string | undefined;
 		let usage: Usage | undefined;
 
-		// Stream events from the LLM
+		// Stream events from the LLM (with retry wrapper)
 		try {
-			for await (const event of sendMessage(messages, system, toolDefs)) {
+			/**
+			 * We wrap the stream consumption in a retry-aware pattern.
+			 * For streaming APIs, we retry the initial connection/request.
+			 * Once streaming has started, we do not retry mid-stream.
+			 */
+			const stream = retryOptions !== false
+				? await withRetry(
+						async () => {
+							// Materialize the async iterable; the retry applies
+							// to the initial call (HTTP request). Once we get
+							// the iterable back, we consume it outside the retry.
+							const iterable = sendMessage(messages, system, toolDefs);
+							return iterable;
+						},
+						typeof retryOptions === "object" ? retryOptions : undefined,
+					)
+				: sendMessage(messages, system, toolDefs);
+
+			for await (const event of stream) {
 				yield event;
 
 				switch (event.type) {
@@ -108,6 +170,8 @@ export async function* agentLoop(
 						break;
 					case "usage_update":
 						usage = event.usage;
+						// Track cumulative tokens for compaction decisions
+						cumulativeTokens = event.usage.inputTokens + event.usage.outputTokens;
 						break;
 					case "error":
 						yield { type: "stop", reason: "error" };

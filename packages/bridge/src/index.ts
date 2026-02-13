@@ -1,4 +1,15 @@
-export { ChitraguptaClient } from "./chitragupta.js";
+export { McpClient } from "./mcp-client.js";
+export type { McpClientOptions } from "./mcp-client.js";
+
+export { ChitraguptaBridge } from "./chitragupta.js";
+export type {
+	ChitraguptaBridgeOptions,
+	MemoryResult,
+	ChitraguptaSessionInfo,
+	SessionDetail,
+	HandoverSummary,
+	AkashaTrace,
+} from "./chitragupta.js";
 
 export { DarpanaClient } from "./darpana.js";
 export type { DarpanaConfig } from "./darpana.js";
