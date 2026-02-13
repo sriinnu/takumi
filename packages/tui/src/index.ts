@@ -5,6 +5,10 @@ export type { TakumiAppOptions } from "./app.js";
 // Agent runner
 export { AgentRunner } from "./agent-runner.js";
 
+// Coding agent
+export { CodingAgent } from "./coding-agent.js";
+export type { CodingPhase, CodingTask } from "./coding-agent.js";
+
 // State
 export { AppState } from "./state.js";
 

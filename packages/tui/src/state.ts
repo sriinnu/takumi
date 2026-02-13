@@ -46,6 +46,9 @@ export class AppState {
 	// ── File tracking ─────────────────────────────────────────────────────────
 	readonly modifiedFiles: Signal<string[]> = signal<string[]>([]);
 
+	// ── Coding agent ──────────────────────────────────────────────────────────
+	readonly codingPhase: Signal<string> = signal("idle");
+
 	// ── Computed values ───────────────────────────────────────────────────────
 
 	readonly messageCount: ReadonlySignal<number> = computed(() => this.messages.value.length);
@@ -100,5 +103,6 @@ export class AppState {
 		this.toolOutput.value = "";
 		this.pendingPermission.value = null;
 		this.modifiedFiles.value = [];
+		this.codingPhase.value = "idle";
 	}
 }
