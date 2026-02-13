@@ -42,6 +42,10 @@ export { SessionList } from "./dialogs/session-list.js";
 export type { SessionEntry } from "./dialogs/session-list.js";
 export { FilePicker } from "./dialogs/file-picker.js";
 
+// Editor
+export { Editor } from "./editor.js";
+export type { EditorPosition, EditorSelection, EditorOptions } from "./editor.js";
+
 // Formatters
 export { formatUserMessage, formatAssistantMessage, formatMessage } from "./formatters/message.js";
 export { formatToolCall, formatToolResult, formatToolSummary } from "./formatters/tool-call.js";
