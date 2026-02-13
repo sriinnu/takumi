@@ -5,12 +5,13 @@
  * input handling, and agent interaction.
  */
 
-import type { TakumiConfig, KeyEvent, MouseEvent, AgentEvent, ToolDefinition, Message } from "@takumi/core";
-import { ANSI, LIMITS, createLogger } from "@takumi/core";
+import type { TakumiConfig, KeyEvent, MouseEvent, AgentEvent, ToolDefinition, Message, AutoSaver, SessionData } from "@takumi/core";
+import { ANSI, LIMITS, createLogger, loadSession, saveSession, listSessions, generateSessionId, createAutoSaver } from "@takumi/core";
 import { RenderScheduler, initYoga } from "@takumi/render";
 import { ToolRegistry, compactHistory } from "@takumi/agent";
 import type { MessagePayload } from "@takumi/agent";
-import { gitDiff } from "@takumi/bridge";
+import { gitDiff, ChitraguptaBridge } from "@takumi/bridge";
+import type { MemoryResult, ChitraguptaSessionInfo } from "@takumi/bridge";
 import { AppState } from "./state.js";
 import { KeyBindingRegistry } from "./keybinds.js";
 import { SlashCommandRegistry } from "./commands.js";
@@ -27,6 +28,8 @@ export interface TakumiAppOptions {
 	/** Optional: provide a sendMessage function and tool registry to enable the agent loop. */
 	sendMessage?: (messages: MessagePayload[], system: string, tools?: ToolDefinition[]) => AsyncIterable<AgentEvent>;
 	tools?: ToolRegistry;
+	/** Optional: resume a previous session by ID (loads messages from disk). */
+	resumeSessionId?: string;
 }
 
 export class TakumiApp {
@@ -46,11 +49,14 @@ export class TakumiApp {
 	private stdin: NodeJS.ReadableStream;
 	private stdout: NodeJS.WritableStream;
 	private running = false;
+	private autoSaver: AutoSaver | null = null;
+	private resumeSessionId: string | undefined;
 
 	constructor(options: TakumiAppOptions) {
 		this.config = options.config;
 		this.stdin = options.stdin ?? process.stdin;
 		this.stdout = options.stdout ?? process.stdout;
+		this.resumeSessionId = options.resumeSessionId;
 
 		this.state = new AppState();
 		this.keybinds = new KeyBindingRegistry();
@@ -80,12 +86,27 @@ export class TakumiApp {
 	async start(): Promise<void> {
 		log.info("Starting Takumi TUI");
 
-		// Generate session ID if none exists
-		if (!this.state.sessionId.value) {
-			const date = new Date().toISOString().slice(0, 10);
-			const rand = Math.random().toString(36).slice(2, 6);
-			this.state.sessionId.value = `session-${date}-${rand}`;
+		// Resume a previous session from disk, or generate a new session ID
+		if (this.resumeSessionId) {
+			const loaded = await loadSession(this.resumeSessionId);
+			if (loaded) {
+				this.state.sessionId.value = loaded.id;
+				this.state.model.value = loaded.model;
+				this.state.messages.value = loaded.messages;
+				this.state.totalInputTokens.value = loaded.tokenUsage.inputTokens;
+				this.state.totalOutputTokens.value = loaded.tokenUsage.outputTokens;
+				this.state.totalCost.value = loaded.tokenUsage.totalCost;
+				log.info(`Resumed session: ${loaded.id} (${loaded.messages.length} messages)`);
+			} else {
+				log.info(`Session ${this.resumeSessionId} not found, starting new session`);
+				this.state.sessionId.value = generateSessionId();
+			}
+		} else if (!this.state.sessionId.value) {
+			this.state.sessionId.value = generateSessionId();
 		}
+
+		// Start the auto-saver for session persistence
+		this.startAutoSaver();
 
 		// Initialize Yoga for layout
 		await initYoga();
@@ -140,6 +161,9 @@ export class TakumiApp {
 
 		this.state.terminalSize.value = { width: columns, height: rows };
 		log.info(`TUI started: ${columns}x${rows}`);
+
+		// Connect to Chitragupta in the background (non-blocking, best-effort)
+		this.connectChitragupta();
 	}
 
 	/** Stop the TUI and restore terminal. */
@@ -148,6 +172,20 @@ export class TakumiApp {
 		this.running = false;
 
 		log.info("Shutting down Takumi TUI");
+
+		// Final session save before exit
+		if (this.autoSaver) {
+			try {
+				await this.autoSaver.save();
+			} catch {
+				// Non-fatal — best effort
+			}
+			this.autoSaver.stop();
+			this.autoSaver = null;
+		}
+
+		// Best-effort handover and disconnect from Chitragupta
+		await this.disconnectChitragupta();
 
 		this.scheduler?.stop();
 
@@ -247,6 +285,122 @@ export class TakumiApp {
 		this.state.addMessage(msg);
 	}
 
+	/** Build a SessionData snapshot from the current state. */
+	private buildSessionData(): SessionData {
+		const messages = this.state.messages.value;
+		// Derive a title from the first user message, or default
+		let title = "Untitled session";
+		for (const m of messages) {
+			if (m.role === "user" && m.content.length > 0) {
+				const first = m.content[0];
+				if (first.type === "text") {
+					title = first.text.slice(0, 80).replace(/\n/g, " ");
+					break;
+				}
+			}
+		}
+		return {
+			id: this.state.sessionId.value,
+			title,
+			createdAt: messages.length > 0 ? messages[0].timestamp : Date.now(),
+			updatedAt: Date.now(),
+			messages,
+			model: this.state.model.value,
+			tokenUsage: {
+				inputTokens: this.state.totalInputTokens.value,
+				outputTokens: this.state.totalOutputTokens.value,
+				totalCost: this.state.totalCost.value,
+			},
+		};
+	}
+
+	/** Start the periodic auto-saver for session persistence. */
+	private startAutoSaver(): void {
+		if (this.autoSaver) return;
+		this.autoSaver = createAutoSaver(
+			this.state.sessionId.value,
+			() => this.buildSessionData(),
+		);
+	}
+
+	/**
+	 * Attempt to connect to Chitragupta MCP memory server in the background.
+	 * This is fully non-blocking — if the binary is not found or connection
+	 * fails, we silently set chitraguptaConnected=false. The TUI continues
+	 * to work without Chitragupta features.
+	 */
+	private connectChitragupta(): void {
+		const bridge = new ChitraguptaBridge({
+			projectPath: process.cwd(),
+			startupTimeoutMs: 8_000,
+		});
+
+		// Store the bridge instance immediately so commands can reference it
+		this.state.chitraguptaBridge.value = bridge;
+
+		bridge.connect()
+			.then(async () => {
+				this.state.chitraguptaConnected.value = true;
+				log.info("Chitragupta bridge connected");
+
+				// Load relevant memory for the current project
+				try {
+					const cwd = process.cwd();
+					const projectName = cwd.split("/").pop() ?? cwd;
+					const results = await bridge.memorySearch(projectName, 5);
+					if (results.length > 0) {
+						log.info(`Loaded ${results.length} memory entries from Chitragupta`);
+					}
+				} catch (err) {
+					log.debug(`Chitragupta memory preload failed: ${(err as Error).message}`);
+				}
+			})
+			.catch((err) => {
+				log.debug(`Chitragupta bridge connection failed: ${(err as Error).message}`);
+				this.state.chitraguptaConnected.value = false;
+				this.state.chitraguptaBridge.value = null;
+			});
+
+		// Listen for disconnection events
+		bridge.mcpClient.on("disconnected", () => {
+			this.state.chitraguptaConnected.value = false;
+			log.info("Chitragupta bridge disconnected");
+		});
+
+		bridge.mcpClient.on("error", (err) => {
+			log.debug(`Chitragupta bridge error: ${(err as Error).message}`);
+			this.state.chitraguptaConnected.value = false;
+		});
+	}
+
+	/**
+	 * Best-effort handover and disconnect from Chitragupta on shutdown.
+	 * Errors are silently logged — we never block TUI exit.
+	 */
+	private async disconnectChitragupta(): Promise<void> {
+		const bridge = this.state.chitraguptaBridge.value;
+		if (!bridge || !bridge.isConnected) return;
+
+		try {
+			await Promise.race([
+				bridge.handover(),
+				new Promise((_, reject) => setTimeout(() => reject(new Error("handover timeout")), 3_000)),
+			]);
+			log.debug("Chitragupta handover completed");
+		} catch (err) {
+			log.debug(`Chitragupta handover failed: ${(err as Error).message}`);
+		}
+
+		try {
+			await bridge.disconnect();
+		} catch (err) {
+			log.debug(`Chitragupta disconnect failed: ${(err as Error).message}`);
+		}
+
+		this.state.chitraguptaConnected.value = false;
+		this.state.chitraguptaBridge.value = null;
+	}
+
 	private registerDefaultKeybinds(): void {
 		this.keybinds.register("ctrl+q", "Quit", () => this.quit());
 		this.keybinds.register("ctrl+l", "Clear screen", () => {
@@ -343,20 +497,62 @@ export class TakumiApp {
 			}
 
 			if (args === "list") {
-				this.addInfoMessage("Session listing requires Chitragupta connection");
+				// Show saved sessions from disk
+				try {
+					const sessions = await listSessions(20);
+					if (sessions.length === 0) {
+						this.addInfoMessage("No saved sessions found.");
+					} else {
+						const lines = sessions.map((s) => {
+							const date = new Date(s.updatedAt).toLocaleString();
+							return `  ${s.id}  ${date}  (${s.messageCount} msgs)  ${s.title}`;
+						});
+						this.addInfoMessage(`Saved sessions:\n${lines.join("\n")}`);
+					}
+				} catch (err) {
+					this.addInfoMessage(`Failed to list sessions: ${(err as Error).message}`);
+				}
 				return;
 			}
 
 			if (args.startsWith("resume ")) {
 				const sessionId = args.slice(7).trim();
 				if (sessionId) {
-					this.state.sessionId.value = sessionId;
-					this.addInfoMessage(`Resumed session: ${sessionId}`);
+					const loaded = await loadSession(sessionId);
+					if (loaded) {
+						// Stop current auto-saver before switching sessions
+						if (this.autoSaver) {
+							this.autoSaver.stop();
+							this.autoSaver = null;
+						}
+						this.state.sessionId.value = loaded.id;
+						this.state.model.value = loaded.model;
+						this.state.messages.value = loaded.messages;
+						this.state.totalInputTokens.value = loaded.tokenUsage.inputTokens;
+						this.state.totalOutputTokens.value = loaded.tokenUsage.outputTokens;
+						this.state.totalCost.value = loaded.tokenUsage.totalCost;
+						this.agentRunner?.clearHistory();
+						this.startAutoSaver();
+						this.addInfoMessage(`Resumed session: ${sessionId} (${loaded.messages.length} messages)`);
+					} else {
+						this.addInfoMessage(`Session not found: ${sessionId}`);
+					}
 				}
 				return;
 			}
 
-			this.addInfoMessage("Usage: /session [info|list|resume <id>]");
+			if (args === "save") {
+				try {
+					const data = this.buildSessionData();
+					await saveSession(data);
+					this.addInfoMessage(`Session saved: ${data.id}`);
+				} catch (err) {
+					this.addInfoMessage(`Failed to save session: ${(err as Error).message}`);
+				}
+				return;
+			}
+
+			this.addInfoMessage("Usage: /session [info|list|resume <id>|save]");
 		});
 		this.commands.register("/diff", "Show git diff", () => {
 			const diff = gitDiff(process.cwd());
@@ -390,9 +586,55 @@ export class TakumiApp {
 				this.addInfoMessage("Usage: /memory <search query>");
 				return;
 			}
+
+			const bridge = this.state.chitraguptaBridge.value;
+			if (!bridge || !this.state.chitraguptaConnected.value) {
+				this.addInfoMessage("Memory search requires Chitragupta connection (not connected)");
+				return;
+			}
+
 			this.addInfoMessage(`Searching memory for: ${args}...`);
-			// This would use the Chitragupta bridge when available
-			this.addInfoMessage("Memory search requires Chitragupta connection");
+			try {
+				const results = await bridge.memorySearch(args, 10);
+				if (results.length === 0) {
+					this.addInfoMessage("No memory results found.");
+				} else {
+					const formatted = results
+						.map((r, i) => {
+							const src = r.source ? ` (${r.source})` : "";
+							return `  ${i + 1}. [${(r.relevance * 100).toFixed(0)}%]${src}\n     ${r.content.slice(0, 200)}`;
+						})
+						.join("\n");
+					this.addInfoMessage(`Memory results:\n${formatted}`);
+				}
+			} catch (err) {
+				this.addInfoMessage(`Memory search failed: ${(err as Error).message}`);
+			}
+		});
+		this.commands.register("/sessions", "List Chitragupta sessions", async (args) => {
+			const bridge = this.state.chitraguptaBridge.value;
+			if (!bridge || !this.state.chitraguptaConnected.value) {
+				this.addInfoMessage("Session listing requires Chitragupta connection (not connected)");
+				return;
+			}
+
+			try {
+				const limit = args ? parseInt(args, 10) || 10 : 10;
+				const sessions = await bridge.sessionList(limit);
+				if (sessions.length === 0) {
+					this.addInfoMessage("No Chitragupta sessions found.");
+				} else {
+					const formatted = sessions
+						.map((s) => {
+							const date = new Date(s.timestamp).toLocaleDateString();
+							return `  ${s.id}  ${date}  (${s.turns} turns)  ${s.title}`;
+						})
+						.join("\n");
+					this.addInfoMessage(`Chitragupta sessions:\n${formatted}`);
+				}
+			} catch (err) {
+				this.addInfoMessage(`Session listing failed: ${(err as Error).message}`);
+			}
 		});
 		this.commands.register("/undo", "Undo last file change", async () => {
 			this.addInfoMessage("Running: git checkout -- .");

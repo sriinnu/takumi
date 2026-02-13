@@ -6,6 +6,7 @@
 import type { Message, Usage, Size, PermissionDecision } from "@takumi/core";
 import { signal, computed } from "@takumi/render";
 import type { Signal, ReadonlySignal } from "@takumi/render";
+import type { ChitraguptaBridge } from "@takumi/bridge";
 
 export class AppState {
 	// ── Conversation ──────────────────────────────────────────────────────────
@@ -48,6 +49,10 @@ export class AppState {
 
 	// ── Coding agent ──────────────────────────────────────────────────────────
 	readonly codingPhase: Signal<string> = signal("idle");
+
+	// ── Chitragupta integration ───────────────────────────────────────────────
+	readonly chitraguptaConnected: Signal<boolean> = signal(false);
+	readonly chitraguptaBridge: Signal<ChitraguptaBridge | null> = signal(null);
 
 	// ── Computed values ───────────────────────────────────────────────────────
 
@@ -104,5 +109,7 @@ export class AppState {
 		this.pendingPermission.value = null;
 		this.modifiedFiles.value = [];
 		this.codingPhase.value = "idle";
+		this.chitraguptaConnected.value = false;
+		this.chitraguptaBridge.value = null;
 	}
 }

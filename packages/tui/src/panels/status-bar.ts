@@ -23,6 +23,7 @@ export class StatusBarPanel extends Component {
 
 		this.disposeEffect = effect(() => {
 			const _status = this.state.statusText.value;
+			const _chi = this.state.chitraguptaConnected.value;
 			this.markDirty();
 		});
 	}
@@ -54,6 +55,16 @@ export class StatusBarPanel extends Component {
 		// Left side: model name
 		const leftText = ` ${model} `;
 		screen.writeText(rect.y, rect.x, leftText, { fg: 15, bg: 236, bold: true });
+
+		// Chitragupta connection indicator (right after model name)
+		const chiConnected = this.state.chitraguptaConnected.value;
+		const chiIndicator = chiConnected ? " \u091A\u093F " : " \u091A\u093F ";
+		const chiCol = rect.x + leftText.length;
+		screen.writeText(rect.y, chiCol, chiIndicator, {
+			fg: chiConnected ? 2 : 8,  // green when connected, gray when not
+			bg: 236,
+			dim: !chiConnected,
+		});
 
 		// Center: status
 		const centerText = ` ${status} `;

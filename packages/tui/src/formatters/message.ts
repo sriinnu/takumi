@@ -1,9 +1,11 @@
 /**
  * Message formatters — convert Message objects into display-ready strings.
+ * Assistant text blocks are rendered through the markdown-to-ANSI renderer
+ * for rich formatting (headings, bold, italic, syntax-highlighted code blocks).
  */
 
 import type { Message, ContentBlock } from "@takumi/core";
-import { bold, dim, fg, reset } from "@takumi/render";
+import { bold, dim, fg, reset, renderMarkdown, getTheme } from "@takumi/render";
 
 /**
  * Format a user message for display.
@@ -31,7 +33,8 @@ export function formatAssistantMessage(message: Message): string {
 	for (const block of message.content) {
 		switch (block.type) {
 			case "text":
-				lines.push(block.text);
+				// Render assistant text through the markdown-to-ANSI pipeline
+				lines.push(renderMarkdown(block.text, getTheme()));
 				break;
 			case "thinking":
 				lines.push(`${dim(fg(8) + "[thinking] " + block.thinking.slice(0, 100) + "..." + reset())}`);
