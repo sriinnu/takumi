@@ -12,6 +12,10 @@ export type { CodingPhase, CodingTask } from "./coding-agent.js";
 // State
 export { AppState } from "./state.js";
 
+// Spinner
+export { ToolSpinner, TOOL_SPINNER_FRAMES } from "./spinner.js";
+export type { ToolSpinnerEntry, SpinnerLine } from "./spinner.js";
+
 // Keybinds
 export { KeyBindingRegistry } from "./keybinds.js";
 export type { KeyBinding } from "./keybinds.js";
@@ -25,12 +29,16 @@ export { RootView } from "./views/root.js";
 export { ChatView } from "./views/chat.js";
 
 // Panels
-export { MessageListPanel } from "./panels/message-list.js";
+export { MessageListPanel, getToolArgSummary, truncateArg } from "./panels/message-list.js";
+export type { LineSegment, RenderedLine } from "./panels/message-list.js";
 export { EditorPanel } from "./panels/editor.js";
 export { StatusBarPanel } from "./panels/status-bar.js";
 export { HeaderPanel } from "./panels/header.js";
 export { SidebarPanel } from "./panels/sidebar.js";
 export { ToolOutputPanel } from "./panels/tool-output.js";
+export { FileTreePanel } from "./panels/file-tree.js";
+export type { FileNode, FlatRow, FileTreePanelProps } from "./panels/file-tree.js";
+export { scanDirectory, loadGitignore, flattenTree, parseGitignore, matchesGitignore, applyGitStatus } from "./panels/file-tree.js";
 
 // Dialogs
 export { CommandPalette } from "./dialogs/command-palette.js";
