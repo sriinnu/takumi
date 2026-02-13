@@ -7,6 +7,7 @@ import type { Message, Usage, Size, PermissionDecision } from "@takumi/core";
 import { signal, computed } from "@takumi/render";
 import type { Signal, ReadonlySignal } from "@takumi/render";
 import type { ChitraguptaBridge } from "@takumi/bridge";
+import { ToolSpinner } from "./spinner.js";
 
 export class AppState {
 	// ── Conversation ──────────────────────────────────────────────────────────
@@ -36,6 +37,10 @@ export class AppState {
 	// ── Tool execution ────────────────────────────────────────────────────────
 	readonly activeTool: Signal<string | null> = signal(null);
 	readonly toolOutput: Signal<string> = signal("");
+	readonly toolSpinner: ToolSpinner = new ToolSpinner();
+
+	// ── Agent phase indicator ─────────────────────────────────────────────────
+	readonly agentPhase: Signal<string> = signal("idle");
 
 	// ── Permissions ───────────────────────────────────────────────────────────
 	readonly pendingPermission: Signal<{
@@ -43,6 +48,10 @@ export class AppState {
 		args: Record<string, unknown>;
 		resolve: (decision: PermissionDecision) => void;
 	} | null> = signal(null);
+
+	// ── Tool call collapse tracking ───────────────────────────────────────────
+	/** Track collapsed state of tool call blocks by tool_use ID */
+	readonly collapsedTools: Signal<Set<string>> = signal(new Set<string>());
 
 	// ── File tracking ─────────────────────────────────────────────────────────
 	readonly modifiedFiles: Signal<string[]> = signal<string[]>([]);
@@ -70,8 +79,10 @@ export class AppState {
 
 	readonly statusText: ReadonlySignal<string> = computed(() => {
 		if (this.isStreaming.value) {
+			const phase = this.agentPhase.value;
+			if (phase && phase !== "idle") return phase;
 			const tool = this.activeTool.value;
-			return tool ? `Running: ${tool}` : "Thinking...";
+			return tool ? `Running ${tool}...` : "Thinking...";
 		}
 		return `${this.turnCount.value} turns | ${this.totalTokens.value} tokens | ${this.formattedCost.value}`;
 	});
@@ -81,6 +92,22 @@ export class AppState {
 	/** Add a message to the conversation. */
 	addMessage(message: Message): void {
 		this.messages.value = [...this.messages.value, message];
+	}
+
+	/** Toggle the collapsed state of a tool call block. */
+	toggleToolCollapse(id: string): void {
+		const next = new Set(this.collapsedTools.value);
+		if (next.has(id)) {
+			next.delete(id);
+		} else {
+			next.add(id);
+		}
+		this.collapsedTools.value = next;
+	}
+
+	/** Check if a tool call block is collapsed. */
+	isToolCollapsed(id: string): boolean {
+		return this.collapsedTools.value.has(id);
 	}
 
 	/** Update usage counters from an API response. */
@@ -106,7 +133,10 @@ export class AppState {
 		this.turnCount.value = 0;
 		this.activeTool.value = null;
 		this.toolOutput.value = "";
+		this.toolSpinner.reset();
+		this.agentPhase.value = "idle";
 		this.pendingPermission.value = null;
+		this.collapsedTools.value = new Set<string>();
 		this.modifiedFiles.value = [];
 		this.codingPhase.value = "idle";
 		this.chitraguptaConnected.value = false;

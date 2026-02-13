@@ -17,6 +17,8 @@ export class AgentRunner {
 	private tools: ToolRegistry;
 	private history: MessagePayload[] = [];
 	private abortController: AbortController | null = null;
+	private spinnerTimer: ReturnType<typeof setInterval> | null = null;
+	private toolStartTimes = new Map<string, number>();
 	private sendMessageFn: (
 		messages: MessagePayload[],
 		system: string,
@@ -55,7 +57,9 @@ export class AgentRunner {
 		this.state.isStreaming.value = true;
 		this.state.streamingText.value = "";
 		this.state.thinkingText.value = "";
+		this.state.agentPhase.value = "Thinking...";
 		this.abortController = new AbortController();
+		this.startSpinnerTimer();
 
 		try {
 			const loop = agentLoop(text, this.history, {
@@ -75,16 +79,29 @@ export class AgentRunner {
 				if (event.type === "text_delta") {
 					fullText += event.text;
 					this.state.streamingText.value = fullText;
+					this.state.agentPhase.value = "Thinking...";
 				} else if (event.type === "thinking_delta") {
 					fullThinking += event.text;
 					this.state.thinkingText.value = fullThinking;
+					this.state.agentPhase.value = "Thinking...";
 				} else if (event.type === "usage_update") {
 					this.state.updateUsage(event.usage);
 				} else if (event.type === "tool_use") {
 					this.state.activeTool.value = event.name;
+					this.state.agentPhase.value = `Running ${event.name}...`;
+					// Summarize tool args for spinner display
+					const argSummary = summarizeToolArgs(event.name, event.input);
+					this.state.toolSpinner.start(event.id, event.name, argSummary);
+					this.toolStartTimes.set(event.id, Date.now());
 				} else if (event.type === "tool_result") {
 					this.state.activeTool.value = null;
 					this.state.toolOutput.value = event.output;
+					this.state.agentPhase.value = "Waiting for response...";
+					// Complete the spinner entry
+					const startTime = this.toolStartTimes.get(event.id) ?? Date.now();
+					const durationMs = Date.now() - startTime;
+					this.state.toolSpinner.complete(event.id, !event.isError, durationMs);
+					this.toolStartTimes.delete(event.id);
 				} else if (event.type === "done" || event.type === "stop") {
 					break;
 				} else if (event.type === "error") {
@@ -120,6 +137,8 @@ export class AgentRunner {
 			this.state.streamingText.value = "";
 			this.state.thinkingText.value = "";
 			this.state.activeTool.value = null;
+			this.state.agentPhase.value = "idle";
+			this.stopSpinnerTimer();
 			this.abortController = null;
 		}
 	}
@@ -159,10 +178,63 @@ export class AgentRunner {
 		});
 	}
 
+	/** Start the spinner animation timer (80ms interval). */
+	private startSpinnerTimer(): void {
+		if (this.spinnerTimer) return;
+		this.spinnerTimer = setInterval(() => {
+			if (this.state.toolSpinner.isRunning) {
+				this.state.toolSpinner.tick();
+			}
+		}, 80);
+	}
+
+	/** Stop the spinner animation timer. */
+	private stopSpinnerTimer(): void {
+		if (this.spinnerTimer) {
+			clearInterval(this.spinnerTimer);
+			this.spinnerTimer = null;
+		}
+	}
+
 	private handleEvent(event: AgentEvent): void {
 		// Events are already yielded by the loop — this is for logging only
 		if (event.type !== "text_delta" && event.type !== "thinking_delta") {
 			log.debug("Agent event", { type: event.type });
+		}
+	}
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Summarize tool arguments for display in the spinner line.
+ */
+function summarizeToolArgs(toolName: string, input: Record<string, unknown>): string {
+	switch (toolName) {
+		case "bash":
+		case "execute": {
+			const cmd = input.command ?? input.cmd ?? "";
+			return String(cmd);
+		}
+		case "read":
+		case "write":
+		case "edit": {
+			const path = input.file_path ?? input.path ?? input.filename ?? "";
+			return String(path);
+		}
+		case "glob":
+		case "grep": {
+			const pattern = input.pattern ?? input.query ?? "";
+			return String(pattern);
+		}
+		default: {
+			// Show first string-valued argument
+			for (const val of Object.values(input)) {
+				if (typeof val === "string" && val.length > 0) {
+					return val;
+				}
+			}
+			return "";
 		}
 	}
 }

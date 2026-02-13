@@ -327,25 +327,25 @@ describe("AppState", () => {
 			expect(state.statusText.value).toBe("Thinking...");
 		});
 
-		it("shows 'Running: toolname' when streaming with active tool", () => {
+		it("shows 'Running toolname...' when streaming with active tool", () => {
 			const state = new AppState();
 			state.isStreaming.value = true;
 			state.activeTool.value = "read_file";
-			expect(state.statusText.value).toBe("Running: read_file");
+			expect(state.statusText.value).toBe("Running read_file...");
 		});
 
-		it("shows 'Running: bash' for bash tool", () => {
+		it("shows 'Running bash...' for bash tool", () => {
 			const state = new AppState();
 			state.isStreaming.value = true;
 			state.activeTool.value = "bash";
-			expect(state.statusText.value).toBe("Running: bash");
+			expect(state.statusText.value).toBe("Running bash...");
 		});
 
 		it("reverts to summary text when streaming stops", () => {
 			const state = new AppState();
 			state.isStreaming.value = true;
 			state.activeTool.value = "grep";
-			expect(state.statusText.value).toBe("Running: grep");
+			expect(state.statusText.value).toBe("Running grep...");
 
 			state.isStreaming.value = false;
 			expect(state.statusText.value).toContain("turns");

@@ -130,6 +130,10 @@ export type { DiffProps, DiffLine, DiffLineType } from "./components/diff.js";
 // Standalone markdown renderer
 export { renderMarkdown } from "./markdown.js";
 
+// Diff parser and renderer
+export { parseDiff, renderDiff, renderMultiFileDiff, renderInlineDiff, isDiffContent } from "./diff-parser.js";
+export type { DiffFile, DiffHunk, DiffLine as ParsedDiffLine } from "./diff-parser.js";
+
 // Clipboard (OSC 52)
 export {
 	copyToClipboard,
