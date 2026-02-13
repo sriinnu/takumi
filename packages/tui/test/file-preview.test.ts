@@ -32,7 +32,9 @@ vi.mock("node:fs/promises", () => {
 
 	return {
 		readFile: vi.fn(async (path: string) => {
-			const content = files[path];
+			// Normalize backslashes to forward slashes for cross-platform mock lookup
+			const normalized = path.replace(/\\/g, "/");
+			const content = files[normalized];
 			if (content === undefined) throw new Error(`ENOENT: ${path}`);
 			return content;
 		}),

@@ -5,7 +5,7 @@ import {
 	writeFileSync,
 	rmSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import type { ToolDefinition } from "@takumi/core";
 import { buildSystemPrompt, type SystemPromptOptions } from "../src/context/builder.js";
@@ -482,7 +482,7 @@ describe("detectProjectContext", () => {
 		// No manifest files, cwd fallback
 		const ctx = await detectProjectContext(tmpDir);
 
-		expect(ctx.name).toBe(tmpDir.split("/").pop());
+		expect(ctx.name).toBe(basename(tmpDir));
 		expect(ctx.language).toBeUndefined();
 		expect(ctx.framework).toBeUndefined();
 		expect(ctx.packageManager).toBeUndefined();
