@@ -240,7 +240,7 @@ export interface SessionInfo {
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 export interface TakumiConfig {
-	/** Anthropic API key */
+	/** API key (provider-specific or generic) */
 	apiKey: string;
 
 	/** Model to use */
@@ -263,6 +263,12 @@ export interface TakumiConfig {
 
 	/** Darpana proxy URL (if using proxy) */
 	proxyUrl: string;
+
+	/** Provider name: anthropic, openai, gemini, groq, ollama, openrouter, deepseek, mistral, together, custom */
+	provider: string;
+
+	/** Custom API endpoint (for openai-compat providers, ollama, etc.) */
+	endpoint: string;
 
 	/** Permission rules */
 	permissions: PermissionRule[];

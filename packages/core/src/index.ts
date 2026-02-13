@@ -34,7 +34,7 @@ export type {
 	TakumiConfig,
 } from "./types.js";
 
-export { loadConfig, DEFAULT_CONFIG } from "./config.js";
+export { loadConfig, DEFAULT_CONFIG, PROVIDER_ENDPOINTS, detectProviderFromModel } from "./config.js";
 
 export {
 	TakumiError,
