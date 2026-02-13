@@ -4,6 +4,8 @@
  * functions for creating/configuring layout nodes.
  */
 
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import type { YogaNode, ComponentStyle } from "./component.js";
 
 // ── Yoga constants (matching yoga-wasm-web enums) ─────────────────────────────
@@ -27,7 +29,10 @@ export async function initYoga(): Promise<void> {
 	if (yogaInstance) return;
 	try {
 		const yoga = await import("yoga-wasm-web");
-		yogaInstance = await yoga.default();
+		const require = createRequire(import.meta.url);
+		const wasmPath = require.resolve("yoga-wasm-web/dist/yoga.wasm");
+		const wasmBuffer = readFileSync(wasmPath);
+		yogaInstance = await yoga.default(wasmBuffer);
 	} catch {
 		// If yoga-wasm-web not available, we'll use a fallback
 		yogaInstance = createFallbackYoga();
