@@ -80,6 +80,13 @@ export class TakumiApp {
 	async start(): Promise<void> {
 		log.info("Starting Takumi TUI");
 
+		// Generate session ID if none exists
+		if (!this.state.sessionId.value) {
+			const date = new Date().toISOString().slice(0, 10);
+			const rand = Math.random().toString(36).slice(2, 6);
+			this.state.sessionId.value = `session-${date}-${rand}`;
+		}
+
 		// Initialize Yoga for layout
 		await initYoga();
 
@@ -229,6 +236,17 @@ export class TakumiApp {
 		};
 	}
 
+	/** Add an informational message to the conversation display. */
+	private addInfoMessage(text: string): void {
+		const msg: Message = {
+			id: `info-${Date.now()}`,
+			role: "assistant",
+			content: [{ type: "text", text }],
+			timestamp: Date.now(),
+		};
+		this.state.addMessage(msg);
+	}
+
 	private registerDefaultKeybinds(): void {
 		this.keybinds.register("ctrl+q", "Quit", () => this.quit());
 		this.keybinds.register("ctrl+l", "Clear screen", () => {
@@ -310,13 +328,35 @@ export class TakumiApp {
 			this.agentRunner?.clearHistory();
 			log.info(`Compacted ${result.compactedTurns} turns`);
 		});
-		this.commands.register("/session", "Show current session info", () => {
-			log.info(
-				`Session ID: ${this.state.sessionId.value || "(none)"}\n` +
-				`Model: ${this.state.model.value}\n` +
-				`Streaming: ${this.state.isStreaming.value}\n` +
-				`Active tool: ${this.state.activeTool.value ?? "none"}`,
-			);
+		this.commands.register("/session", "Session management", async (args) => {
+			if (!args || args === "info") {
+				// Show current session info
+				const info = [
+					`Session: ${this.state.sessionId.value || "(none)"}`,
+					`Model: ${this.state.model.value}`,
+					`Turns: ${this.state.turnCount.value}`,
+					`Tokens: ${this.state.totalTokens.value}`,
+					`Cost: ${this.state.formattedCost.value}`,
+				];
+				this.addInfoMessage(info.join("\n"));
+				return;
+			}
+
+			if (args === "list") {
+				this.addInfoMessage("Session listing requires Chitragupta connection");
+				return;
+			}
+
+			if (args.startsWith("resume ")) {
+				const sessionId = args.slice(7).trim();
+				if (sessionId) {
+					this.state.sessionId.value = sessionId;
+					this.addInfoMessage(`Resumed session: ${sessionId}`);
+				}
+				return;
+			}
+
+			this.addInfoMessage("Usage: /session [info|list|resume <id>]");
 		});
 		this.commands.register("/diff", "Show git diff", () => {
 			const diff = gitDiff(process.cwd());
@@ -344,6 +384,70 @@ export class TakumiApp {
 		});
 		this.commands.register("/sidebar", "Toggle sidebar", () => {
 			this.state.sidebarVisible.value = !this.state.sidebarVisible.value;
+		});
+		this.commands.register("/memory", "Search project memory", async (args) => {
+			if (!args) {
+				this.addInfoMessage("Usage: /memory <search query>");
+				return;
+			}
+			this.addInfoMessage(`Searching memory for: ${args}...`);
+			// This would use the Chitragupta bridge when available
+			this.addInfoMessage("Memory search requires Chitragupta connection");
+		});
+		this.commands.register("/undo", "Undo last file change", async () => {
+			this.addInfoMessage("Running: git checkout -- .");
+			try {
+				const { execSync } = await import("node:child_process");
+				const result = execSync("git diff --name-only", { encoding: "utf-8", cwd: process.cwd() }).trim();
+				if (!result) {
+					this.addInfoMessage("No changes to undo");
+					return;
+				}
+				execSync("git checkout -- .", { cwd: process.cwd() });
+				this.addInfoMessage(`Reverted changes in:\n${result}`);
+			} catch (err) {
+				this.addInfoMessage(`Undo failed: ${(err as Error).message}`);
+			}
+		});
+		this.commands.register("/permission", "Manage tool permissions", (args) => {
+			if (!args) {
+				// Show current rules
+				if (this.agentRunner) {
+					const rules = this.agentRunner.permissions.getRules();
+					if (rules.length === 0) {
+						this.addInfoMessage("No permission rules configured");
+					} else {
+						const lines = rules.map(r =>
+							`  ${r.allow ? "allow" : "deny"} ${r.tool} ${r.pattern} (${r.scope})`,
+						);
+						this.addInfoMessage(`Permission rules:\n${lines.join("\n")}`);
+					}
+				} else {
+					this.addInfoMessage("No agent runner configured");
+				}
+				return;
+			}
+
+			if (args === "reset") {
+				this.agentRunner?.permissions.reset();
+				this.addInfoMessage("Session permissions reset");
+				return;
+			}
+
+			this.addInfoMessage("Usage: /permission [reset]");
+		});
+		this.commands.register("/code", "Start coding agent", async (args) => {
+			if (!args) {
+				this.addInfoMessage("Usage: /code <task description>");
+				return;
+			}
+			if (!this.agentRunner) {
+				this.addInfoMessage("No agent runner configured");
+				return;
+			}
+			const { CodingAgent } = await import("./coding-agent.js");
+			const coder = new CodingAgent(this.state, this.agentRunner);
+			await coder.start(args);
 		});
 	}
 }
