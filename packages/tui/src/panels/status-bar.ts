@@ -64,7 +64,7 @@ export class StatusBarPanel extends Component {
 		});
 
 		// Right side: keybind hints
-		const rightText = "Ctrl+C quit  Ctrl+L clear ";
+		const rightText = "Ctrl+C quit  Ctrl+K cmd  Ctrl+L clear ";
 		const rightCol = rect.x + rect.width - rightText.length;
 		if (rightCol > centerCol + centerText.length) {
 			screen.writeText(rect.y, rightCol, rightText, { fg: 8, bg: 236, dim: true });

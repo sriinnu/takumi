@@ -82,6 +82,11 @@ export class ChatView extends Component {
 		}
 	}
 
+	/** Get the current editor input value. */
+	getEditorValue(): string {
+		return this.editor.getValue();
+	}
+
 	/** Handle key events for the chat view. */
 	handleKey(event: KeyEvent): boolean {
 		// Delegate to the focused component

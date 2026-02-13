@@ -17,6 +17,7 @@ export { SlashCommandRegistry } from "./commands.js";
 export type { SlashCommand } from "./commands.js";
 
 // Views
+export { RootView } from "./views/root.js";
 export { ChatView } from "./views/chat.js";
 
 // Panels

@@ -84,6 +84,17 @@ export {
 } from "./theme.js";
 export type { Theme } from "./theme.js";
 
+// Theme variants
+export {
+	catppuccinMocha,
+	catppuccinLatte,
+	dracula,
+	tokyoNight,
+	oneDark,
+	gruvboxDark,
+	builtinThemes,
+} from "./theme-variants.js";
+
 // Render scheduler
 export { RenderScheduler } from "./reconciler.js";
 export type { RenderSchedulerOptions } from "./reconciler.js";
