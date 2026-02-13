@@ -5,8 +5,9 @@
  * input handling, and agent interaction.
  */
 
-import type { TakumiConfig, KeyEvent, MouseEvent, AgentEvent, ToolDefinition, Message, AutoSaver, SessionData } from "@takumi/core";
+import type { TakumiConfig, KeyEvent, MouseEvent, AgentEvent, ToolDefinition, Message, AutoSaver, SessionData, ContentBlock } from "@takumi/core";
 import { ANSI, LIMITS, createLogger, loadSession, saveSession, listSessions, generateSessionId, createAutoSaver } from "@takumi/core";
+import { writeFile } from "node:fs/promises";
 import { RenderScheduler, initYoga } from "@takumi/render";
 import { ToolRegistry, compactHistory } from "@takumi/agent";
 import type { MessagePayload } from "@takumi/agent";
@@ -691,6 +692,183 @@ export class TakumiApp {
 			const coder = new CodingAgent(this.state, this.agentRunner);
 			await coder.start(args);
 		});
+
+		// ── /think — Toggle extended thinking ────────────────────────────────────
+		this.commands.register("/think", "Toggle extended thinking", (args) => {
+			if (!args) {
+				// Toggle
+				this.state.thinking.value = !this.state.thinking.value;
+				const status = this.state.thinking.value ? "enabled" : "disabled";
+				const budgetInfo = this.state.thinking.value
+					? ` (budget: ${this.state.thinkingBudget.value} tokens)`
+					: "";
+				this.addInfoMessage(`Extended thinking ${status}${budgetInfo}`);
+				return;
+			}
+
+			if (args === "on") {
+				this.state.thinking.value = true;
+				this.addInfoMessage(`Extended thinking enabled (budget: ${this.state.thinkingBudget.value} tokens)`);
+				return;
+			}
+
+			if (args === "off") {
+				this.state.thinking.value = false;
+				this.addInfoMessage("Extended thinking disabled");
+				return;
+			}
+
+			if (args.startsWith("budget ")) {
+				const budgetStr = args.slice(7).trim();
+				const budget = parseInt(budgetStr, 10);
+				if (isNaN(budget) || budget <= 0) {
+					this.addInfoMessage(`Invalid budget: "${budgetStr}" — must be a positive number`);
+					return;
+				}
+				this.state.thinkingBudget.value = budget;
+				this.addInfoMessage(`Thinking budget set to ${budget} tokens`);
+				return;
+			}
+
+			this.addInfoMessage("Usage: /think [on|off|budget <tokens>]");
+		});
+
+		// ── /export — Export conversation to file ─────────────────────────────────
+		this.commands.register("/export", "Export conversation to file", async (args) => {
+			const messages = this.state.messages.value;
+			if (messages.length === 0) {
+				this.addInfoMessage("No messages to export");
+				return;
+			}
+
+			// Parse arguments: format and/or path
+			let format: "md" | "json" = "md";
+			let outputPath = "";
+
+			if (args) {
+				const parts = args.trim().split(/\s+/);
+				for (const part of parts) {
+					if (part === "json") {
+						format = "json";
+					} else if (part === "md" || part === "markdown") {
+						format = "md";
+					} else {
+						// Treat as output path
+						outputPath = part;
+					}
+				}
+			}
+
+			// Determine output path if not specified
+			if (!outputPath) {
+				const date = new Date().toISOString().slice(0, 10);
+				outputPath = `./takumi-export-${date}.${format === "json" ? "json" : "md"}`;
+			}
+
+			try {
+				let content: string;
+				if (format === "json") {
+					content = JSON.stringify(messages, null, 2);
+				} else {
+					content = formatMessagesAsMarkdown(
+						messages,
+						this.state.sessionId.value,
+						this.state.model.value,
+					);
+				}
+
+				await writeFile(outputPath, content, "utf-8");
+				this.addInfoMessage(`Session exported to ${outputPath}`);
+			} catch (err) {
+				this.addInfoMessage(`Export failed: ${(err as Error).message}`);
+			}
+		});
+
+		// ── /retry — Retry last assistant response ────────────────────────────────
+		this.commands.register("/retry", "Retry last response", async (args) => {
+			const messages = this.state.messages.value;
+			if (messages.length === 0) {
+				this.addInfoMessage("No messages to retry");
+				return;
+			}
+
+			if (!this.agentRunner) {
+				this.addInfoMessage("No agent runner configured");
+				return;
+			}
+
+			if (this.agentRunner.isRunning) {
+				this.addInfoMessage("Cannot retry while agent is running");
+				return;
+			}
+
+			let turnIndex: number | undefined;
+			if (args) {
+				turnIndex = parseInt(args.trim(), 10);
+				if (isNaN(turnIndex) || turnIndex < 0) {
+					this.addInfoMessage(`Invalid turn number: "${args.trim()}"`);
+					return;
+				}
+			}
+
+			// Find the last user message text for re-submission
+			let lastUserText = "";
+			let cutIndex: number;
+
+			if (turnIndex !== undefined) {
+				// Rewind to turn N: keep messages 0..turnIndex-1
+				cutIndex = turnIndex;
+				if (cutIndex > messages.length) {
+					cutIndex = messages.length;
+				}
+				// Find the last user message before the cut point
+				for (let i = cutIndex - 1; i >= 0; i--) {
+					if (messages[i].role === "user") {
+						for (const block of messages[i].content) {
+							if (block.type === "text") {
+								lastUserText = block.text;
+								break;
+							}
+						}
+						if (lastUserText) break;
+					}
+				}
+				this.addInfoMessage(`Retrying from turn ${turnIndex}...`);
+			} else {
+				// Remove last assistant message(s) and associated tool results
+				cutIndex = messages.length;
+				// Walk backwards to find and remove last assistant turn
+				// (which may include tool_use + tool_result blocks)
+				while (cutIndex > 0 && messages[cutIndex - 1].role === "assistant") {
+					cutIndex--;
+				}
+				// Find the last user message text
+				for (let i = cutIndex - 1; i >= 0; i--) {
+					if (messages[i].role === "user") {
+						for (const block of messages[i].content) {
+							if (block.type === "text") {
+								lastUserText = block.text;
+								break;
+							}
+						}
+						if (lastUserText) break;
+					}
+				}
+				this.addInfoMessage("Retrying last response...");
+			}
+
+			if (!lastUserText) {
+				this.addInfoMessage("No user message found to retry");
+				return;
+			}
+
+			// Truncate messages
+			this.state.messages.value = messages.slice(0, cutIndex);
+			// Clear agent history so it rebuilds from messages
+			this.agentRunner.clearHistory();
+			// Re-submit the last user message
+			await this.agentRunner.submit(lastUserText);
+		});
 	}
 }
 
@@ -772,4 +950,73 @@ function parseKeyEvent(raw: string): KeyEvent {
 	}
 
 	return { key, ctrl, alt, shift, meta: false, raw };
+}
+
+// ── Export helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Format messages as a Markdown document suitable for /export.
+ */
+export function formatMessagesAsMarkdown(
+	messages: Message[],
+	sessionId: string,
+	model: string,
+): string {
+	const date = new Date().toISOString().slice(0, 10);
+	const lines: string[] = [
+		`# Takumi Session: ${sessionId}`,
+		`Date: ${date}`,
+		`Model: ${model}`,
+		"",
+		"---",
+		"",
+	];
+
+	for (const msg of messages) {
+		const role = msg.role === "user" ? "User" : "Assistant";
+		lines.push(`## ${role}`);
+		lines.push("");
+
+		for (const block of msg.content) {
+			switch (block.type) {
+				case "text":
+					lines.push(block.text);
+					lines.push("");
+					break;
+				case "thinking":
+					lines.push("<details><summary>Thinking</summary>");
+					lines.push("");
+					lines.push(block.thinking);
+					lines.push("");
+					lines.push("</details>");
+					lines.push("");
+					break;
+				case "tool_use":
+					lines.push(`### Tool: ${block.name} (${block.id})`);
+					lines.push("");
+					lines.push("```json");
+					lines.push(JSON.stringify(block.input, null, 2));
+					lines.push("```");
+					lines.push("");
+					break;
+				case "tool_result":
+					lines.push(`### Tool Result (${block.toolUseId})`);
+					lines.push("");
+					lines.push("```");
+					lines.push(block.content);
+					lines.push("```");
+					lines.push("");
+					break;
+				case "image":
+					lines.push(`[Image: ${block.mediaType}]`);
+					lines.push("");
+					break;
+			}
+		}
+
+		lines.push("---");
+		lines.push("");
+	}
+
+	return lines.join("\n");
 }

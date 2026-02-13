@@ -19,6 +19,7 @@ const log = createLogger("chat-view");
 export interface ChatViewProps {
 	state: AppState;
 	commands?: SlashCommandRegistry;
+	projectRoot?: string;
 }
 
 export class ChatView extends Component {
@@ -41,6 +42,8 @@ export class ChatView extends Component {
 		this.messageList = new MessageListPanel({ state: this.state });
 		this.editor = new EditorPanel({
 			onSubmit: (text) => this.handleSubmit(text),
+			commands: props.commands,
+			projectRoot: props.projectRoot,
 		});
 		this.statusBar = new StatusBarPanel({ state: this.state });
 

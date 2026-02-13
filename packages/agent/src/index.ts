@@ -59,3 +59,5 @@ export { GeminiProvider } from "./providers/gemini.js";
 export type { GeminiProviderConfig } from "./providers/gemini.js";
 export { OpenAIProvider } from "./providers/openai.js";
 export type { OpenAIProviderConfig } from "./providers/openai.js";
+export { FailoverProvider } from "./providers/failover.js";
+export type { FailoverProviderConfig, FailoverEntry, ProviderLike, ProviderStatus } from "./providers/failover.js";
