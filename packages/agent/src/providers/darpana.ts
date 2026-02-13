@@ -32,6 +32,7 @@ export class DarpanaProvider {
 		messages: MessagePayload[],
 		system: string,
 		tools?: any[],
+		signal?: AbortSignal,
 	): AsyncGenerator<AgentEvent> {
 		const url = `${this.baseUrl}/v1/messages`;
 
@@ -64,6 +65,7 @@ export class DarpanaProvider {
 					Accept: "text/event-stream",
 				},
 				body: JSON.stringify(body),
+				signal,
 			});
 
 			if (!response.ok) {

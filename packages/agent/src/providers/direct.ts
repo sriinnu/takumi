@@ -35,6 +35,7 @@ export class DirectProvider {
 		messages: MessagePayload[],
 		system: string,
 		tools?: any[],
+		signal?: AbortSignal,
 	): AsyncGenerator<AgentEvent> {
 		if (!this.apiKey) {
 			throw new AgentErrorClass(
@@ -74,6 +75,7 @@ export class DirectProvider {
 					Accept: "text/event-stream",
 				},
 				body: JSON.stringify(body),
+				signal,
 			});
 
 			if (!response.ok) {

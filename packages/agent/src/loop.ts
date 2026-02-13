@@ -20,7 +20,7 @@ const log = createLogger("agent-loop");
 
 export interface AgentLoopOptions {
 	/** Function that sends messages to the LLM and returns a stream of events. */
-	sendMessage: (messages: MessagePayload[], system: string) => AsyncIterable<AgentEvent>;
+	sendMessage: (messages: MessagePayload[], system: string, tools?: ToolDefinition[]) => AsyncIterable<AgentEvent>;
 
 	/** Tool registry for executing tool calls. */
 	tools: ToolRegistry;
@@ -59,7 +59,8 @@ export async function* agentLoop(
 		signal,
 	} = options;
 
-	const system = systemPrompt ?? buildSystemPrompt(tools.getDefinitions());
+	const toolDefs = tools.getDefinitions();
+	const system = systemPrompt ?? buildSystemPrompt(toolDefs);
 	const messages: MessagePayload[] = [
 		...history,
 		{ role: "user", content: buildUserMessage(userMessage) },
@@ -85,7 +86,7 @@ export async function* agentLoop(
 
 		// Stream events from the LLM
 		try {
-			for await (const event of sendMessage(messages, system)) {
+			for await (const event of sendMessage(messages, system, toolDefs)) {
 				yield event;
 
 				switch (event.type) {
