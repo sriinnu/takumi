@@ -1,6 +1,10 @@
 /**
  * SSE stream parser for the Anthropic Messages API.
  * Converts raw Server-Sent Events into structured AgentEvents.
+ *
+ * Handles: text_delta, thinking_delta, tool_use (accumulated from
+ * content_block_start + input_json_delta chunks + content_block_stop),
+ * usage_update, message_start/delta/stop, error, and ping.
  */
 
 import type { AgentEvent, Usage } from "@takumi/core";
@@ -11,11 +15,46 @@ const log = createLogger("sse-parser");
 interface SSEData {
 	type: string;
 	index?: number;
-	delta?: any;
-	content_block?: any;
-	message?: any;
-	usage?: any;
-	error?: any;
+	delta?: {
+		type?: string;
+		text?: string;
+		thinking?: string;
+		partial_json?: string;
+		stop_reason?: string;
+	};
+	content_block?: {
+		type: string;
+		id?: string;
+		name?: string;
+		input?: Record<string, unknown>;
+	};
+	message?: {
+		id?: string;
+		model?: string;
+		usage?: {
+			input_tokens?: number;
+			output_tokens?: number;
+			cache_read_input_tokens?: number;
+			cache_creation_input_tokens?: number;
+		};
+	};
+	usage?: {
+		input_tokens?: number;
+		output_tokens?: number;
+		cache_read_input_tokens?: number;
+		cache_creation_input_tokens?: number;
+	};
+	error?: {
+		type?: string;
+		message?: string;
+	};
+}
+
+/** Tracks an in-progress tool_use block during streaming. */
+interface PendingToolUse {
+	id: string;
+	name: string;
+	inputJson: string;
 }
 
 /**
@@ -30,6 +69,9 @@ export async function* parseSSEStream(
 	let buffer = "";
 	let currentEventType = "";
 	let currentData = "";
+
+	// Track pending tool_use blocks being built from streaming chunks
+	const pendingTools = new Map<number, PendingToolUse>();
 
 	try {
 		while (true) {
@@ -58,7 +100,7 @@ export async function* parseSSEStream(
 
 				// Empty line = end of event
 				if (line.trim() === "" && currentData) {
-					const events = processSSEEvent(currentEventType, currentData);
+					const events = processSSEEvent(currentEventType, currentData, pendingTools);
 					for (const event of events) {
 						yield event;
 					}
@@ -70,7 +112,7 @@ export async function* parseSSEStream(
 
 		// Process any remaining data
 		if (currentData) {
-			const events = processSSEEvent(currentEventType, currentData);
+			const events = processSSEEvent(currentEventType, currentData, pendingTools);
 			for (const event of events) {
 				yield event;
 			}
@@ -80,39 +122,78 @@ export async function* parseSSEStream(
 	}
 }
 
-function processSSEEvent(eventType: string, data: string): AgentEvent[] {
+function processSSEEvent(
+	eventType: string,
+	data: string,
+	pendingTools: Map<number, PendingToolUse>,
+): AgentEvent[] {
 	const events: AgentEvent[] = [];
 
 	try {
 		const parsed: SSEData = JSON.parse(data);
 
 		switch (eventType) {
-			case "content_block_delta": {
-				const delta = parsed.delta;
-				if (!delta) break;
-
-				if (delta.type === "text_delta") {
-					events.push({ type: "text_delta", text: delta.text });
-				} else if (delta.type === "thinking_delta") {
-					events.push({ type: "thinking_delta", text: delta.thinking });
-				} else if (delta.type === "input_json_delta") {
-					// Part of tool_use — accumulated by content_block_stop
-				}
-				break;
-			}
-
 			case "content_block_start": {
 				const block = parsed.content_block;
 				if (!block) break;
 
-				if (block.type === "tool_use") {
-					// We'll emit tool_use when the block is complete
+				if (block.type === "tool_use" && block.id && block.name) {
+					// Begin tracking this tool_use block — accumulate input JSON deltas
+					const index = parsed.index ?? 0;
+					pendingTools.set(index, {
+						id: block.id,
+						name: block.name,
+						inputJson: "",
+					});
+				}
+				break;
+			}
+
+			case "content_block_delta": {
+				const delta = parsed.delta;
+				if (!delta) break;
+
+				if (delta.type === "text_delta" && delta.text !== undefined) {
+					events.push({ type: "text_delta", text: delta.text });
+				} else if (delta.type === "thinking_delta" && delta.thinking !== undefined) {
+					events.push({ type: "thinking_delta", text: delta.thinking });
+				} else if (delta.type === "input_json_delta" && delta.partial_json !== undefined) {
+					// Accumulate JSON chunks for the tool_use input
+					const index = parsed.index ?? 0;
+					const pending = pendingTools.get(index);
+					if (pending) {
+						pending.inputJson += delta.partial_json;
+					}
 				}
 				break;
 			}
 
 			case "content_block_stop": {
-				// Tool use blocks are emitted fully formed
+				// Emit the complete tool_use event
+				const index = parsed.index ?? 0;
+				const pending = pendingTools.get(index);
+				if (pending) {
+					let input: Record<string, unknown> = {};
+					try {
+						if (pending.inputJson) {
+							input = JSON.parse(pending.inputJson);
+						}
+					} catch (err) {
+						log.error("Failed to parse tool input JSON", {
+							name: pending.name,
+							json: pending.inputJson,
+							error: (err as Error).message,
+						});
+					}
+
+					events.push({
+						type: "tool_use",
+						id: pending.id,
+						name: pending.name,
+						input,
+					});
+					pendingTools.delete(index);
+				}
 				break;
 			}
 
@@ -136,7 +217,7 @@ function processSSEEvent(eventType: string, data: string): AgentEvent[] {
 				if (parsed.delta?.stop_reason) {
 					events.push({
 						type: "done",
-						stopReason: parsed.delta.stop_reason,
+						stopReason: parsed.delta.stop_reason as "end_turn" | "max_tokens" | "tool_use" | "stop_sequence",
 					});
 				}
 				if (parsed.usage) {
