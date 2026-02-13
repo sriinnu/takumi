@@ -49,3 +49,13 @@ export { KEY_CODES, ANSI, LIMITS } from "./constants.js";
 
 export { createLogger, setLogLevel } from "./logger.js";
 export type { Logger } from "./logger.js";
+
+export {
+	generateSessionId,
+	saveSession,
+	loadSession,
+	listSessions,
+	deleteSession,
+	createAutoSaver,
+} from "./sessions.js";
+export type { SessionData, SessionSummary, AutoSaver } from "./sessions.js";

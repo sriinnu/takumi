@@ -10,6 +10,7 @@
  *   takumi --model <model>          Use a specific model
  *   takumi --thinking               Enable extended thinking
  *   takumi --proxy <url>            Use Darpana proxy
+ *   takumi --resume <id>             Resume a previous session
  *   takumi --help                   Show help
  *   takumi --version                Show version
  */
@@ -31,6 +32,7 @@ interface CliArgs {
 	workingDirectory?: string;
 	prompt: string[];  // positional args collected
 	print: boolean;    // --print flag for non-interactive output
+	resume?: string;   // --resume <id> to restore a previous session
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -83,6 +85,10 @@ function parseArgs(argv: string[]): CliArgs {
 			case "--print":
 				args.print = true;
 				break;
+			case "--resume":
+			case "-r":
+				args.resume = argv[++i];
+				break;
 			default:
 				if (arg.startsWith("-")) {
 					console.error(`Unknown option: ${arg}`);
@@ -119,6 +125,7 @@ Options:
   --theme <name>            UI theme (default: default)
   --log-level <level>       Log level: debug, info, warn, error, silent
   -C, --cwd <dir>           Working directory
+  -r, --resume <id>         Resume a previous session by ID
 
 One-Shot Mode:
   Providing a positional prompt, using --print, or piping to stdin
@@ -240,6 +247,7 @@ async function main(): Promise<void> {
 		config,
 		sendMessage: (messages, system, toolDefs) => provider.sendMessage(messages, system, toolDefs),
 		tools,
+		resumeSessionId: args.resume,
 	});
 	await app.start();
 }
