@@ -27,6 +27,10 @@ export class AppState {
 	readonly model: Signal<string> = signal("claude-sonnet-4-20250514");
 	readonly theme: Signal<string> = signal("default");
 
+	// ── Thinking ──────────────────────────────────────────────────────────────
+	readonly thinking: Signal<boolean> = signal(false);
+	readonly thinkingBudget: Signal<number> = signal(10000);
+
 	// ── UI state ──────────────────────────────────────────────────────────────
 	readonly focusedPanel: Signal<string> = signal("input");
 	readonly sidebarVisible: Signal<boolean> = signal(false);
@@ -55,6 +59,12 @@ export class AppState {
 
 	// ── File tracking ─────────────────────────────────────────────────────────
 	readonly modifiedFiles: Signal<string[]> = signal<string[]>([]);
+
+	// ── File preview ─────────────────────────────────────────────────────────
+	/** Currently previewed file path (empty = no preview). */
+	readonly previewFile: Signal<string> = signal("");
+	/** Whether the file preview pane is visible. */
+	readonly previewVisible: Signal<boolean> = signal(false);
 
 	// ── Coding agent ──────────────────────────────────────────────────────────
 	readonly codingPhase: Signal<string> = signal("idle");
@@ -138,7 +148,11 @@ export class AppState {
 		this.pendingPermission.value = null;
 		this.collapsedTools.value = new Set<string>();
 		this.modifiedFiles.value = [];
+		this.previewFile.value = "";
+		this.previewVisible.value = false;
 		this.codingPhase.value = "idle";
+		this.thinking.value = false;
+		this.thinkingBudget.value = 10000;
 		this.chitraguptaConnected.value = false;
 		this.chitraguptaBridge.value = null;
 	}

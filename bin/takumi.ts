@@ -29,6 +29,7 @@ interface CliArgs {
 	thinkingBudget?: number;
 	proxy?: string;
 	provider?: string;
+	fallback?: string;   // --fallback <provider> for explicit failover
 	apiKey?: string;
 	endpoint?: string;
 	theme?: string;
@@ -103,6 +104,9 @@ function parseArgs(argv: string[]): CliArgs {
 			case "-r":
 				args.resume = argv[++i];
 				break;
+			case "--fallback":
+				args.fallback = argv[++i];
+				break;
 			default:
 				if (arg.startsWith("-")) {
 					console.error(`Unknown option: ${arg}`);
@@ -143,6 +147,7 @@ Options:
   --log-level <level>       Log level: debug, info, warn, error, silent
   -C, --cwd <dir>           Working directory
   -r, --resume <id>         Resume a previous session by ID
+  --fallback <provider>     Fallback provider on primary failure
 
 Providers:
   anthropic (default)    Direct Anthropic API
@@ -189,6 +194,7 @@ Examples:
   GROQ_API_KEY=... pnpm takumi -P groq -m llama-3.3-70b
   pnpm takumi -P ollama -m llama3
   pnpm takumi --endpoint http://localhost:8080/v1/chat/completions --api-key test
+  pnpm takumi -P openai --fallback anthropic    # Failover: try openai first, fall back to anthropic
 `);
 }
 
@@ -210,23 +216,103 @@ function canSkipApiKey(config: TakumiConfig): boolean {
 }
 
 /**
+ * Build a single provider instance for the given provider name and config.
+ * Returns null if the provider cannot be instantiated (e.g., missing key).
+ */
+async function buildSingleProvider(
+	providerName: string,
+	config: TakumiConfig,
+	agent: any,
+): Promise<any | null> {
+	const env = process.env;
+
+	if (providerName === "anthropic") {
+		const key = config.apiKey || env.ANTHROPIC_API_KEY || env.TAKUMI_API_KEY;
+		if (!key) return null;
+		return new agent.DirectProvider({ ...config, apiKey: key });
+	}
+
+	if (providerName === "gemini") {
+		const key = config.apiKey || env.GEMINI_API_KEY || env.GOOGLE_API_KEY || env.TAKUMI_API_KEY;
+		if (!key) return null;
+		return new agent.GeminiProvider({
+			...config,
+			apiKey: key,
+			endpoint: config.endpoint || PROVIDER_ENDPOINTS[providerName] || "",
+		});
+	}
+
+	// OpenAI-compatible providers
+	const keyMap: Record<string, string> = {
+		openai: "OPENAI_API_KEY",
+		groq: "GROQ_API_KEY",
+		deepseek: "DEEPSEEK_API_KEY",
+		mistral: "MISTRAL_API_KEY",
+		together: "TOGETHER_API_KEY",
+		openrouter: "OPENROUTER_API_KEY",
+		ollama: "", // no key needed
+	};
+
+	const envVar = keyMap[providerName];
+	const key = config.apiKey || (envVar ? env[envVar] : undefined) || env.TAKUMI_API_KEY;
+
+	// Ollama doesn't need a key
+	if (!key && providerName !== "ollama") return null;
+
+	return new agent.OpenAIProvider({
+		...config,
+		apiKey: key || "",
+		endpoint: config.endpoint || PROVIDER_ENDPOINTS[providerName] || "",
+	});
+}
+
+/**
  * Create the appropriate provider for the given config.
  * Uses dynamic imports so missing provider modules don't crash at startup.
+ *
+ * When a --fallback provider is specified, wraps providers in a FailoverProvider
+ * so the primary is tried first, falling back to the secondary on failure.
  */
-async function createProvider(config: TakumiConfig): Promise<any> {
+async function createProvider(config: TakumiConfig, fallbackName?: string): Promise<any> {
 	const agent = await import("@takumi/agent");
 
-	// Priority: --proxy > --provider > default (anthropic)
+	// Priority: --proxy > failover > single provider
 	if (config.proxyUrl) {
 		return new agent.DarpanaProvider(config);
 	}
 
+	// If --fallback is specified, build a FailoverProvider
+	if (fallbackName) {
+		const primaryName = config.provider || "anthropic";
+		const primary = await buildSingleProvider(primaryName, config, agent);
+		const fallback = await buildSingleProvider(fallbackName, config, agent);
+
+		if (!primary) {
+			throw new Error(`Cannot create primary provider "${primaryName}": missing API key or config.`);
+		}
+		if (!fallback) {
+			throw new Error(`Cannot create fallback provider "${fallbackName}": missing API key or config.`);
+		}
+
+		return new agent.FailoverProvider({
+			providers: [
+				{ name: primaryName, provider: primary, priority: 0 },
+				{ name: fallbackName, provider: fallback, priority: 1 },
+			],
+			onSwitch: (from: string, to: string, reason: string) => {
+				process.stderr.write(
+					`\x1b[33m[failover]\x1b[0m Switching from ${from} to ${to}: ${reason}\n`,
+				);
+			},
+		});
+	}
+
+	// Single provider path (original behavior)
 	if (config.provider === "anthropic" || !config.provider) {
 		return new agent.DirectProvider(config);
 	}
 
 	if (config.provider === "gemini") {
-		// GeminiProvider may be built in parallel — try dynamic import
 		try {
 			const { GeminiProvider } = await import("@takumi/agent");
 			return new GeminiProvider({
@@ -234,7 +320,6 @@ async function createProvider(config: TakumiConfig): Promise<any> {
 				endpoint: config.endpoint || PROVIDER_ENDPOINTS[config.provider] || "",
 			});
 		} catch {
-			// Fallback: if GeminiProvider not available, error clearly
 			throw new Error(
 				`GeminiProvider is not yet available. Install or build @takumi/agent with Gemini support.`,
 			);
@@ -321,7 +406,7 @@ async function main(): Promise<void> {
 			console.error("Error: No prompt provided. Pass a message as a positional argument or pipe to stdin.");
 			process.exit(1);
 		}
-		await runOneShot(config, finalPrompt);
+		await runOneShot(config, finalPrompt, args.fallback);
 		return;
 	}
 
@@ -350,8 +435,8 @@ async function main(): Promise<void> {
 	const { TakumiApp } = await import("@takumi/tui");
 	const { ToolRegistry, registerBuiltinTools } = await import("@takumi/agent");
 
-	// Set up provider
-	const provider = await createProvider(config);
+	// Set up provider (with optional failover)
+	const provider = await createProvider(config, args.fallback);
 
 	// Set up tools
 	const tools = new ToolRegistry();
@@ -381,10 +466,10 @@ async function readStdin(): Promise<string> {
  * Run a single prompt through the agent loop without the TUI.
  * Text output streams to stdout; tool calls log to stderr.
  */
-async function runOneShot(config: TakumiConfig, prompt: string): Promise<void> {
+async function runOneShot(config: TakumiConfig, prompt: string, fallbackName?: string): Promise<void> {
 	const { ToolRegistry, registerBuiltinTools, agentLoop, buildContext } = await import("@takumi/agent");
 
-	const provider = await createProvider(config);
+	const provider = await createProvider(config, fallbackName);
 
 	const tools = new ToolRegistry();
 	registerBuiltinTools(tools);

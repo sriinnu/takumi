@@ -1,5 +1,5 @@
 // App
-export { TakumiApp, parseMouseEvent } from "./app.js";
+export { TakumiApp, parseMouseEvent, formatMessagesAsMarkdown } from "./app.js";
 export type { TakumiAppOptions } from "./app.js";
 
 // Agent runner
@@ -39,6 +39,11 @@ export { ToolOutputPanel } from "./panels/tool-output.js";
 export { FileTreePanel } from "./panels/file-tree.js";
 export type { FileNode, FlatRow, FileTreePanelProps } from "./panels/file-tree.js";
 export { scanDirectory, loadGitignore, flattenTree, parseGitignore, matchesGitignore, applyGitStatus } from "./panels/file-tree.js";
+export { FilePreviewPanel, detectLanguage } from "./panels/file-preview.js";
+
+// Completion
+export { CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "./completion.js";
+export type { CompletionItem, CompletionKind } from "./completion.js";
 
 // Dialogs
 export { CommandPalette } from "./dialogs/command-palette.js";
