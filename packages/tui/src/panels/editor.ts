@@ -23,6 +23,8 @@ export class EditorPanel extends Component {
 	private input: InputComponent;
 	readonly completion: CompletionPopup;
 	private engine: CompletionEngine;
+	/** Debounce timer for async file completions (@ prefix). */
+	private completionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(props: EditorPanelProps) {
 		super();
@@ -132,27 +134,52 @@ export class EditorPanel extends Component {
 
 	/** Called when input text changes — auto-trigger completions for @ and / . */
 	private onInputChange(value: string): void {
-		// Auto-trigger for @ file completion or / command completion
-		const shouldAutoTrigger = value.includes("@") || (value.startsWith("/") && !value.includes(" "));
-		const isModelTrigger = /^\/model\s+/.test(value);
+		// Synchronous path: slash commands, /model, /provider — no I/O, instant response
+		const syncItems = this.engine.getCompletionsSync(value, value.length);
+		if (syncItems !== null) {
+			// Cancel any pending async (file) completion
+			if (this.completionDebounceTimer !== null) {
+				clearTimeout(this.completionDebounceTimer);
+				this.completionDebounceTimer = null;
+			}
+			if (syncItems.length > 0) {
+				this.completion.show(syncItems);
+			} else {
+				this.completion.hide();
+			}
+			this.markDirty();
+			return;
+		}
 
-		if (shouldAutoTrigger || isModelTrigger) {
-			const cursorCol = value.length;
-			this.engine
-				.getCompletions(value, cursorCol)
-				.then((items) => {
-					if (items.length > 0) {
-						this.completion.show(items);
-					} else {
-						this.completion.hide();
-					}
-					this.markDirty();
-				})
-				.catch(() => {
-					// Silently fail
-				});
+		// Async path: @ file completions — debounce to avoid readdir on every keystroke
+		const isFileTrigger = value.includes("@");
+		if (isFileTrigger) {
+			if (this.completionDebounceTimer !== null) {
+				clearTimeout(this.completionDebounceTimer);
+			}
+			this.completionDebounceTimer = setTimeout(() => {
+				this.completionDebounceTimer = null;
+				const cursorCol = value.length;
+				this.engine
+					.getCompletions(value, cursorCol)
+					.then((items) => {
+						if (items.length > 0) {
+							this.completion.show(items);
+						} else {
+							this.completion.hide();
+						}
+						this.markDirty();
+					})
+					.catch(() => {
+						// Silently fail
+					});
+			}, 150);
 		} else if (this.completion.isVisible.value) {
-			// Text changed to something without a trigger — hide popup
+			// Text changed to something without a trigger — hide popup immediately
+			if (this.completionDebounceTimer !== null) {
+				clearTimeout(this.completionDebounceTimer);
+				this.completionDebounceTimer = null;
+			}
 			this.completion.hide();
 			this.markDirty();
 		}

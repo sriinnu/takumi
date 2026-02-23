@@ -448,6 +448,14 @@ async function main(): Promise<void> {
 			provider.sendMessage(messages, system, toolDefs, signal, options),
 		tools,
 		resumeSessionId: args.resume,
+		providerFactory: async (providerName: string) => {
+			// Lazily import @takumi/agent so this works without touching createProvider()
+			const agentModule = await import("@takumi/agent");
+			const newProvider = await buildSingleProvider(providerName, config, agentModule);
+			if (!newProvider) return null;
+			return (messages: any, system: any, toolDefs: any, signal: any, options: any) =>
+				newProvider.sendMessage(messages, system, toolDefs, signal, options);
+		},
 	});
 	await app.start();
 }

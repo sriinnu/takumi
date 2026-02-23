@@ -54,19 +54,59 @@ const MAX_RESULTS = 50;
 /** Maximum items visible in the popup at once. */
 export const MAX_VISIBLE_ITEMS = 8;
 
-/** Known model identifiers for /model completion. */
-const KNOWN_MODELS = [
-	"claude-opus-4-20250514",
-	"claude-sonnet-4-20250514",
-	"claude-haiku-3-20250307",
-	"gpt-4.1",
-	"gpt-4.1-mini",
-	"gpt-4.1-nano",
-	"o3",
-	"o4-mini",
-	"gemini-2.5-pro",
-	"gemini-2.5-flash",
-];
+/** Models grouped by provider — used for /model and /provider completions. */
+export const PROVIDER_MODELS: Record<string, string[]> = {
+	anthropic: [
+		"claude-opus-4-20250514",
+		"claude-sonnet-4-20250514",
+		"claude-haiku-3-20250307",
+	],
+	openai: [
+		"gpt-4.1",
+		"gpt-4.1-mini",
+		"gpt-4.1-nano",
+		"o3",
+		"o4-mini",
+	],
+	gemini: [
+		"gemini-2.5-pro",
+		"gemini-2.5-flash",
+	],
+	groq: [
+		"llama-3.3-70b-versatile",
+		"llama-3.1-8b-instant",
+		"mixtral-8x7b-32768",
+	],
+	deepseek: [
+		"deepseek-chat",
+		"deepseek-reasoner",
+	],
+	mistral: [
+		"mistral-large-latest",
+		"mistral-small-latest",
+	],
+	together: [
+		"meta-llama/Llama-3-70b-chat-hf",
+		"mistralai/Mixtral-8x7B-v0.1",
+	],
+	openrouter: [
+		"anthropic/claude-3-5-sonnet",
+		"openai/gpt-4o",
+		"google/gemini-pro-1.5",
+	],
+	ollama: [
+		"llama3",
+		"codellama",
+		"mistral",
+		"phi3",
+	],
+};
+
+/** Flat list of all known model IDs across providers. */
+const KNOWN_MODELS = Object.values(PROVIDER_MODELS).flat();
+
+/** All supported provider names. */
+export const KNOWN_PROVIDERS = Object.keys(PROVIDER_MODELS);
 
 // ── CompletionEngine ─────────────────────────────────────────────────────────
 
@@ -87,17 +127,15 @@ export class CompletionEngine {
 	/**
 	 * Get completions for the current input at the given cursor position.
 	 * Determines completion type from context and returns matching items.
+	 * For synchronous completions (commands, models, providers) this resolves immediately.
 	 */
 	async getCompletions(text: string, cursorCol: number): Promise<CompletionItem[]> {
+		// Try synchronous completions first — avoid async overhead for command/model
+		const syncResult = this.getCompletionsSync(text, cursorCol);
+		if (syncResult !== null) return syncResult;
+
+		// Async: @ file path completion
 		const before = text.slice(0, cursorCol);
-
-		// Check for /model completion: "/model <partial>"
-		const modelMatch = before.match(/^\/model\s+(.*)$/);
-		if (modelMatch) {
-			return this.getModelCompletions(modelMatch[1]);
-		}
-
-		// Check for @ file path completion
 		const atIdx = before.lastIndexOf("@");
 		if (atIdx >= 0) {
 			const afterAt = before.slice(atIdx + 1);
@@ -107,12 +145,32 @@ export class CompletionEngine {
 			}
 		}
 
-		// Check for / slash command completion
+		return [];
+	}
+
+	/**
+	 * Synchronous completion — handles slash commands, /model, and /provider.
+	 * Returns null when async completion is required (e.g. @ file paths).
+	 * Call this before getCompletions to avoid unnecessary async overhead.
+	 */
+	getCompletionsSync(text: string, cursorCol: number): CompletionItem[] | null {
+		const before = text.slice(0, cursorCol);
+
+		// /model <partial> — model name completion
+		const modelMatch = before.match(/^\/model\s+(.*)$/);
+		if (modelMatch) return this.getModelCompletions(modelMatch[1]);
+
+		// /provider <partial> — provider name completion
+		const providerMatch = before.match(/^\/provider\s+(.*)$/);
+		if (providerMatch) return this.getProviderCompletions(providerMatch[1]);
+
+		// /command — slash command completion (no space yet)
 		if (before.startsWith("/") && !before.includes(" ")) {
 			return this.getSlashCompletions(before);
 		}
 
-		return [];
+		// Needs async file I/O
+		return null;
 	}
 
 	// ── File completions ──────────────────────────────────────────────────
@@ -224,13 +282,32 @@ export class CompletionEngine {
 
 	/**
 	 * Get model name completions for the partial text after "/model ".
+	 * When a provider is specified, only that provider's models are returned.
 	 */
-	getModelCompletions(partial: string): CompletionItem[] {
+	getModelCompletions(partial: string, provider?: string): CompletionItem[] {
 		const lower = partial.toLowerCase();
-		return KNOWN_MODELS.filter((m) => m.toLowerCase().includes(lower)).map((m) => ({
-			label: m,
-			insertText: `/model ${m}`,
-			kind: "model" as CompletionKind,
+		const models = provider ? (PROVIDER_MODELS[provider] ?? KNOWN_MODELS) : KNOWN_MODELS;
+		return models
+			.filter((m) => m.toLowerCase().includes(lower))
+			.map((m) => ({
+				label: m,
+				insertText: `/model ${m}`,
+				kind: "model" as CompletionKind,
+			}));
+	}
+
+	// ── Provider completions ──────────────────────────────────────────────
+
+	/**
+	 * Get provider name completions for the partial text after "/provider ".
+	 */
+	getProviderCompletions(partial: string): CompletionItem[] {
+		const lower = partial.toLowerCase();
+		return KNOWN_PROVIDERS.filter((p) => p.includes(lower)).map((p) => ({
+			label: p,
+			insertText: `/provider ${p}`,
+			kind: "command" as CompletionKind,
+			detail: `${PROVIDER_MODELS[p]?.length ?? 0} models`,
 		}));
 	}
 }
