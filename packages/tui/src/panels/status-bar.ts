@@ -28,6 +28,10 @@ export class StatusBarPanel extends Component {
 			const _agentCount = this.state.clusterAgentCount.value;
 			const _tokens = this.state.totalTokens.value;
 			const _cost = this.state.totalCost.value;
+			// Akasha mesh signals
+			const _deposits = this.state.akashaDeposits.value;
+			const _meshSize = this.state.akashaMeshSize.value;
+			const _lastActivity = this.state.akashaLastActivity.value;
 			this.markDirty();
 			return undefined;
 		});
@@ -64,18 +68,24 @@ export class StatusBarPanel extends Component {
 		const leftText = ` ${model} `;
 		screen.writeText(rect.y, rect.x, leftText, { fg: 15, bg: 236, bold: true });
 
-		// Chitragupta connection indicator (right after model name)
+		// Akasha p2p mesh indicator — ʓ (U+0293, like OM)
 		const chiConnected = this.state.chitraguptaConnected.value;
-		const chiIndicator = chiConnected ? " \u091A\u093F " : " \u091A\u093F ";
+		const deposits = this.state.akashaDeposits.value;
+		const meshSize = this.state.akashaMeshSize.value;
+		// Format: " ʓ 3↑ 12⦿ " (ʓ symbol, mesh size with up arrow, deposits with circle)
+		const meshIndicator = chiConnected
+			? ` \u0293 ${meshSize}\u2191 ${deposits}\u29BF `
+			: " \u0293 ";
 		const chiCol = rect.x + leftText.length;
-		screen.writeText(rect.y, chiCol, chiIndicator, {
-			fg: chiConnected ? 2 : 8, // green when connected, gray when not
+		screen.writeText(rect.y, chiCol, meshIndicator, {
+			fg: chiConnected ? 2 : 8, // green when connected, gray when disconnected
 			bg: 236,
+			bold: chiConnected,
 			dim: !chiConnected,
 		});
 
 		// Cluster state indicator — shown when a cluster is actively running
-		let afterChiCol = chiCol + chiIndicator.length;
+		let afterChiCol = chiCol + meshIndicator.length;
 		if (clusterId) {
 			// Show phase + agent count badge: e.g. " ⬡ VALIDATING 4↑ "
 			const clusterText = ` \u2B21 ${clusterPhase} ${agentCount}\u2191 `;
