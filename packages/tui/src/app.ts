@@ -41,6 +41,7 @@ import { initYoga, RenderScheduler } from "@takumi/render";
 import { AgentRunner } from "./agent-runner.js";
 import type { CodingAgent } from "./coding-agent.js";
 import { SlashCommandRegistry } from "./commands.js";
+import { KNOWN_PROVIDERS, PROVIDER_MODELS } from "./completion.js";
 import { KeyBindingRegistry } from "./keybinds.js";
 import { AppState } from "./state.js";
 import type { ChatView } from "./views/chat.js";
@@ -63,6 +64,23 @@ export interface TakumiAppOptions {
 	tools?: ToolRegistry;
 	/** Optional: resume a previous session by ID (loads messages from disk). */
 	resumeSessionId?: string;
+	/**
+	 * Optional factory for the /provider command.
+	 * Called with the new provider name; should return a new sendMessage function
+	 * (or null if the provider is unavailable / missing API key).
+	 */
+	providerFactory?: (
+		providerName: string,
+	) => Promise<
+		| ((
+				messages: MessagePayload[],
+				system: string,
+				tools?: ToolDefinition[],
+				signal?: AbortSignal,
+				options?: { model?: string },
+		  ) => AsyncIterable<AgentEvent>)
+		| null
+	>;
 }
 
 export class TakumiApp {
@@ -86,12 +104,28 @@ export class TakumiApp {
 	private resumeSessionId: string | undefined;
 	/** Persisted CodingAgent instance so slash commands share state with /code. */
 	private activeCoder: CodingAgent | null = null;
+	/** Optional factory for hot-swapping providers via /provider command. */
+	private providerFactory:
+		| ((
+				providerName: string,
+		  ) => Promise<
+				| ((
+						messages: MessagePayload[],
+						system: string,
+						tools?: ToolDefinition[],
+						signal?: AbortSignal,
+						options?: { model?: string },
+				  ) => AsyncIterable<AgentEvent>)
+				| null
+		  >)
+		| undefined;
 
 	constructor(options: TakumiAppOptions) {
 		this.config = options.config;
 		this.stdin = options.stdin ?? process.stdin;
 		this.stdout = options.stdout ?? process.stdout;
 		this.resumeSessionId = options.resumeSessionId;
+		this.providerFactory = options.providerFactory;
 
 		this.state = new AppState();
 		this.keybinds = new KeyBindingRegistry();
@@ -531,9 +565,78 @@ export class TakumiApp {
 			this.state.messages.value = [];
 			this.agentRunner?.clearHistory();
 		});
-		this.commands.register("/model", "Change model", (args) => {
-			if (args) {
-				this.state.model.value = args;
+		this.commands.register("/model", "Change model (tab for autocomplete)", (args) => {
+			if (!args) {
+				// Show current model and available models for the current provider
+				const prov = this.state.provider.value;
+				const models = PROVIDER_MODELS[prov] ?? [];
+				const lines = [
+					`Current model: ${this.state.model.value}  (provider: ${prov})`,
+					models.length > 0
+						? `Available for ${prov}:\n${models.map((m) => `  ${m}`).join("\n")}`
+						: `Use /model <name> to set a model (any model ID is accepted).`,
+				];
+				this.addInfoMessage(lines.join("\n"));
+				return;
+			}
+			this.state.model.value = args.trim();
+			this.addInfoMessage(`Model set to: ${args.trim()}`);
+		});
+		this.commands.register("/provider", "Switch AI provider (tab for autocomplete)", async (args) => {
+			if (!args) {
+				// List available providers with current highlighted
+				const current = this.state.provider.value;
+				const lines = KNOWN_PROVIDERS.map((p) => {
+					const marker = p === current ? "▶ " : "  ";
+					const count = PROVIDER_MODELS[p]?.length ?? 0;
+					return `${marker}${p.padEnd(12)} (${count} models)`;
+				});
+				this.addInfoMessage(`Available providers:\n${lines.join("\n")}\n\nUse /provider <name> to switch.`);
+				return;
+			}
+
+			const name = args.trim().toLowerCase();
+			if (!KNOWN_PROVIDERS.includes(name) && name !== "custom") {
+				this.addInfoMessage(
+					`Unknown provider: "${name}"\nAvailable: ${KNOWN_PROVIDERS.join(", ")}`,
+				);
+				return;
+			}
+
+			// Try hot-swap via factory if available
+			if (this.providerFactory && this.agentRunner) {
+				this.addInfoMessage(`Switching provider to ${name}...`);
+				try {
+					const newSendFn = await this.providerFactory(name);
+					if (!newSendFn) {
+						this.addInfoMessage(
+							`Cannot switch to "${name}": missing API key.\n` +
+							`Set the corresponding API key environment variable and restart.`,
+						);
+						return;
+					}
+					this.agentRunner.setSendMessageFn(newSendFn);
+					this.state.provider.value = name;
+					// Auto-set a default model for this provider
+					const defaultModel = PROVIDER_MODELS[name]?.[1] ?? PROVIDER_MODELS[name]?.[0] ?? "";
+					if (defaultModel) {
+						this.state.model.value = defaultModel;
+						this.addInfoMessage(`Switched to provider: ${name}\nDefault model: ${defaultModel}`);
+					} else {
+						this.addInfoMessage(`Switched to provider: ${name}`);
+					}
+				} catch (err) {
+					this.addInfoMessage(`Failed to switch provider: ${(err as Error).message}`);
+				}
+			} else {
+				// No factory — just update state and inform
+				this.state.provider.value = name;
+				const defaultModel = PROVIDER_MODELS[name]?.[1] ?? PROVIDER_MODELS[name]?.[0] ?? "";
+				if (defaultModel) this.state.model.value = defaultModel;
+				this.addInfoMessage(
+					`Provider set to: ${name}${defaultModel ? ` | model: ${defaultModel}` : ""}\n` +
+					`Note: restart with --provider ${name} to apply fully if the provider wasn't initialized at startup.`,
+				);
 			}
 		});
 		this.commands.register("/theme", "Change theme", (args) => {

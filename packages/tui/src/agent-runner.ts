@@ -183,6 +183,22 @@ export class AgentRunner {
 		return this.sendMessageFn;
 	}
 
+	/**
+	 * Replace the provider's sendMessage function at runtime.
+	 * Used by the /provider slash command to hot-swap the active AI provider.
+	 */
+	setSendMessageFn(
+		fn: (
+			messages: MessagePayload[],
+			system: string,
+			tools?: ToolDefinition[],
+			signal?: AbortSignal,
+			options?: { model?: string },
+		) => AsyncIterable<AgentEvent>,
+	): void {
+		this.sendMessageFn = fn;
+	}
+
 	/** Clear conversation history (for /clear). */
 	clearHistory(): void {
 		this.history = [];
