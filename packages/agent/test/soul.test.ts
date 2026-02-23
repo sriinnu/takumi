@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { loadSoul, formatSoulPrompt, type SoulData } from "../src/context/soul.js";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { formatSoulPrompt, loadSoul, type SoulData } from "../src/context/soul.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -35,7 +35,7 @@ describe("loadSoul", () => {
 	});
 
 	it("returns all null when projectRoot itself does not exist", () => {
-		const result = loadSoul("/tmp/nonexistent-soul-dir-" + Date.now());
+		const result = loadSoul(`/tmp/nonexistent-soul-dir-${Date.now()}`);
 
 		expect(result.personality).toBeNull();
 		expect(result.preferences).toBeNull();

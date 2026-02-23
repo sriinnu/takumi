@@ -38,7 +38,7 @@ interface EditorSnapshot {
 // ── Bracket pairs ────────────────────────────────────────────────────────────
 
 const OPEN_BRACKETS = new Set(["(", "[", "{", "<"]);
-const CLOSE_BRACKETS = new Set([")", "]", "}", ">"]);
+const _CLOSE_BRACKETS = new Set([")", "]", "}", ">"]);
 const BRACKET_PAIRS: Record<string, string> = {
 	"(": ")",
 	"[": "]",
@@ -301,13 +301,7 @@ export class Editor {
 			const lastLine = insertLines[insertLines.length - 1] + after;
 			const middleLines = insertLines.slice(1, -1);
 
-			this.lines.splice(
-				this._cursorRow,
-				1,
-				firstLine,
-				...middleLines,
-				lastLine,
-			);
+			this.lines.splice(this._cursorRow, 1, firstLine, ...middleLines, lastLine);
 
 			this._cursorRow += insertLines.length - 1;
 			this._cursorCol = insertLines[insertLines.length - 1].length;
@@ -328,8 +322,7 @@ export class Editor {
 
 		if (this._cursorCol > 0) {
 			const line = this.lines[this._cursorRow];
-			this.lines[this._cursorRow] =
-				line.slice(0, this._cursorCol - 1) + line.slice(this._cursorCol);
+			this.lines[this._cursorRow] = line.slice(0, this._cursorCol - 1) + line.slice(this._cursorCol);
 			this._cursorCol--;
 		} else {
 			// Merge with previous line
@@ -358,8 +351,7 @@ export class Editor {
 		this.redoStack.length = 0;
 
 		if (this._cursorCol < line.length) {
-			this.lines[this._cursorRow] =
-				line.slice(0, this._cursorCol) + line.slice(this._cursorCol + 1);
+			this.lines[this._cursorRow] = line.slice(0, this._cursorCol) + line.slice(this._cursorCol + 1);
 		} else {
 			// Merge with next line
 			const nextLine = this.lines[this._cursorRow + 1];
@@ -423,10 +415,7 @@ export class Editor {
 	moveUp(): void {
 		if (this._cursorRow > 0) {
 			this._cursorRow--;
-			this._cursorCol = Math.min(
-				this._cursorCol,
-				this.lines[this._cursorRow].length,
-			);
+			this._cursorCol = Math.min(this._cursorCol, this.lines[this._cursorRow].length);
 		}
 	}
 
@@ -434,10 +423,7 @@ export class Editor {
 	moveDown(): void {
 		if (this._cursorRow < this.lines.length - 1) {
 			this._cursorRow++;
-			this._cursorCol = Math.min(
-				this._cursorCol,
-				this.lines[this._cursorRow].length,
-			);
+			this._cursorCol = Math.min(this._cursorCol, this.lines[this._cursorRow].length);
 		}
 	}
 
@@ -576,13 +562,7 @@ export class Editor {
 			const match = BRACKET_PAIRS[ch];
 			const isOpen = OPEN_BRACKETS.has(ch);
 
-			return this.scanForBracket(
-				this._cursorRow,
-				col,
-				ch,
-				match,
-				isOpen,
-			);
+			return this.scanForBracket(this._cursorRow, col, ch, match, isOpen);
 		}
 
 		return null;
@@ -628,8 +608,7 @@ export class Editor {
 		// Same position means no selection
 		if (a.row === b.row && a.col === b.col) return null;
 
-		const before =
-			a.row < b.row || (a.row === b.row && a.col < b.col);
+		const before = a.row < b.row || (a.row === b.row && a.col < b.col);
 
 		return {
 			start: before ? { ...a } : { ...b },

@@ -37,6 +37,8 @@
 		"README.md"
 	],
 	"dependencies": {
-		"@takumi/core": "workspace:*"
+		"@takumi/bridge": "workspace:*",
+		"@takumi/core": "workspace:*",
+		"@yugenlab/chitragupta": "^0.1.16"
 	}
 }

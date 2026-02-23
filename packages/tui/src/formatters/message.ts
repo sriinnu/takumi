@@ -4,15 +4,15 @@
  * for rich formatting (headings, bold, italic, syntax-highlighted code blocks).
  */
 
-import type { Message, ContentBlock } from "@takumi/core";
-import { bold, dim, fg, reset, renderMarkdown, getTheme } from "@takumi/render";
+import type { Message } from "@takumi/core";
+import { bold, dim, fg, getTheme, renderMarkdown, reset } from "@takumi/render";
 
 /**
  * Format a user message for display.
  */
 export function formatUserMessage(message: Message): string {
 	const lines: string[] = [];
-	lines.push(`${bold(fg(14) + "You" + reset())}`);
+	lines.push(`${bold(`${fg(14)}You${reset()}`)}`);
 
 	for (const block of message.content) {
 		if (block.type === "text") {
@@ -28,7 +28,7 @@ export function formatUserMessage(message: Message): string {
  */
 export function formatAssistantMessage(message: Message): string {
 	const lines: string[] = [];
-	lines.push(`${bold(fg(12) + "Takumi" + reset())}`);
+	lines.push(`${bold(`${fg(12)}Takumi${reset()}`)}`);
 
 	for (const block of message.content) {
 		switch (block.type) {
@@ -37,7 +37,7 @@ export function formatAssistantMessage(message: Message): string {
 				lines.push(renderMarkdown(block.text, getTheme()));
 				break;
 			case "thinking":
-				lines.push(`${dim(fg(8) + "[thinking] " + block.thinking.slice(0, 100) + "..." + reset())}`);
+				lines.push(`${dim(`${fg(8)}[thinking] ${block.thinking.slice(0, 100)}...${reset()}`)}`);
 				break;
 			case "tool_use":
 				lines.push(`${fg(3)}[tool: ${block.name}]${reset()}`);
@@ -55,9 +55,7 @@ export function formatAssistantMessage(message: Message): string {
 	// Usage info
 	if (message.usage) {
 		const u = message.usage;
-		lines.push(
-			dim(`${fg(8)}(${u.inputTokens} in, ${u.outputTokens} out)${reset()}`),
-		);
+		lines.push(dim(`${fg(8)}(${u.inputTokens} in, ${u.outputTokens} out)${reset()}`));
 	}
 
 	return lines.join("\n");

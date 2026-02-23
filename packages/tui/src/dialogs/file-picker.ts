@@ -4,10 +4,10 @@
  * Pure logic/state class — no rendering.
  */
 
-import { signal } from "@takumi/render";
-import type { Signal } from "@takumi/render";
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
+import type { Signal } from "@takumi/render";
+import { signal } from "@takumi/render";
 
 export class FilePicker {
 	private readonly _isOpen: Signal<boolean> = signal(false);
@@ -17,8 +17,6 @@ export class FilePicker {
 
 	/** Called when a file is selected. */
 	onSelect?: (filePath: string) => void;
-
-	constructor() {}
 
 	/** Show the picker and reset state. */
 	open(): void {

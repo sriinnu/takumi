@@ -5,21 +5,20 @@
  * discoverable, switchable, and contain all required color properties.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
-	defaultTheme,
-	getTheme,
-	setTheme,
-	registerTheme,
-	listThemes,
-	catppuccinMocha,
-	catppuccinLatte,
-	dracula,
-	tokyoNight,
-	oneDark,
-	gruvboxDark,
 	builtinThemes,
+	catppuccinLatte,
+	catppuccinMocha,
+	dracula,
+	getTheme,
+	gruvboxDark,
+	listThemes,
+	oneDark,
+	registerTheme,
+	setTheme,
 	type Theme,
+	tokyoNight,
 } from "../src/index.js";
 
 /** Every color property that a Theme must define (excluding `name`). */
@@ -74,14 +73,7 @@ const EXPECTED_THEME_NAMES = [
 ];
 
 /** All built-in theme objects for parameterized tests. */
-const ALL_THEMES: Theme[] = [
-	catppuccinMocha,
-	catppuccinLatte,
-	dracula,
-	tokyoNight,
-	oneDark,
-	gruvboxDark,
-];
+const ALL_THEMES: Theme[] = [catppuccinMocha, catppuccinLatte, dracula, tokyoNight, oneDark, gruvboxDark];
 
 const hexRegex = /^#[0-9a-f]{6}$/i;
 
@@ -140,18 +132,15 @@ describe("theme variants", () => {
 	});
 
 	describe("setTheme / getTheme round-trip", () => {
-		it.each(EXPECTED_THEME_NAMES)(
-			"can switch to '%s' and read it back",
-			(themeName) => {
-				setTheme(themeName);
+		it.each(EXPECTED_THEME_NAMES)("can switch to '%s' and read it back", (themeName) => {
+			setTheme(themeName);
 
-				const active = getTheme();
+			const active = getTheme();
 
-				expect(active.name).toBe(themeName);
-				expect(active.primary).toBeDefined();
-				expect(active.background).toBeDefined();
-			},
-		);
+			expect(active.name).toBe(themeName);
+			expect(active.primary).toBeDefined();
+			expect(active.background).toBeDefined();
+		});
 
 		it("switches between all variants without error", () => {
 			for (const theme of ALL_THEMES) {
@@ -177,34 +166,25 @@ describe("theme variants", () => {
 	});
 
 	describe("color properties", () => {
-		it.each(ALL_THEMES.map((t) => [t.name, t] as const))(
-			"'%s' has all required color properties",
-			(_name, theme) => {
-				for (const prop of ALL_COLOR_PROPS) {
-					expect(theme).toHaveProperty(prop);
-					expect(theme[prop]).toBeDefined();
-					expect(typeof theme[prop]).toBe("string");
-				}
-			},
-		);
+		it.each(ALL_THEMES.map((t) => [t.name, t] as const))("'%s' has all required color properties", (_name, theme) => {
+			for (const prop of ALL_COLOR_PROPS) {
+				expect(theme).toHaveProperty(prop);
+				expect(theme[prop]).toBeDefined();
+				expect(typeof theme[prop]).toBe("string");
+			}
+		});
 
-		it.each(ALL_THEMES.map((t) => [t.name, t] as const))(
-			"'%s' has valid hex color values",
-			(_name, theme) => {
-				for (const prop of ALL_COLOR_PROPS) {
-					expect(theme[prop]).toMatch(hexRegex);
-				}
-			},
-		);
+		it.each(ALL_THEMES.map((t) => [t.name, t] as const))("'%s' has valid hex color values", (_name, theme) => {
+			for (const prop of ALL_COLOR_PROPS) {
+				expect(theme[prop]).toMatch(hexRegex);
+			}
+		});
 
-		it.each(ALL_THEMES.map((t) => [t.name, t] as const))(
-			"'%s' has distinct primary palette colors",
-			(_name, theme) => {
-				expect(theme.primary).not.toBe(theme.background);
-				expect(theme.foreground).not.toBe(theme.background);
-				expect(theme.error).not.toBe(theme.success);
-			},
-		);
+		it.each(ALL_THEMES.map((t) => [t.name, t] as const))("'%s' has distinct primary palette colors", (_name, theme) => {
+			expect(theme.primary).not.toBe(theme.background);
+			expect(theme.foreground).not.toBe(theme.background);
+			expect(theme.error).not.toBe(theme.success);
+		});
 	});
 
 	describe("individual theme identity", () => {

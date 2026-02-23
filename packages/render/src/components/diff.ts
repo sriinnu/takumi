@@ -4,10 +4,10 @@
  */
 
 import type { Rect } from "@takumi/core";
+import { hexToRgb } from "../color.js";
 import { Component } from "../component.js";
 import type { Screen } from "../screen.js";
 import { getTheme } from "../theme.js";
-import { hexToRgb } from "../color.js";
 
 export type DiffLineType = "add" | "remove" | "context" | "hunk" | "header";
 
@@ -102,7 +102,7 @@ export class Diff extends Component {
 			const row = rect.y + i;
 			const hexColor = colorMap[line.type];
 			const [r, g, b] = hexToRgb(hexColor);
-			const fg256 = 16 + 36 * Math.round(r / 255 * 5) + 6 * Math.round(g / 255 * 5) + Math.round(b / 255 * 5);
+			const fg256 = 16 + 36 * Math.round((r / 255) * 5) + 6 * Math.round((g / 255) * 5) + Math.round((b / 255) * 5);
 
 			let col = rect.x;
 

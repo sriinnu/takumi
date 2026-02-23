@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { measureText, wrapText, truncate, segmentGraphemes, isFullwidth } from "@takumi/render";
+import { isFullwidth, measureText, segmentGraphemes, truncate, wrapText } from "@takumi/render";
+import { describe, expect, it } from "vitest";
 
 describe("measureText", () => {
 	it("measures plain ASCII", () => {

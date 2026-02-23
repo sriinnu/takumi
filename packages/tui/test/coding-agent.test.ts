@@ -1,8 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { CodingAgent } from "../src/coding-agent.js";
-import type { CodingTask, CodingPhase } from "../src/coding-agent.js";
-import { AppState } from "../src/state.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRunner } from "../src/agent-runner.js";
+import { CodingAgent } from "../src/coding-agent.js";
+import { AppState } from "../src/state.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -103,14 +102,7 @@ describe("CodingAgent", () => {
 			await agent.start("Track phases");
 
 			// Each submit captures the phase at that moment
-			expect(phases).toEqual([
-				"planning",
-				"branching",
-				"executing",
-				"validating",
-				"reviewing",
-				"committing",
-			]);
+			expect(phases).toEqual(["planning", "branching", "executing", "validating", "reviewing", "committing"]);
 		});
 	});
 
@@ -193,9 +185,7 @@ describe("CodingAgent", () => {
 				m.content.some((b) => b.type === "text" && (b as any).text.includes("failed")),
 			);
 			expect(failMsg).toBeDefined();
-			expect(
-				failMsg!.content.some((b) => b.type === "text" && (b as any).text.includes("Something broke")),
-			).toBe(true);
+			expect(failMsg!.content.some((b) => b.type === "text" && (b as any).text.includes("Something broke"))).toBe(true);
 		});
 
 		it("handles non-Error thrown values", async () => {

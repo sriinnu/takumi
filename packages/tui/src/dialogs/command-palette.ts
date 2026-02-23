@@ -3,10 +3,10 @@
  * Triggered by Ctrl+K. Pure logic/state class — no rendering.
  */
 
-import { signal } from "@takumi/render";
-import type { Signal } from "@takumi/render";
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
+import type { Signal } from "@takumi/render";
+import { signal } from "@takumi/render";
 import type { SlashCommandRegistry } from "../commands.js";
 import type { KeyBindingRegistry } from "../keybinds.js";
 
@@ -115,9 +115,7 @@ export class CommandPalette {
 		if (!filter) return allItems;
 
 		return allItems.filter(
-			(item) =>
-				item.name.toLowerCase().includes(filter) ||
-				item.description.toLowerCase().includes(filter),
+			(item) => item.name.toLowerCase().includes(filter) || item.description.toLowerCase().includes(filter),
 		);
 	}
 

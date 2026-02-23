@@ -3,7 +3,7 @@
  * and Emacs-style keybindings.
  */
 
-import type { Rect, KeyEvent } from "@takumi/core";
+import type { KeyEvent, Rect } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import { Component } from "../component.js";
 import type { Screen } from "../screen.js";

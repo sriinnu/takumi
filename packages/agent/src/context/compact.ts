@@ -8,7 +8,7 @@
  *      (used directly in the agent loop)
  */
 
-import type { Message, ContentBlock, Usage } from "@takumi/core";
+import type { Message } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import type { MessagePayload } from "../loop.js";
 
@@ -60,10 +60,7 @@ function estimateTokens(message: Message): number {
 /**
  * Compact conversation history by summarizing older turns.
  */
-export function compactHistory(
-	messages: Message[],
-	options?: CompactOptions,
-): CompactResult {
+export function compactHistory(messages: Message[], options?: CompactOptions): CompactResult {
 	const keepRecent = options?.keepRecent ?? 10;
 	const maxTokens = options?.maxTokens ?? 100_000;
 
@@ -90,10 +87,7 @@ export function compactHistory(
 	const toKeep = messages.slice(splitIndex);
 
 	// Build summary of compacted turns
-	const summaryParts: string[] = [
-		`[Conversation summary — ${toCompact.length} earlier turns compacted]`,
-		"",
-	];
+	const summaryParts: string[] = [`[Conversation summary — ${toCompact.length} earlier turns compacted]`, ""];
 
 	for (const msg of toCompact) {
 		const role = msg.role === "user" ? "User" : "Assistant";
@@ -203,7 +197,7 @@ export function estimateTotalPayloadTokens(messages: MessagePayload[]): number {
  * Returns true when estimated tokens exceed maxTokens * threshold.
  */
 export function shouldCompact(
-	messages: MessagePayload[],
+	_messages: MessagePayload[],
 	estimatedTokens: number,
 	maxTokens: number,
 	threshold?: number,
@@ -250,10 +244,7 @@ export function compactMessages(
 	}
 
 	// Build summary from older messages, preserving referenced tool_results
-	const summaryParts: string[] = [
-		"Previous conversation summary:",
-		"",
-	];
+	const summaryParts: string[] = ["Previous conversation summary:", ""];
 
 	const preservedMessages: MessagePayload[] = [];
 
@@ -307,21 +298,21 @@ function summarizePayloadMessage(msg: MessagePayload): string {
 	if (typeof content === "string") {
 		const text = content.trim();
 		if (text) {
-			parts.push(text.length > 80 ? text.slice(0, 80) + "..." : text);
+			parts.push(text.length > 80 ? `${text.slice(0, 80)}...` : text);
 		}
 	} else if (Array.isArray(content)) {
 		for (const block of content) {
 			if (typeof block === "string") {
 				const text = block.trim();
 				if (text) {
-					parts.push(text.length > 80 ? text.slice(0, 80) + "..." : text);
+					parts.push(text.length > 80 ? `${text.slice(0, 80)}...` : text);
 				}
 			} else if (block && typeof block === "object" && "type" in block) {
 				switch (block.type) {
 					case "text": {
 						const text = ("text" in block ? (block.text as string) : "").trim();
 						if (text) {
-							parts.push(text.length > 80 ? text.slice(0, 80) + "..." : text);
+							parts.push(text.length > 80 ? `${text.slice(0, 80)}...` : text);
 						}
 						break;
 					}
@@ -352,7 +343,7 @@ function summarizeMessage(message: Message): string {
 				// First 100 chars of text
 				const text = block.text.trim();
 				if (text) {
-					parts.push(text.length > 100 ? text.slice(0, 100) + "..." : text);
+					parts.push(text.length > 100 ? `${text.slice(0, 100)}...` : text);
 				}
 				break;
 			}

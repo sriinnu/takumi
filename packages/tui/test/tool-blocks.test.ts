@@ -18,11 +18,11 @@
  *   - Duration display (N/A: durations are not in content blocks)
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
-import { AppState } from "../src/state.js";
-import { MessageListPanel, getToolArgSummary, truncateArg } from "../src/panels/message-list.js";
+import type { Message, MouseEvent as TMouseEvent, ToolResultBlock, ToolUseBlock } from "@takumi/core";
 import { Screen } from "@takumi/render";
-import type { Message, ToolUseBlock, ToolResultBlock, MouseEvent as TMouseEvent } from "@takumi/core";
+import { describe, expect, it } from "vitest";
+import { getToolArgSummary, MessageListPanel, truncateArg } from "../src/panels/message-list.js";
+import { AppState } from "../src/state.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -97,20 +97,24 @@ describe("collapsed tool block rendering", () => {
 		const toolUse = makeToolUse({ id: "tu-1", name: "read", input: { path: "src/index.ts" } });
 		const toolResult = makeToolResult({ toolUseId: "tu-1", content: "file content", isError: false });
 
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [toolUse],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [toolResult],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [toolUse],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [toolResult],
+			}),
+		);
 
 		panel.buildLines(80);
 
 		// Find the tool block line (look for the collapsed arrow)
 		const texts = getAllLineTexts(panel);
-		const toolLine = texts.find(t => t.includes("\u25B6") && t.includes("read"));
+		const toolLine = texts.find((t) => t.includes("\u25B6") && t.includes("read"));
 		expect(toolLine).toBeDefined();
 		// Should show the success indicator
 		expect(toolLine).toContain("\u2713"); // ✓
@@ -118,88 +122,108 @@ describe("collapsed tool block rendering", () => {
 
 	it("shows the tool name in the collapsed line", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "pnpm test" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "pnpm test" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1" })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
-		const toolLine = texts.find(t => t.includes("bash"));
+		const toolLine = texts.find((t) => t.includes("bash"));
 		expect(toolLine).toBeDefined();
 	});
 
 	it("shows the argument summary in the collapsed line", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "src/app.ts" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "src/app.ts" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1" })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
-		const toolLine = texts.find(t => t.includes("read") && t.includes("src/app.ts"));
+		const toolLine = texts.find((t) => t.includes("read") && t.includes("src/app.ts"));
 		expect(toolLine).toBeDefined();
 	});
 
 	it("shows error indicator for failed tool results", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "exit 1" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", isError: true, content: "command failed" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "exit 1" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", isError: true, content: "command failed" })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
-		const toolLine = texts.find(t => t.includes("bash"));
+		const toolLine = texts.find((t) => t.includes("bash"));
 		expect(toolLine).toBeDefined();
 		expect(toolLine).toContain("\u2717"); // ✗
 	});
 
 	it("uses collapsed arrow indicator (right-pointing triangle)", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "read", input: {} })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "read", input: {} })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1" })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
-		const toolLine = texts.find(t => t.includes("read"));
+		const toolLine = texts.find((t) => t.includes("read"));
 		expect(toolLine).toContain("\u25B6"); // ▶
 	});
 
 	it("renders only one line for a collapsed tool block (no content lines)", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "/tmp/test" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", content: "line1\nline2\nline3" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "/tmp/test" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", content: "line1\nline2\nline3" })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 		// Should NOT find vertical bar content lines when collapsed
-		const barLines = texts.filter(t => t.startsWith("\u2502"));
+		const barLines = texts.filter((t) => t.startsWith("\u2502"));
 		expect(barLines).toHaveLength(0);
 	});
 });
@@ -214,14 +238,18 @@ describe("expanded tool block rendering", () => {
 		const toolUse = makeToolUse({ id: "tu-1", name: "read", input: { path: "src/index.ts" } });
 		const toolResult = makeToolResult({ toolUseId: "tu-1", content: "import { signal } from '@preact/signals-core';" });
 
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [toolUse],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [toolResult],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [toolUse],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [toolResult],
+			}),
+		);
 
 		// Toggle to expanded (default is collapsed for completed)
 		state.toggleToolCollapse("tu-1");
@@ -230,11 +258,11 @@ describe("expanded tool block rendering", () => {
 		const texts = getAllLineTexts(panel);
 
 		// Should have the expanded arrow
-		const headerLine = texts.find(t => t.includes("\u25BC") && t.includes("read"));
+		const headerLine = texts.find((t) => t.includes("\u25BC") && t.includes("read"));
 		expect(headerLine).toBeDefined();
 
 		// Should show the result content
-		const contentLine = texts.find(t => t.includes("import"));
+		const contentLine = texts.find((t) => t.includes("import"));
 		expect(contentLine).toBeDefined();
 	});
 
@@ -243,59 +271,71 @@ describe("expanded tool block rendering", () => {
 		const toolUse = makeToolUse({ id: "tu-1", name: "read", input: { path: "src/main.ts", startLine: "10" } });
 		const toolResult = makeToolResult({ toolUseId: "tu-1", content: "content here" });
 
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [toolUse],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [toolResult],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [toolUse],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [toolResult],
+			}),
+		);
 
 		state.toggleToolCollapse("tu-1");
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
 		// Should show the path argument
-		const pathLine = texts.find(t => t.includes("path:") && t.includes("src/main.ts"));
+		const pathLine = texts.find((t) => t.includes("path:") && t.includes("src/main.ts"));
 		expect(pathLine).toBeDefined();
 	});
 
 	it("shows down-arrow indicator when expanded", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1" })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1" })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1" })],
+			}),
+		);
 
 		state.toggleToolCollapse("tu-1");
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
-		const headerLine = texts.find(t => t.includes("read"));
+		const headerLine = texts.find((t) => t.includes("read"));
 		expect(headerLine).toContain("\u25BC"); // ▼
 	});
 
 	it("shows vertical bar prefix on content lines", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "test.ts" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", content: "line 1\nline 2" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "test.ts" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", content: "line 1\nline 2" })],
+			}),
+		);
 
 		state.toggleToolCollapse("tu-1");
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
 		// Content lines should have vertical bar prefix
-		const barLines = texts.filter(t => t.startsWith("\u2502"));
+		const barLines = texts.filter((t) => t.startsWith("\u2502"));
 		expect(barLines.length).toBeGreaterThan(0);
 	});
 });
@@ -307,37 +347,45 @@ describe("expanded tool block rendering", () => {
 describe("toggle collapse/expand", () => {
 	it("toggles from collapsed to expanded", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1" })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1" })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1" })],
+			}),
+		);
 
 		// Default: collapsed
 		panel.buildLines(80);
 		let texts = getAllLineTexts(panel);
-		expect(texts.some(t => t.includes("\u25B6"))).toBe(true);
+		expect(texts.some((t) => t.includes("\u25B6"))).toBe(true);
 
 		// Toggle to expanded
 		state.toggleToolCollapse("tu-1");
 		panel.buildLines(80);
 		texts = getAllLineTexts(panel);
-		expect(texts.some(t => t.includes("\u25BC"))).toBe(true);
+		expect(texts.some((t) => t.includes("\u25BC"))).toBe(true);
 	});
 
 	it("toggles from expanded back to collapsed", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1" })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1" })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1" })],
+			}),
+		);
 
 		// Expand
 		state.toggleToolCollapse("tu-1");
@@ -346,20 +394,24 @@ describe("toggle collapse/expand", () => {
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
-		expect(texts.some(t => t.includes("\u25B6"))).toBe(true);
-		expect(texts.some(t => t.includes("\u25BC"))).toBe(false);
+		expect(texts.some((t) => t.includes("\u25B6"))).toBe(true);
+		expect(texts.some((t) => t.includes("\u25BC"))).toBe(false);
 	});
 
 	it("toggling produces different line counts", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "test.ts" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", content: "line1\nline2\nline3" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "test.ts" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", content: "line1\nline2\nline3" })],
+			}),
+		);
 
 		// Collapsed
 		panel.buildLines(80);
@@ -382,23 +434,27 @@ describe("tool_use + tool_result pairing", () => {
 	it("pairs tool_use with tool_result from different messages", () => {
 		const { state, panel } = createTestPanel();
 		// Assistant message with tool_use
-		state.addMessage(makeMessage({
-			id: "msg-1",
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "ls" } })],
-		}));
+		state.addMessage(
+			makeMessage({
+				id: "msg-1",
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "ls" } })],
+			}),
+		);
 		// User message with tool_result
-		state.addMessage(makeMessage({
-			id: "msg-2",
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", content: "file1.ts\nfile2.ts" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				id: "msg-2",
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", content: "file1.ts\nfile2.ts" })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
 		// The tool_use should render as a collapsible block with the result info
-		const toolLine = texts.find(t => t.includes("bash") && t.includes("\u25B6"));
+		const toolLine = texts.find((t) => t.includes("bash") && t.includes("\u25B6"));
 		expect(toolLine).toBeDefined();
 		// It should have the success indicator because it paired with a result
 		expect(toolLine).toContain("\u2713");
@@ -406,62 +462,72 @@ describe("tool_use + tool_result pairing", () => {
 
 	it("does not duplicate tool_result when it is paired", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "a.ts" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", content: "contents" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "a.ts" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", content: "contents" })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
 		// Should NOT see "[result]" or "[error]" (the old-style orphan result rendering)
-		const orphanResult = texts.find(t => t.includes("[result]") || t.includes("[error]"));
+		const orphanResult = texts.find((t) => t.includes("[result]") || t.includes("[error]"));
 		expect(orphanResult).toBeUndefined();
 	});
 
 	it("renders orphan tool_result if no matching tool_use exists", () => {
 		const { state, panel } = createTestPanel();
 		// Only a tool_result with no matching tool_use
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-nonexistent", content: "orphan result" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-nonexistent", content: "orphan result" })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
 		// Should render as the old-style [result] format
-		const resultLine = texts.find(t => t.includes("[result]") || t.includes("orphan result"));
+		const resultLine = texts.find((t) => t.includes("[result]") || t.includes("orphan result"));
 		expect(resultLine).toBeDefined();
 	});
 
 	it("handles multiple tool pairs in one conversation", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [
-				makeToolUse({ id: "tu-1", name: "read", input: { path: "a.ts" } }),
-				makeToolUse({ id: "tu-2", name: "bash", input: { command: "echo hi" } }),
-			],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [
-				makeToolResult({ toolUseId: "tu-1", content: "a contents" }),
-				makeToolResult({ toolUseId: "tu-2", content: "hi" }),
-			],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [
+					makeToolUse({ id: "tu-1", name: "read", input: { path: "a.ts" } }),
+					makeToolUse({ id: "tu-2", name: "bash", input: { command: "echo hi" } }),
+				],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [
+					makeToolResult({ toolUseId: "tu-1", content: "a contents" }),
+					makeToolResult({ toolUseId: "tu-2", content: "hi" }),
+				],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
 		// Both tools should be rendered
-		expect(texts.some(t => t.includes("read"))).toBe(true);
-		expect(texts.some(t => t.includes("bash"))).toBe(true);
+		expect(texts.some((t) => t.includes("read"))).toBe(true);
+		expect(texts.some((t) => t.includes("bash"))).toBe(true);
 	});
 });
 
@@ -473,40 +539,46 @@ describe("running state (no result yet)", () => {
 	it("shows running indicator when no tool_result exists", () => {
 		const { state, panel } = createTestPanel();
 		// Only tool_use, no matching result
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "sleep 5" } })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "sleep 5" } })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
 		// Should show the running spinner symbol
-		const headerLine = texts.find(t => t.includes("bash") && t.includes("\u27F3"));
+		const headerLine = texts.find((t) => t.includes("bash") && t.includes("\u27F3"));
 		expect(headerLine).toBeDefined();
 	});
 
 	it("always shows running tool expanded", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "pnpm test" } })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "pnpm test" } })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
 		// Should show "Running..." content line
-		const runningLine = texts.find(t => t.includes("Running..."));
+		const runningLine = texts.find((t) => t.includes("Running..."));
 		expect(runningLine).toBeDefined();
 	});
 
 	it("does not show success/error indicator for running tools", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "read", input: {} })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "read", input: {} })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
@@ -528,37 +600,45 @@ describe("running state (no result yet)", () => {
 describe("error state rendering", () => {
 	it("shows error indicator in collapsed view", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "bad-cmd" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", isError: true, content: "command not found" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "bad-cmd" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", isError: true, content: "command not found" })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
-		const toolLine = texts.find(t => t.includes("bash"));
+		const toolLine = texts.find((t) => t.includes("bash"));
 		expect(toolLine).toContain("\u2717"); // ✗
 	});
 
 	it("shows error content when expanded", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "bad" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", isError: true, content: "Permission denied" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "bash", input: { command: "bad" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", isError: true, content: "Permission denied" })],
+			}),
+		);
 
 		state.toggleToolCollapse("tu-1");
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
-		const errorContentLine = texts.find(t => t.includes("Permission denied"));
+		const errorContentLine = texts.find((t) => t.includes("Permission denied"));
 		expect(errorContentLine).toBeDefined();
 	});
 });
@@ -572,45 +652,53 @@ describe("long output truncation", () => {
 		const { state, panel } = createTestPanel();
 		const longContent = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`).join("\n");
 
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "big.ts" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", content: longContent })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "big.ts" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", content: longContent })],
+			}),
+		);
 
 		state.toggleToolCollapse("tu-1");
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
 		// Should show first 30 lines
-		expect(texts.some(t => t.includes("line 1"))).toBe(true);
-		expect(texts.some(t => t.includes("line 30"))).toBe(true);
+		expect(texts.some((t) => t.includes("line 1"))).toBe(true);
+		expect(texts.some((t) => t.includes("line 30"))).toBe(true);
 		// Should NOT show line 31
-		expect(texts.some(t => t.includes("line 31"))).toBe(false);
+		expect(texts.some((t) => t.includes("line 31"))).toBe(false);
 	});
 
 	it("shows truncation message for long content", () => {
 		const { state, panel } = createTestPanel();
 		const longContent = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`).join("\n");
 
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "big.ts" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", content: longContent })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "big.ts" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", content: longContent })],
+			}),
+		);
 
 		state.toggleToolCollapse("tu-1");
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
 		// Should show "showing X of Y lines" message
-		const truncMsg = texts.find(t => t.includes("showing 30 of 50 lines"));
+		const truncMsg = texts.find((t) => t.includes("showing 30 of 50 lines"));
 		expect(truncMsg).toBeDefined();
 	});
 
@@ -618,20 +706,24 @@ describe("long output truncation", () => {
 		const { state, panel } = createTestPanel();
 		const shortContent = "line 1\nline 2\nline 3";
 
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "small.ts" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", content: shortContent })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "small.ts" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", content: shortContent })],
+			}),
+		);
 
 		state.toggleToolCollapse("tu-1");
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
-		const truncMsg = texts.find(t => t.includes("showing"));
+		const truncMsg = texts.find((t) => t.includes("showing"));
 		expect(truncMsg).toBeUndefined();
 	});
 });
@@ -643,14 +735,18 @@ describe("long output truncation", () => {
 describe("click/mouse interaction", () => {
 	it("toggles collapse when clicking on a tool block header line", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "a.ts" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", content: "content" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "a.ts" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", content: "content" })],
+			}),
+		);
 
 		// Build lines first, then render to set lastRect
 		const rect = { x: 0, y: 0, width: 82, height: 20 };
@@ -675,10 +771,12 @@ describe("click/mouse interaction", () => {
 
 	it("returns false for clicks outside tool block lines", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [{ type: "text", text: "Hello world" }],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [{ type: "text", text: "Hello world" }],
+			}),
+		);
 
 		const rect = { x: 0, y: 0, width: 82, height: 20 };
 		const screen = new Screen(82, 20);
@@ -691,10 +789,12 @@ describe("click/mouse interaction", () => {
 
 	it("returns false for right-click on tool block", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1" })],
+			}),
+		);
 
 		const rect = { x: 0, y: 0, width: 82, height: 20 };
 		const screen = new Screen(82, 20);
@@ -723,14 +823,18 @@ describe("click/mouse interaction", () => {
 describe("Enter key interaction", () => {
 	it("toggles collapse when Enter is pressed on a tool block line", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "test.ts" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "read", input: { path: "test.ts" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1" })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const toolLineIdx = findToolLineIdx(panel, "tu-1");
@@ -742,10 +846,12 @@ describe("Enter key interaction", () => {
 
 	it("returns false for Enter on non-tool lines", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [{ type: "text", text: "Hello" }],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [{ type: "text", text: "Hello" }],
+			}),
+		);
 
 		panel.buildLines(80);
 		const handled = panel.handleEnter(0);
@@ -760,46 +866,54 @@ describe("Enter key interaction", () => {
 describe("multiple tool calls in one message", () => {
 	it("renders multiple tool blocks independently", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [
-				makeToolUse({ id: "tu-1", name: "read", input: { path: "a.ts" } }),
-				makeToolUse({ id: "tu-2", name: "write", input: { path: "b.ts" } }),
-				makeToolUse({ id: "tu-3", name: "bash", input: { command: "ls" } }),
-			],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [
-				makeToolResult({ toolUseId: "tu-1", content: "a" }),
-				makeToolResult({ toolUseId: "tu-2", content: "b" }),
-				makeToolResult({ toolUseId: "tu-3", content: "c" }),
-			],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [
+					makeToolUse({ id: "tu-1", name: "read", input: { path: "a.ts" } }),
+					makeToolUse({ id: "tu-2", name: "write", input: { path: "b.ts" } }),
+					makeToolUse({ id: "tu-3", name: "bash", input: { command: "ls" } }),
+				],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [
+					makeToolResult({ toolUseId: "tu-1", content: "a" }),
+					makeToolResult({ toolUseId: "tu-2", content: "b" }),
+					makeToolResult({ toolUseId: "tu-3", content: "c" }),
+				],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
 		// All three should be present
-		expect(texts.filter(t => t.includes("\u25B6")).length).toBe(3);
+		expect(texts.filter((t) => t.includes("\u25B6")).length).toBe(3);
 	});
 
 	it("can expand one tool while others remain collapsed", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [
-				makeToolUse({ id: "tu-1", name: "read", input: { path: "a.ts" } }),
-				makeToolUse({ id: "tu-2", name: "bash", input: { command: "ls" } }),
-			],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [
-				makeToolResult({ toolUseId: "tu-1", content: "read content" }),
-				makeToolResult({ toolUseId: "tu-2", content: "bash output" }),
-			],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [
+					makeToolUse({ id: "tu-1", name: "read", input: { path: "a.ts" } }),
+					makeToolUse({ id: "tu-2", name: "bash", input: { command: "ls" } }),
+				],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [
+					makeToolResult({ toolUseId: "tu-1", content: "read content" }),
+					makeToolResult({ toolUseId: "tu-2", content: "bash output" }),
+				],
+			}),
+		);
 
 		// Expand only the first tool
 		state.toggleToolCollapse("tu-1");
@@ -807,9 +921,9 @@ describe("multiple tool calls in one message", () => {
 		const texts = getAllLineTexts(panel);
 
 		// tu-1 should be expanded (down arrow)
-		expect(texts.some(t => t.includes("\u25BC") && t.includes("read"))).toBe(true);
+		expect(texts.some((t) => t.includes("\u25BC") && t.includes("read"))).toBe(true);
 		// tu-2 should be collapsed (right arrow)
-		expect(texts.some(t => t.includes("\u25B6") && t.includes("bash"))).toBe(true);
+		expect(texts.some((t) => t.includes("\u25B6") && t.includes("bash"))).toBe(true);
 	});
 });
 
@@ -820,18 +934,22 @@ describe("multiple tool calls in one message", () => {
 describe("unknown tool names", () => {
 	it("renders unknown tool names without crashing", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "my_custom_fancy_tool", input: {} })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", content: "done" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "my_custom_fancy_tool", input: {} })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", content: "done" })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
-		const toolLine = texts.find(t => t.includes("my_custom_fancy_tool"));
+		const toolLine = texts.find((t) => t.includes("my_custom_fancy_tool"));
 		expect(toolLine).toBeDefined();
 	});
 });
@@ -843,38 +961,46 @@ describe("unknown tool names", () => {
 describe("empty tool results", () => {
 	it("handles empty result content gracefully in collapsed view", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "write", input: { path: "out.txt" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", content: "" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "write", input: { path: "out.txt" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", content: "" })],
+			}),
+		);
 
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 		// Should still render the tool line
-		const toolLine = texts.find(t => t.includes("write"));
+		const toolLine = texts.find((t) => t.includes("write"));
 		expect(toolLine).toBeDefined();
 	});
 
 	it("shows (empty result) in expanded view for empty content", () => {
 		const { state, panel } = createTestPanel();
-		state.addMessage(makeMessage({
-			role: "assistant",
-			content: [makeToolUse({ id: "tu-1", name: "write", input: { path: "out.txt" } })],
-		}));
-		state.addMessage(makeMessage({
-			role: "user",
-			content: [makeToolResult({ toolUseId: "tu-1", content: "" })],
-		}));
+		state.addMessage(
+			makeMessage({
+				role: "assistant",
+				content: [makeToolUse({ id: "tu-1", name: "write", input: { path: "out.txt" } })],
+			}),
+		);
+		state.addMessage(
+			makeMessage({
+				role: "user",
+				content: [makeToolResult({ toolUseId: "tu-1", content: "" })],
+			}),
+		);
 
 		state.toggleToolCollapse("tu-1");
 		panel.buildLines(80);
 		const texts = getAllLineTexts(panel);
 
-		const emptyLine = texts.find(t => t.includes("(empty result)"));
+		const emptyLine = texts.find((t) => t.includes("(empty result)"));
 		expect(emptyLine).toBeDefined();
 	});
 });
@@ -900,16 +1026,20 @@ describe("getToolArgSummary", () => {
 	});
 
 	it("prioritizes file_path over path", () => {
-		const result = getToolArgSummary(makeToolUse({
-			input: { file_path: "priority.ts", path: "fallback.ts" },
-		}));
+		const result = getToolArgSummary(
+			makeToolUse({
+				input: { file_path: "priority.ts", path: "fallback.ts" },
+			}),
+		);
 		expect(result).toBe("priority.ts");
 	});
 
 	it("falls back to first string value", () => {
-		const result = getToolArgSummary(makeToolUse({
-			input: { some_custom_arg: "custom_value", num: 42 },
-		}));
+		const result = getToolArgSummary(
+			makeToolUse({
+				input: { some_custom_arg: "custom_value", num: 42 },
+			}),
+		);
 		expect(result).toBe("custom_value");
 	});
 
@@ -919,9 +1049,11 @@ describe("getToolArgSummary", () => {
 	});
 
 	it("returns empty string for all non-string inputs", () => {
-		const result = getToolArgSummary(makeToolUse({
-			input: { a: 1, b: true, c: null },
-		}));
+		const result = getToolArgSummary(
+			makeToolUse({
+				input: { a: 1, b: true, c: null },
+			}),
+		);
 		expect(result).toBe("");
 	});
 });

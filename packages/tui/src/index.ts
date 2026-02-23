@@ -1,66 +1,62 @@
 // App
-export { TakumiApp, parseMouseEvent, formatMessagesAsMarkdown } from "./app.js";
-export type { TakumiAppOptions } from "./app.js";
 
 // Agent runner
 export { AgentRunner } from "./agent-runner.js";
-
+export type { TakumiAppOptions } from "./app.js";
+export { formatMessagesAsMarkdown, parseMouseEvent, TakumiApp } from "./app.js";
+export type { CodingPhase, CodingTask } from "./coding-agent.js";
 // Coding agent
 export { CodingAgent } from "./coding-agent.js";
-export type { CodingPhase, CodingTask } from "./coding-agent.js";
-
-// State
-export { AppState } from "./state.js";
-
-// Spinner
-export { ToolSpinner, TOOL_SPINNER_FRAMES } from "./spinner.js";
-export type { ToolSpinnerEntry, SpinnerLine } from "./spinner.js";
-
-// Keybinds
-export { KeyBindingRegistry } from "./keybinds.js";
-export type { KeyBinding } from "./keybinds.js";
-
+export type { SlashCommand } from "./commands.js";
 // Commands
 export { SlashCommandRegistry } from "./commands.js";
-export type { SlashCommand } from "./commands.js";
-
-// Views
-export { RootView } from "./views/root.js";
-export { ChatView } from "./views/chat.js";
-
-// Panels
-export { MessageListPanel, getToolArgSummary, truncateArg } from "./panels/message-list.js";
-export type { LineSegment, RenderedLine } from "./panels/message-list.js";
-export { EditorPanel } from "./panels/editor.js";
-export { StatusBarPanel } from "./panels/status-bar.js";
-export { HeaderPanel } from "./panels/header.js";
-export { SidebarPanel } from "./panels/sidebar.js";
-export { ToolOutputPanel } from "./panels/tool-output.js";
-export { FileTreePanel } from "./panels/file-tree.js";
-export type { FileNode, FlatRow, FileTreePanelProps } from "./panels/file-tree.js";
-export { scanDirectory, loadGitignore, flattenTree, parseGitignore, matchesGitignore, applyGitStatus } from "./panels/file-tree.js";
-export { FilePreviewPanel, detectLanguage } from "./panels/file-preview.js";
-
+export type { CompletionItem, CompletionKind } from "./completion.js";
 // Completion
 export { CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "./completion.js";
-export type { CompletionItem, CompletionKind } from "./completion.js";
-
+export type { CommandPaletteItem } from "./dialogs/command-palette.js";
 // Dialogs
 export { CommandPalette } from "./dialogs/command-palette.js";
-export type { CommandPaletteItem } from "./dialogs/command-palette.js";
-export { PermissionDialog } from "./dialogs/permission.js";
-export type { PermissionResponse } from "./dialogs/permission.js";
-export { ModelPicker } from "./dialogs/model-picker.js";
-export { SessionList } from "./dialogs/session-list.js";
-export type { SessionEntry } from "./dialogs/session-list.js";
 export { FilePicker } from "./dialogs/file-picker.js";
-
+export { ModelPicker } from "./dialogs/model-picker.js";
+export type { PermissionResponse } from "./dialogs/permission.js";
+export { PermissionDialog } from "./dialogs/permission.js";
+export type { SessionEntry } from "./dialogs/session-list.js";
+export { SessionList } from "./dialogs/session-list.js";
+export type { EditorOptions, EditorPosition, EditorSelection } from "./editor.js";
 // Editor
 export { Editor } from "./editor.js";
-export type { EditorPosition, EditorSelection, EditorOptions } from "./editor.js";
-
-// Formatters
-export { formatUserMessage, formatAssistantMessage, formatMessage } from "./formatters/message.js";
-export { formatToolCall, formatToolResult, formatToolSummary } from "./formatters/tool-call.js";
-export { formatThinkingBlock, formatThinkingSummary } from "./formatters/thinking.js";
 export { formatError, formatErrorBrief } from "./formatters/error.js";
+// Formatters
+export { formatAssistantMessage, formatMessage, formatUserMessage } from "./formatters/message.js";
+export { formatThinkingBlock, formatThinkingSummary } from "./formatters/thinking.js";
+export { formatToolCall, formatToolResult, formatToolSummary } from "./formatters/tool-call.js";
+export type { KeyBinding } from "./keybinds.js";
+// Keybinds
+export { KeyBindingRegistry } from "./keybinds.js";
+export { EditorPanel } from "./panels/editor.js";
+export { detectLanguage, FilePreviewPanel } from "./panels/file-preview.js";
+export type { FileNode, FileTreePanelProps, FlatRow } from "./panels/file-tree.js";
+export {
+	applyGitStatus,
+	FileTreePanel,
+	flattenTree,
+	loadGitignore,
+	matchesGitignore,
+	parseGitignore,
+	scanDirectory,
+} from "./panels/file-tree.js";
+export { HeaderPanel } from "./panels/header.js";
+export type { LineSegment, RenderedLine } from "./panels/message-list.js";
+// Panels
+export { getToolArgSummary, MessageListPanel, truncateArg } from "./panels/message-list.js";
+export { SidebarPanel } from "./panels/sidebar.js";
+export { StatusBarPanel } from "./panels/status-bar.js";
+export { ToolOutputPanel } from "./panels/tool-output.js";
+export type { SpinnerLine, ToolSpinnerEntry } from "./spinner.js";
+// Spinner
+export { TOOL_SPINNER_FRAMES, ToolSpinner } from "./spinner.js";
+// State
+export { AppState } from "./state.js";
+export { ChatView } from "./views/chat.js";
+// Views
+export { RootView } from "./views/root.js";

@@ -7,12 +7,10 @@
 
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Rect, KeyEvent } from "@takumi/core";
-import { Component, Border } from "@takumi/render";
-import type { Screen } from "@takumi/render";
-import { signal, effect } from "@takumi/render";
-import type { Signal } from "@takumi/render";
+import type { KeyEvent, Rect } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
+import type { Screen, Signal } from "@takumi/render";
+import { Border, Component, effect, signal } from "@takumi/render";
 import type { AppState } from "../state.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -67,8 +65,8 @@ const MAX_DEPTH = 5;
 
 /** Tree-drawing Unicode characters. */
 const TREE_CHARS = {
-	pipe: "\u2502 ",   // │
-	tee: "\u251C\u2500",   // ├─
+	pipe: "\u2502 ", // │
+	tee: "\u251C\u2500", // ├─
 	corner: "\u2514\u2500", // └─
 	blank: "  ",
 } as const;
@@ -141,7 +139,10 @@ export async function scanDirectory(
 
 	let entries: import("node:fs").Dirent[];
 	try {
-		entries = await readdir(join(root, relativePath), { withFileTypes: true, encoding: "utf-8" }) as unknown as import("node:fs").Dirent[];
+		entries = (await readdir(join(root, relativePath), {
+			withFileTypes: true,
+			encoding: "utf-8",
+		})) as unknown as import("node:fs").Dirent[];
 	} catch {
 		return [];
 	}
@@ -167,13 +168,7 @@ export async function scanDirectory(
 		};
 
 		if (isDir) {
-			node.children = await scanDirectory(
-				root,
-				maxDepth,
-				gitignorePatterns,
-				currentDepth + 1,
-				entryRelPath as string,
-			);
+			node.children = await scanDirectory(root, maxDepth, gitignorePatterns, currentDepth + 1, entryRelPath as string);
 		}
 
 		nodes.push(node);
@@ -206,11 +201,7 @@ export async function loadGitignore(root: string): Promise<string[]> {
 /**
  * Flatten the tree into visible rows based on which directories are expanded.
  */
-export function flattenTree(
-	nodes: FileNode[],
-	expandedDirs: Set<string>,
-	parentParts: TreePart[] = [],
-): FlatRow[] {
+export function flattenTree(nodes: FileNode[], expandedDirs: Set<string>, parentParts: TreePart[] = []): FlatRow[] {
 	const rows: FlatRow[] = [];
 
 	for (let i = 0; i < nodes.length; i++) {
@@ -224,10 +215,7 @@ export function flattenTree(
 			indent: node.depth,
 			isExpanded: node.isDirectory ? isExpanded : undefined,
 			isLastChild: isLast,
-			treeParts: [
-				...treeParts,
-				(isLast ? "corner" : "tee") as TreePart,
-			],
+			treeParts: [...treeParts, (isLast ? "corner" : "tee") as TreePart],
 		});
 
 		// Recurse into expanded directories
@@ -246,11 +234,7 @@ export function flattenTree(
 /**
  * Apply git status markers (modified/staged) to a file tree.
  */
-export function applyGitStatus(
-	nodes: FileNode[],
-	modified: string[],
-	staged: string[],
-): void {
+export function applyGitStatus(nodes: FileNode[], modified: string[], staged: string[]): void {
 	const modifiedSet = new Set(modified);
 	const stagedSet = new Set(staged);
 
@@ -310,6 +294,7 @@ export class FileTreePanel extends Component {
 				const _expanded = this.expandedDirs.value;
 				this.flatRows = flattenTree(this.files.value, this.expandedDirs.value);
 				this.markDirty();
+				return undefined;
 			}),
 		);
 
@@ -319,6 +304,7 @@ export class FileTreePanel extends Component {
 				const _sel = this.selectedIndex.value;
 				const _off = this.scrollOffset.value;
 				this.markDirty();
+				return undefined;
 			}),
 		);
 	}
@@ -428,10 +414,7 @@ export class FileTreePanel extends Component {
 			}
 			case KEY_CODES.PAGE_DOWN: {
 				const jump = Math.max(1, this.viewportHeight - 2);
-				this.selectedIndex.value = Math.min(
-					this.flatRows.length - 1,
-					this.selectedIndex.value + jump,
-				);
+				this.selectedIndex.value = Math.min(this.flatRows.length - 1, this.selectedIndex.value + jump);
 				this.ensureVisible();
 				return true;
 			}
@@ -520,7 +503,7 @@ export class FileTreePanel extends Component {
 			} else {
 				// Status-based coloring
 				let fg = -1;
-				let dim = false;
+				const dim = false;
 
 				if (row.node.modified) {
 					fg = 3; // yellow
@@ -540,8 +523,8 @@ export class FileTreePanel extends Component {
 
 		// Scrollbar indicator if content exceeds viewport
 		if (this.flatRows.length > innerH) {
-			const scrollbarHeight = Math.max(1, Math.floor(innerH * innerH / this.flatRows.length));
-			const scrollbarPos = Math.floor(startIdx * (innerH - scrollbarHeight) / maxOffset);
+			const scrollbarHeight = Math.max(1, Math.floor((innerH * innerH) / this.flatRows.length));
+			const scrollbarPos = Math.floor((startIdx * (innerH - scrollbarHeight)) / maxOffset);
 			for (let i = 0; i < scrollbarHeight; i++) {
 				const row = innerY + scrollbarPos + i;
 				if (row < innerY + innerH) {
@@ -580,7 +563,7 @@ export class FileTreePanel extends Component {
 
 		// Truncate to fit
 		if (text.length > maxWidth) {
-			return text.slice(0, maxWidth - 1) + "\u2026";
+			return `${text.slice(0, maxWidth - 1)}\u2026`;
 		}
 		return text;
 	}

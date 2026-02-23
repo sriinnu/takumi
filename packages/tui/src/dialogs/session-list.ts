@@ -4,10 +4,10 @@
  * Pure logic/state class — no rendering.
  */
 
-import { signal } from "@takumi/render";
-import type { Signal } from "@takumi/render";
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
+import type { Signal } from "@takumi/render";
+import { signal } from "@takumi/render";
 
 export interface SessionEntry {
 	id: string;
@@ -23,8 +23,6 @@ export class SessionList {
 
 	/** Called when a session is selected for resume. */
 	onSelect?: (sessionId: string) => void;
-
-	constructor() {}
 
 	/** Show the dialog with a list of sessions. */
 	open(sessions: SessionEntry[]): void {

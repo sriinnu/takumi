@@ -4,7 +4,7 @@
  */
 
 import { execSync } from "node:child_process";
-import type { ToolDefinition, ToolResult } from "@takumi/core";
+import type { ToolDefinition } from "@takumi/core";
 import { LIMITS } from "@takumi/core";
 import { validateCommand } from "../safety/sandbox.js";
 import type { ToolHandler } from "./registry.js";
@@ -31,12 +31,9 @@ export const bashDefinition: ToolDefinition = {
 	category: "execute",
 };
 
-export const bashHandler: ToolHandler = async (input, signal) => {
+export const bashHandler: ToolHandler = async (input, _signal) => {
 	const command = input.command as string;
-	const timeout = Math.min(
-		(input.timeout as number | undefined) ?? LIMITS.BASH_TIMEOUT,
-		600_000,
-	);
+	const timeout = Math.min((input.timeout as number | undefined) ?? LIMITS.BASH_TIMEOUT, 600_000);
 
 	if (!command) {
 		return { output: "Error: command is required", isError: true };
@@ -63,7 +60,7 @@ export const bashHandler: ToolHandler = async (input, signal) => {
 
 		if (output.length > LIMITS.MAX_BASH_OUTPUT) {
 			return {
-				output: output.slice(0, LIMITS.MAX_BASH_OUTPUT) + "\n... (output truncated)",
+				output: `${output.slice(0, LIMITS.MAX_BASH_OUTPUT)}\n... (output truncated)`,
 				isError: false,
 			};
 		}
@@ -74,11 +71,7 @@ export const bashHandler: ToolHandler = async (input, signal) => {
 		const stderr = err.stderr?.toString() ?? "";
 		const stdout = err.stdout?.toString() ?? "";
 		const exitCode = err.status ?? 1;
-		const output = [
-			stdout,
-			stderr,
-			`Exit code: ${exitCode}`,
-		].filter(Boolean).join("\n");
+		const output = [stdout, stderr, `Exit code: ${exitCode}`].filter(Boolean).join("\n");
 
 		return { output, isError: true };
 	}

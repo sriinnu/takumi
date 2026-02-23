@@ -2,9 +2,9 @@
  * Write file tool — creates or overwrites a file with given content.
  */
 
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { ToolDefinition, ToolResult } from "@takumi/core";
+import type { ToolDefinition } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
 
 export const writeDefinition: ToolDefinition = {

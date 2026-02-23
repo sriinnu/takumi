@@ -4,18 +4,18 @@
  * lifecycle hooks, and layout rect computation.
  */
 
-import { describe, it, expect, beforeAll, vi } from "vitest";
-import { Component } from "../src/component.js";
-import { initYoga, createNode, computeLayout } from "../src/yoga.js";
-import type { Screen } from "../src/screen.js";
 import type { Rect } from "@takumi/core";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { Component } from "../src/component.js";
+import type { Screen } from "../src/screen.js";
+import { computeLayout, createNode, initYoga } from "../src/yoga.js";
 
 // Concrete test component
 class TestComponent extends Component {
 	renderCalled = false;
 	renderRect: Rect | null = null;
 
-	render(screen: Screen, rect: Rect): void {
+	render(_screen: Screen, rect: Rect): void {
 		this.renderCalled = true;
 		this.renderRect = rect;
 	}

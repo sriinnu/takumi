@@ -7,13 +7,27 @@
  * with compact one-line summaries when collapsed and full detail when expanded.
  */
 
-import type { Rect, Message, ContentBlock, ToolUseBlock, ToolResultBlock, MouseEvent as TMouseEvent } from "@takumi/core";
-import { Component } from "@takumi/render";
+import type {
+	ContentBlock,
+	Message,
+	Rect,
+	MouseEvent as TMouseEvent,
+	ToolResultBlock,
+	ToolUseBlock,
+} from "@takumi/core";
 import type { Screen } from "@takumi/render";
-import { wrapText, measureText, getTheme, hexToRgb } from "@takumi/render";
-import { tokenizeLine, LANGUAGE_MAP } from "@takumi/render";
-import { parseDiff, isDiffContent } from "@takumi/render";
-import { effect } from "@takumi/render";
+import {
+	Component,
+	effect,
+	getTheme,
+	hexToRgb,
+	isDiffContent,
+	LANGUAGE_MAP,
+	measureText,
+	parseDiff,
+	tokenizeLine,
+	wrapText,
+} from "@takumi/render";
 import type { AppState } from "../state.js";
 
 /** Maximum lines of tool result content shown in expanded view. */
@@ -48,6 +62,7 @@ export class MessageListPanel extends Component {
 			const _streaming = this.state.streamingText.value;
 			const _collapsed = this.state.collapsedTools.value;
 			this.markDirty();
+			return undefined;
 		});
 	}
 
@@ -85,10 +100,7 @@ export class MessageListPanel extends Component {
 
 		const rect = this.lastRect;
 		// Check if click is within our bounds
-		if (
-			event.x < rect.x || event.x >= rect.x + rect.width ||
-			event.y < rect.y || event.y >= rect.y + rect.height
-		) {
+		if (event.x < rect.x || event.x >= rect.x + rect.width || event.y < rect.y || event.y >= rect.y + rect.height) {
 			return false;
 		}
 
@@ -275,10 +287,7 @@ export class MessageListPanel extends Component {
 	 * Tool_result blocks with these IDs should be skipped (they are rendered
 	 * as part of the collapsible tool block on the tool_use side).
 	 */
-	private buildPairedResultIds(
-		allMessages: Message[],
-		resultMap: Map<string, ToolResultBlock>,
-	): Set<string> {
+	private buildPairedResultIds(allMessages: Message[], resultMap: Map<string, ToolResultBlock>): Set<string> {
 		const paired = new Set<string>();
 		for (const msg of allMessages) {
 			for (const block of msg.content) {
@@ -293,11 +302,7 @@ export class MessageListPanel extends Component {
 	/**
 	 * Render a paired tool_use + tool_result as a collapsible block.
 	 */
-	private renderToolBlock(
-		toolUse: ToolUseBlock,
-		toolResult: ToolResultBlock | null,
-		width: number,
-	): void {
+	private renderToolBlock(toolUse: ToolUseBlock, toolResult: ToolResultBlock | null, width: number): void {
 		const theme = getTheme();
 		const [pr, pg, pb] = hexToRgb(theme.primary);
 		const primaryFg = rgbTo256(pr, pg, pb);
@@ -361,9 +366,7 @@ export class MessageListPanel extends Component {
 
 			// Build: ▶ toolname  argSummary                    ✓
 			const toolNamePart = toolUse.name;
-			const argPart = argSummary
-				? truncateArg(argSummary, Math.max(10, width - toolNamePart.length - 10))
-				: "";
+			const argPart = argSummary ? truncateArg(argSummary, Math.max(10, width - toolNamePart.length - 10)) : "";
 
 			const segments: LineSegment[] = [
 				{ text: `${arrow} `, fg: mutedFg, bg: -1, bold: false, dim: false, italic: false, underline: false },
@@ -375,8 +378,24 @@ export class MessageListPanel extends Component {
 			// Pad to push status indicator to the right
 			const usedWidth = 2 + toolNamePart.length + 2 + argPart.length;
 			const padLen = Math.max(1, width - usedWidth - 2);
-			segments.push({ text: " ".repeat(padLen), fg: -1, bg: -1, bold: false, dim: false, italic: false, underline: false });
-			segments.push({ text: statusChar, fg: statusFg, bg: -1, bold: false, dim: false, italic: false, underline: false });
+			segments.push({
+				text: " ".repeat(padLen),
+				fg: -1,
+				bg: -1,
+				bold: false,
+				dim: false,
+				italic: false,
+				underline: false,
+			});
+			segments.push({
+				text: statusChar,
+				fg: statusFg,
+				bg: -1,
+				bold: false,
+				dim: false,
+				italic: false,
+				underline: false,
+			});
 
 			const lineText = `${arrow} ${toolNamePart}  ${argPart}${" ".repeat(padLen)}${statusChar}`;
 			this.renderedLines.push({
@@ -394,9 +413,7 @@ export class MessageListPanel extends Component {
 
 			// Header line
 			const toolNamePart = toolUse.name;
-			const argPart = argSummary
-				? truncateArg(argSummary, Math.max(10, width - toolNamePart.length - 10))
-				: "";
+			const argPart = argSummary ? truncateArg(argSummary, Math.max(10, width - toolNamePart.length - 10)) : "";
 
 			const headerSegments: LineSegment[] = [
 				{ text: `${arrow} `, fg: arrowFg, bg: -1, bold: false, dim: false, italic: false, underline: false },
@@ -411,8 +428,24 @@ export class MessageListPanel extends Component {
 				const statusFg = isError ? errorFg : successFg;
 				const usedWidth = 2 + toolNamePart.length + 2 + argPart.length;
 				const padLen = Math.max(1, width - usedWidth - 2);
-				headerSegments.push({ text: " ".repeat(padLen), fg: -1, bg: -1, bold: false, dim: false, italic: false, underline: false });
-				headerSegments.push({ text: statusChar, fg: statusFg, bg: -1, bold: false, dim: false, italic: false, underline: false });
+				headerSegments.push({
+					text: " ".repeat(padLen),
+					fg: -1,
+					bg: -1,
+					bold: false,
+					dim: false,
+					italic: false,
+					underline: false,
+				});
+				headerSegments.push({
+					text: statusChar,
+					fg: statusFg,
+					bg: -1,
+					bold: false,
+					dim: false,
+					italic: false,
+					underline: false,
+				});
 			}
 
 			this.renderedLines.push({
@@ -434,7 +467,7 @@ export class MessageListPanel extends Component {
 				if (inputEntries.length > 0) {
 					for (const [key, value] of inputEntries) {
 						const strVal = typeof value === "string" ? value : JSON.stringify(value);
-						const truncated = strVal.length > 60 ? strVal.slice(0, 57) + "..." : strVal;
+						const truncated = strVal.length > 60 ? `${strVal.slice(0, 57)}...` : strVal;
 						this.pushPrefixedLine(`\u2502 ${key}: ${truncated}`, -1, mutedFg);
 					}
 				}
@@ -486,11 +519,7 @@ export class MessageListPanel extends Component {
 							}
 
 							if (totalLines > MAX_EXPANDED_RESULT_LINES) {
-								this.pushPrefixedLine(
-									`\u2502 (showing ${showLines} of ${totalLines} lines)`,
-									mutedFg,
-									mutedFg,
-								);
+								this.pushPrefixedLine(`\u2502 (showing ${showLines} of ${totalLines} lines)`, mutedFg, mutedFg);
 							}
 						}
 					} else {
@@ -523,11 +552,7 @@ export class MessageListPanel extends Component {
 		});
 	}
 
-	private renderContentBlock(
-		block: ContentBlock,
-		width: number,
-		role: "user" | "assistant",
-	): void {
+	private renderContentBlock(block: ContentBlock, width: number, role: "user" | "assistant"): void {
 		switch (block.type) {
 			case "text": {
 				if (role === "assistant") {
@@ -639,7 +664,7 @@ export class MessageListPanel extends Component {
 				const fg256 = rgbTo256(hr, hg, hb);
 				const segments = this.parseInlineMarkdown(headingText, theme);
 				// Override heading segments with heading color + style
-				const headingSegments: LineSegment[] = segments.map(s => ({
+				const headingSegments: LineSegment[] = segments.map((s) => ({
 					...s,
 					fg: fg256,
 					bold: level <= 2,
@@ -663,7 +688,7 @@ export class MessageListPanel extends Component {
 				const contentSegments = this.parseInlineMarkdown(content, theme);
 				const segments: LineSegment[] = [
 					{ text: "\u2502 ", fg: qfg, bg: -1, bold: false, dim: true, italic: false, underline: false },
-					...contentSegments.map(s => ({ ...s, italic: true })),
+					...contentSegments.map((s) => ({ ...s, italic: true })),
 				];
 				this.renderedLines.push({
 					text: `\u2502 ${content}`,
@@ -753,15 +778,17 @@ export class MessageListPanel extends Component {
 				fg: fg256,
 				bold: false,
 				dim: false,
-				segments: [{
-					text: `  ${codeLine}`,
-					fg: fg256,
-					bg: -1,
-					bold: false,
-					dim: false,
-					italic: false,
-					underline: false,
-				}],
+				segments: [
+					{
+						text: `  ${codeLine}`,
+						fg: fg256,
+						bg: -1,
+						bold: false,
+						dim: false,
+						italic: false,
+						underline: false,
+					},
+				],
 			});
 			return;
 		}
@@ -820,11 +847,7 @@ export class MessageListPanel extends Component {
 	 * Render diff-formatted lines with color-coded additions, deletions, and context.
 	 * Uses parseDiff to parse the unified diff, then renders each line with appropriate colors.
 	 */
-	private pushDiffLines(
-		lines: string[],
-		theme: ReturnType<typeof getTheme>,
-		_width: number,
-	): void {
+	private pushDiffLines(lines: string[], theme: ReturnType<typeof getTheme>, _width: number): void {
 		const diffText = lines.join("\n");
 		const files = parseDiff(diffText);
 
@@ -894,7 +917,15 @@ export class MessageListPanel extends Component {
 							const segments: LineSegment[] = [
 								{ text: "  ", fg: -1, bg: -1, bold: false, dim: false, italic: false, underline: false },
 								{ text: "-", fg: removeFg, bg: -1, bold: false, dim: false, italic: false, underline: false },
-								{ text: diffLine.content, fg: removeFg, bg: 52, bold: false, dim: false, italic: false, underline: false },
+								{
+									text: diffLine.content,
+									fg: removeFg,
+									bg: 52,
+									bold: false,
+									dim: false,
+									italic: false,
+									underline: false,
+								},
 							];
 							this.renderedLines.push({
 								text: `  -${diffLine.content}`,
@@ -932,10 +963,7 @@ export class MessageListPanel extends Component {
 	/**
 	 * Parse inline markdown (bold, italic, code spans, links) into segments.
 	 */
-	private parseInlineMarkdown(
-		text: string,
-		theme: ReturnType<typeof getTheme>,
-	): LineSegment[] {
+	private parseInlineMarkdown(text: string, theme: ReturnType<typeof getTheme>): LineSegment[] {
 		const segments: LineSegment[] = [];
 		let remaining = text;
 
@@ -1007,7 +1035,7 @@ export class MessageListPanel extends Component {
 			}
 
 			// Plain text — consume up to next special character
-			const nextSpecial = remaining.search(/[`*\[]/);
+			const nextSpecial = remaining.search(/[`*[]/);
 			if (nextSpecial === -1) {
 				segments.push({
 					text: remaining,
@@ -1054,7 +1082,7 @@ export class MessageListPanel extends Component {
 
 /** Convert RGB (0-255) to a 256-color palette index. */
 function rgbTo256(r: number, g: number, b: number): number {
-	return 16 + 36 * Math.round(r / 255 * 5) + 6 * Math.round(g / 255 * 5) + Math.round(b / 255 * 5);
+	return 16 + 36 * Math.round((r / 255) * 5) + 6 * Math.round((g / 255) * 5) + Math.round((b / 255) * 5);
 }
 
 /**
@@ -1065,10 +1093,7 @@ function rgbTo256(r: number, g: number, b: number): number {
 export function getToolArgSummary(toolUse: ToolUseBlock): string {
 	const input = toolUse.input;
 	// Prioritized keys for summary display
-	const priorityKeys = [
-		"file_path", "path", "command", "pattern", "query",
-		"url", "glob", "old_string", "content",
-	];
+	const priorityKeys = ["file_path", "path", "command", "pattern", "query", "url", "glob", "old_string", "content"];
 	for (const key of priorityKeys) {
 		if (key in input && typeof input[key] === "string") {
 			return input[key] as string;
@@ -1089,7 +1114,7 @@ export function truncateArg(arg: string, maxLen: number): string {
 	const clean = arg.replace(/\n/g, " ");
 	if (clean.length <= maxLen) return clean;
 	if (maxLen <= 3) return clean.slice(0, maxLen);
-	return clean.slice(0, maxLen - 3) + "...";
+	return `${clean.slice(0, maxLen - 3)}...`;
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────

@@ -4,10 +4,10 @@
  * Pure logic/state class — no rendering.
  */
 
-import { signal } from "@takumi/render";
-import type { Signal } from "@takumi/render";
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
+import type { Signal } from "@takumi/render";
+import { signal } from "@takumi/render";
 
 export interface PermissionResponse {
 	allowed: boolean;
@@ -84,5 +84,5 @@ export class PermissionDialog {
 function truncateArgs(args: Record<string, unknown>, maxLen: number): string {
 	const json = JSON.stringify(args, null, 2);
 	if (json.length <= maxLen) return json;
-	return json.slice(0, maxLen) + "...";
+	return `${json.slice(0, maxLen)}...`;
 }
