@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import { Screen } from "@takumi/render";
-import { FilePreviewPanel, detectLanguage } from "../src/panels/file-preview.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { detectLanguage, FilePreviewPanel } from "../src/panels/file-preview.js";
 
 // ── Mock fs ──────────────────────────────────────────────────────────────────
 

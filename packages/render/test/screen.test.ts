@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { Screen } from "../src/screen.js";
 import type { Cell } from "@takumi/core";
+import { beforeEach, describe, expect, it } from "vitest";
+import { Screen } from "../src/screen.js";
 
 describe("Screen", () => {
 	let screen: Screen;

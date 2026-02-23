@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { AppState } from "../src/state.js";
 import type { Message, Usage } from "@takumi/core";
+import { describe, expect, it } from "vitest";
+import { AppState } from "../src/state.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -247,10 +247,7 @@ describe("AppState", () => {
 			state.updateUsage(makeUsage({ inputTokens: 2000, outputTokens: 1000 }));
 
 			const expected =
-				(1000 * 3) / 1_000_000 +
-				(500 * 15) / 1_000_000 +
-				(2000 * 3) / 1_000_000 +
-				(1000 * 15) / 1_000_000;
+				(1000 * 3) / 1_000_000 + (500 * 15) / 1_000_000 + (2000 * 3) / 1_000_000 + (1000 * 15) / 1_000_000;
 			expect(state.totalCost.value).toBeCloseTo(expected, 10);
 		});
 	});
@@ -310,15 +307,13 @@ describe("AppState", () => {
 	/* ---- statusText computed --------------------------------------------- */
 
 	describe("statusText", () => {
-		it("shows turns/tokens/cost when not streaming", () => {
+		it("shows Ready when not streaming", () => {
 			const state = new AppState();
 			state.turnCount.value = 3;
 			state.updateUsage(makeUsage({ inputTokens: 100, outputTokens: 200 }));
 
 			const text = state.statusText.value;
-			expect(text).toContain("3 turns");
-			expect(text).toContain("300 tokens");
-			expect(text).toContain("$");
+			expect(text).toBe("Ready");
 		});
 
 		it("shows 'Thinking...' when streaming with no active tool", () => {
@@ -341,20 +336,19 @@ describe("AppState", () => {
 			expect(state.statusText.value).toBe("Running bash...");
 		});
 
-		it("reverts to summary text when streaming stops", () => {
+		it("reverts to Ready when streaming stops", () => {
 			const state = new AppState();
 			state.isStreaming.value = true;
 			state.activeTool.value = "grep";
 			expect(state.statusText.value).toBe("Running grep...");
 
 			state.isStreaming.value = false;
-			expect(state.statusText.value).toContain("turns");
-			expect(state.statusText.value).toContain("tokens");
+			expect(state.statusText.value).toBe("Ready");
 		});
 
-		it("formats with zero values on fresh state", () => {
+		it("formats with Ready on fresh state", () => {
 			const state = new AppState();
-			expect(state.statusText.value).toBe("0 turns | 0 tokens | $0.0000");
+			expect(state.statusText.value).toBe("Ready");
 		});
 	});
 

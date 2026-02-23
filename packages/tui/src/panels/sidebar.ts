@@ -4,10 +4,8 @@
  */
 
 import type { Rect } from "@takumi/core";
-import { Component, Border, List } from "@takumi/render";
-import type { Screen } from "@takumi/render";
-import type { ListItem } from "@takumi/render";
-import { effect } from "@takumi/render";
+import type { ListItem, Screen } from "@takumi/render";
+import { Border, Component, effect, List } from "@takumi/render";
 import type { AppState } from "../state.js";
 
 export interface SidebarPanelProps {
@@ -60,6 +58,7 @@ export class SidebarPanel extends Component {
 				}));
 				this.fileList.setItems(items);
 				this.markDirty();
+				return undefined;
 			}),
 		);
 
@@ -72,6 +71,7 @@ export class SidebarPanel extends Component {
 				this.state.formattedCost.value;
 				this.state.model.value;
 				this.markDirty();
+				return undefined;
 			}),
 		);
 	}
@@ -133,7 +133,10 @@ export class SidebarPanel extends Component {
 			screen.writeText(cursorY, innerX, "(no files)", { fg: 8, dim: true });
 			cursorY++;
 		} else {
-			const fileAreaHeight = Math.min(files.length, maxY - cursorY - SESSION_INFO_ROWS - KEYBIND_HINT_ROWS - 2 * SECTION_GAP - 2 * SECTION_HEADER_HEIGHT);
+			const fileAreaHeight = Math.min(
+				files.length,
+				maxY - cursorY - SESSION_INFO_ROWS - KEYBIND_HINT_ROWS - 2 * SECTION_GAP - 2 * SECTION_HEADER_HEIGHT,
+			);
 			if (fileAreaHeight > 0) {
 				this.fileList.render(screen, {
 					x: innerX,
@@ -208,6 +211,6 @@ export class SidebarPanel extends Component {
 	/** Truncate a string to fit within the given width. */
 	private truncField(text: string, width: number): string {
 		if (text.length <= width) return text;
-		return text.slice(0, width - 1) + "\u2026";
+		return `${text.slice(0, width - 1)}\u2026`;
 	}
 }

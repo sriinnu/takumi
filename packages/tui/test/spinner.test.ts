@@ -2,8 +2,8 @@
  * Tests for ToolSpinner — animated progress spinners for tool execution.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ToolSpinner, TOOL_SPINNER_FRAMES } from "../src/spinner.js";
+import { beforeEach, describe, expect, it } from "vitest";
+import { TOOL_SPINNER_FRAMES, ToolSpinner } from "../src/spinner.js";
 
 describe("ToolSpinner", () => {
 	let spinner: ToolSpinner;

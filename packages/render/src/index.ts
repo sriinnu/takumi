@@ -1,146 +1,125 @@
 // ANSI escape helpers
 export {
-	cursorTo,
-	cursorMove,
-	cursorShow,
-	cursorHide,
-	clearScreen,
-	clearLine,
-	clearToEndOfLine,
-	clearToEndOfScreen,
-	fg,
 	bg,
-	fgRgb,
 	bgRgb,
 	bold,
+	clearLine,
+	clearScreen,
+	clearToEndOfLine,
+	clearToEndOfScreen,
+	cursorHide,
+	cursorMove,
+	cursorShow,
+	cursorTo,
 	dim,
-	italic,
-	underline,
-	strikethrough,
+	fg,
+	fgRgb,
 	inverse,
+	italic,
 	reset,
+	strikethrough,
+	underline,
 	visibleLength,
 } from "./ansi.js";
-
-// Signals
+// Clipboard (OSC 52)
 export {
-	signal,
-	computed,
-	effect,
-	batch,
-	untrack,
-} from "./signals.js";
-export type { Signal, ReadonlySignal } from "./signals.js";
-
-// Screen
-export { Screen } from "./screen.js";
-export type { ScreenPatch } from "./screen.js";
-
-// Component system
-export { Component } from "./component.js";
-export type { YogaNode, ComponentStyle } from "./component.js";
-
-// Yoga layout
-export {
-	initYoga,
-	getYoga,
-	createNode,
-	applyStyle,
-	computeLayout,
-} from "./yoga.js";
-
-// Text utilities
-export {
-	measureText,
-	segmentGraphemes,
-	isFullwidth,
-	wrapText,
-	truncate,
-} from "./text.js";
-
+	clearClipboard,
+	copyToClipboard,
+	parseClipboardResponse,
+	requestClipboard,
+} from "./clipboard.js";
+export type { ColorName } from "./color.js";
 // Color utilities
 export {
 	COLORS,
-	namedFg,
-	namedBg,
 	color256,
-	color256Fg,
 	color256Bg,
-	rgb,
-	truecolorFg,
-	truecolorBg,
+	color256Fg,
 	hex,
 	hexToRgb,
+	namedBg,
+	namedFg,
+	rgb,
+	truecolorBg,
+	truecolorFg,
 } from "./color.js";
-export type { ColorName } from "./color.js";
+export type { ComponentStyle, YogaNode } from "./component.js";
 
+// Component system
+export { Component } from "./component.js";
+export type { BorderProps, BorderStyle } from "./components/border.js";
+export { Border } from "./components/border.js";
+export type { BoxProps } from "./components/box.js";
+// Components
+export { Box } from "./components/box.js";
+export type { DiffLine, DiffLineType, DiffProps } from "./components/diff.js";
+export { Diff } from "./components/diff.js";
+export type { InputProps } from "./components/input.js";
+export { Input } from "./components/input.js";
+export type { ListItem, ListProps } from "./components/list.js";
+export { List } from "./components/list.js";
+export type { MarkdownProps } from "./components/markdown.js";
+export { Markdown } from "./components/markdown.js";
+export type { ScrollProps } from "./components/scroll.js";
+export { Scroll } from "./components/scroll.js";
+export type { SpinnerProps, SpinnerStyle } from "./components/spinner.js";
+export { SPINNER_STYLES, Spinner } from "./components/spinner.js";
+export type { LanguageRules, SyntaxProps, Token, TokenType } from "./components/syntax.js";
+export { LANGUAGE_MAP, Syntax, tokenizeLine } from "./components/syntax.js";
+export type { TextProps } from "./components/text.js";
+export { TextComponent } from "./components/text.js";
+export type { DiffFile, DiffHunk, DiffLine as ParsedDiffLine } from "./diff-parser.js";
+// Diff parser and renderer
+export { isDiffContent, parseDiff, renderDiff, renderInlineDiff, renderMultiFileDiff } from "./diff-parser.js";
+// Standalone markdown renderer
+export { renderMarkdown } from "./markdown.js";
+export type { RenderSchedulerOptions } from "./reconciler.js";
+// Render scheduler
+export { RenderScheduler } from "./reconciler.js";
+export type { ScreenPatch } from "./screen.js";
+// Screen
+export { Screen } from "./screen.js";
+export type { ReadonlySignal, Signal } from "./signals.js";
+// Signals
+export {
+	batch,
+	computed,
+	effect,
+	signal,
+	untrack,
+} from "./signals.js";
+// Text utilities
+export {
+	isFullwidth,
+	measureText,
+	segmentGraphemes,
+	truncate,
+	wrapText,
+} from "./text.js";
+export type { Theme } from "./theme.js";
 // Theming
 export {
 	defaultTheme,
 	getTheme,
-	setTheme,
-	registerTheme,
 	listThemes,
+	registerTheme,
+	setTheme,
 } from "./theme.js";
-export type { Theme } from "./theme.js";
-
 // Theme variants
 export {
-	catppuccinMocha,
-	catppuccinLatte,
-	dracula,
-	tokyoNight,
-	oneDark,
-	gruvboxDark,
 	builtinThemes,
+	catppuccinLatte,
+	catppuccinMocha,
+	dracula,
+	gruvboxDark,
+	oneDark,
+	tokyoNight,
 } from "./theme-variants.js";
-
-// Render scheduler
-export { RenderScheduler } from "./reconciler.js";
-export type { RenderSchedulerOptions } from "./reconciler.js";
-
-// Components
-export { Box } from "./components/box.js";
-export type { BoxProps } from "./components/box.js";
-
-export { TextComponent } from "./components/text.js";
-export type { TextProps } from "./components/text.js";
-
-export { Input } from "./components/input.js";
-export type { InputProps } from "./components/input.js";
-
-export { Spinner, SPINNER_STYLES } from "./components/spinner.js";
-export type { SpinnerProps, SpinnerStyle } from "./components/spinner.js";
-
-export { Scroll } from "./components/scroll.js";
-export type { ScrollProps } from "./components/scroll.js";
-
-export { Border } from "./components/border.js";
-export type { BorderProps, BorderStyle } from "./components/border.js";
-
-export { Markdown } from "./components/markdown.js";
-export type { MarkdownProps } from "./components/markdown.js";
-
-export { Syntax, tokenizeLine, LANGUAGE_MAP } from "./components/syntax.js";
-export type { SyntaxProps, TokenType, Token, LanguageRules } from "./components/syntax.js";
-
-export { Diff } from "./components/diff.js";
-export type { DiffProps, DiffLine, DiffLineType } from "./components/diff.js";
-
-// Standalone markdown renderer
-export { renderMarkdown } from "./markdown.js";
-
-// Diff parser and renderer
-export { parseDiff, renderDiff, renderMultiFileDiff, renderInlineDiff, isDiffContent } from "./diff-parser.js";
-export type { DiffFile, DiffHunk, DiffLine as ParsedDiffLine } from "./diff-parser.js";
-
-// Clipboard (OSC 52)
+// Yoga layout
 export {
-	copyToClipboard,
-	requestClipboard,
-	parseClipboardResponse,
-	clearClipboard,
-} from "./clipboard.js";
-
-export { List } from "./components/list.js";
-export type { ListProps, ListItem } from "./components/list.js";
+	applyStyle,
+	computeLayout,
+	createNode,
+	getYoga,
+	initYoga,
+} from "./yoga.js";

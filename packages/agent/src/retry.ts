@@ -33,12 +33,8 @@ export const DEFAULT_RETRY_OPTIONS: RetryOptions = {
  *
  * delay = min(baseDelayMs * 2^attempt + random jitter, maxDelayMs)
  */
-export function computeDelay(
-	attempt: number,
-	baseDelayMs: number,
-	maxDelayMs: number,
-): number {
-	const exponentialDelay = baseDelayMs * Math.pow(2, attempt);
+export function computeDelay(attempt: number, baseDelayMs: number, maxDelayMs: number): number {
+	const exponentialDelay = baseDelayMs * 2 ** attempt;
 	// Add jitter: 0-50% of the exponential delay
 	const jitter = Math.random() * exponentialDelay * 0.5;
 	const delay = exponentialDelay + jitter;
@@ -49,10 +45,7 @@ export function computeDelay(
  * Check whether an error represents a retryable condition.
  * Looks at status codes, retryable flags, and network error patterns.
  */
-export function isRetryableError(
-	error: unknown,
-	retryableStatuses: number[],
-): boolean {
+export function isRetryableError(error: unknown, retryableStatuses: number[]): boolean {
 	if (error == null) return false;
 
 	// Check for RetryableError with explicit status
@@ -137,9 +130,7 @@ export async function withRetry<T>(
 			// Compute delay — prefer Retry-After if available
 			const retryAfter = getRetryAfterMs(error);
 			const computedDelay = computeDelay(attempt, opts.baseDelayMs, opts.maxDelayMs);
-			const delay = retryAfter !== undefined
-				? Math.min(retryAfter, opts.maxDelayMs)
-				: computedDelay;
+			const delay = retryAfter !== undefined ? Math.min(retryAfter, opts.maxDelayMs) : computedDelay;
 
 			log.warn(`Retry attempt ${attempt + 1}/${opts.maxRetries} after ${Math.round(delay)}ms`, {
 				error: error instanceof Error ? error.message : String(error),

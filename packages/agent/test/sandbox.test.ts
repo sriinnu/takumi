@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { validateCommand, SAFE_COMMANDS } from "@takumi/agent";
+import { SAFE_COMMANDS, validateCommand } from "@takumi/agent";
+import { describe, expect, it } from "vitest";
 
 describe("validateCommand", () => {
 	describe("allowed commands", () => {

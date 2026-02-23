@@ -7,7 +7,7 @@
  */
 
 import type { Cell, Size } from "@takumi/core";
-import { cursorTo, fg, bg, reset } from "./ansi.js";
+import { bg, cursorTo, fg, reset } from "./ansi.js";
 
 const EMPTY_CELL: Cell = {
 	char: " ",

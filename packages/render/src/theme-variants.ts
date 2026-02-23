@@ -347,11 +347,4 @@ export const gruvboxDark: Theme = {
 };
 
 /** All built-in theme variants (excluding the default which is registered separately). */
-export const builtinThemes: Theme[] = [
-	catppuccinMocha,
-	catppuccinLatte,
-	dracula,
-	tokyoNight,
-	oneDark,
-	gruvboxDark,
-];
+export const builtinThemes: Theme[] = [catppuccinMocha, catppuccinLatte, dracula, tokyoNight, oneDark, gruvboxDark];

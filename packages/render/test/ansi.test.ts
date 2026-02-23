@@ -1,22 +1,22 @@
-import { describe, it, expect } from "vitest";
 import {
-	cursorTo,
+	bg,
+	bgRgb,
+	bold,
+	clearLine,
+	clearScreen,
+	cursorHide,
 	cursorMove,
 	cursorShow,
-	cursorHide,
-	clearScreen,
-	clearLine,
-	fg,
-	bg,
-	bold,
+	cursorTo,
 	dim,
-	italic,
-	underline,
-	reset,
-	visibleLength,
+	fg,
 	fgRgb,
-	bgRgb,
+	italic,
+	reset,
+	underline,
+	visibleLength,
 } from "@takumi/render";
+import { describe, expect, it } from "vitest";
 
 describe("cursor movement", () => {
 	it("cursorTo generates correct CSI sequence", () => {

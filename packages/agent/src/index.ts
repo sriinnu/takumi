@@ -1,63 +1,113 @@
 // Agent loop
-export { agentLoop } from "./loop.js";
-export type { AgentLoopOptions, MessagePayload } from "./loop.js";
 
-// Message building
-export { buildSystemPrompt, buildUserMessage, buildToolResult } from "./message.js";
-
-// SSE stream parser
-export { parseSSEStream } from "./stream.js";
-
-// Retry logic
-export { withRetry, RetryableError, computeDelay, isRetryableError, getRetryAfterMs, DEFAULT_RETRY_OPTIONS } from "./retry.js";
-export type { RetryOptions } from "./retry.js";
-
-// Error types and categorization
-export { ContextOverflowError, ProviderUnavailableError, isRetryable, categorizeError, friendlyErrorMessage } from "./errors.js";
-export type { ErrorCategory } from "./errors.js";
-
-// Tool registry
-export { ToolRegistry } from "./tools/registry.js";
-export type { ToolHandler } from "./tools/registry.js";
-
-// Built-in tools
-export { readDefinition, readHandler } from "./tools/read.js";
-export { writeDefinition, writeHandler } from "./tools/write.js";
-export { editDefinition, editHandler } from "./tools/edit.js";
-export { bashDefinition, bashHandler } from "./tools/bash.js";
-export { globDefinition, globHandler } from "./tools/glob.js";
-export { grepDefinition, grepHandler } from "./tools/grep.js";
-export { askDefinition, createAskHandler } from "./tools/ask.js";
-export { registerBuiltinTools } from "./tools/builtin.js";
-
-// Safety
-export { validateCommand, SAFE_COMMANDS, DANGEROUS_PATTERNS } from "./safety/sandbox.js";
-export { PermissionEngine } from "./safety/permissions.js";
-
+export type {
+	AgentSlot,
+	AgentTopology,
+	ClassificationResult,
+	ClassifierOptions,
+	// re-exported niyanta types — callers don't need a separate @yugenlab/chitragupta import
+	OrchestrationPlan,
+	OrchestratorTask,
+	TaskClassification,
+} from "./classifier.js";
+// Task classifier (+ niyanta plan helpers)
+export { TaskClassifier, TaskComplexity, TaskType } from "./classifier.js";
+export type {
+	AgentInstance,
+	CheckpointSummary,
+	ClusterCheckpoint,
+	ClusterConfig,
+	ClusterEvent,
+	ClusterState,
+	IsolationContext,
+	IsolationMode,
+	OrchestratorOptions,
+	ValidationFinding,
+	ValidationResult,
+	WorkProduct,
+} from "./cluster/index.js";
+// Cluster orchestration
+export {
+	AgentRole,
+	AgentStatus,
+	CheckpointManager,
+	ClusterOrchestrator,
+	ClusterPhase,
+	ValidationDecision,
+} from "./cluster/index.js";
+export type { TokenBudget } from "./context/budget.js";
+export { allocateTokenBudget, estimateTokens, truncateToTokenBudget } from "./context/budget.js";
+export type { ContextOptions, SystemPromptOptions } from "./context/builder.js";
 // Context
 export { buildContext, buildSystemPrompt as buildRichSystemPrompt } from "./context/builder.js";
-export type { ContextOptions, SystemPromptOptions } from "./context/builder.js";
-export { detectProject, detectProjectContext, detectLanguage, detectFramework, detectPackageManager } from "./context/project.js";
-export type { ProjectInfo, ProjectContext } from "./context/project.js";
+export type { CompactOptions, CompactResult, PayloadCompactOptions } from "./context/compact.js";
 export {
 	compactHistory,
-	shouldCompact,
 	compactMessages,
 	estimatePayloadTokens,
 	estimateTotalPayloadTokens,
+	shouldCompact,
 } from "./context/compact.js";
-export type { CompactOptions, CompactResult, PayloadCompactOptions } from "./context/compact.js";
-export { loadSoul, formatSoulPrompt } from "./context/soul.js";
+export type { ProjectContext, ProjectInfo } from "./context/project.js";
+export {
+	detectFramework,
+	detectLanguage,
+	detectPackageManager,
+	detectProject,
+	detectProjectContext,
+} from "./context/project.js";
 export type { SoulData } from "./context/soul.js";
-export { estimateTokens, allocateTokenBudget, truncateToTokenBudget } from "./context/budget.js";
-export type { TokenBudget } from "./context/budget.js";
-
+export { formatSoulPrompt, loadSoul } from "./context/soul.js";
+export type { ErrorCategory } from "./errors.js";
+// Error types and categorization
+export {
+	ContextOverflowError,
+	categorizeError,
+	friendlyErrorMessage,
+	isRetryable,
+	ProviderUnavailableError,
+} from "./errors.js";
+export type { AgentLoopOptions, MessagePayload } from "./loop.js";
+export { agentLoop } from "./loop.js";
+// Message building
+export { buildSystemPrompt, buildToolResult, buildUserMessage } from "./message.js";
+export type { ModelRecommendation, ModelTier, ProviderFamily, RouterRole } from "./model-router.js";
+// Smart model router
+export { inferProvider, MODEL_TIERS, ModelRouter } from "./model-router.js";
 // Providers
 export { DarpanaProvider } from "./providers/darpana.js";
 export { DirectProvider } from "./providers/direct.js";
-export { GeminiProvider } from "./providers/gemini.js";
-export type { GeminiProviderConfig } from "./providers/gemini.js";
-export { OpenAIProvider } from "./providers/openai.js";
-export type { OpenAIProviderConfig } from "./providers/openai.js";
+export type { FailoverEntry, FailoverProviderConfig, ProviderLike, ProviderStatus } from "./providers/failover.js";
 export { FailoverProvider } from "./providers/failover.js";
-export type { FailoverProviderConfig, FailoverEntry, ProviderLike, ProviderStatus } from "./providers/failover.js";
+export type { GeminiProviderConfig } from "./providers/gemini.js";
+export { GeminiProvider } from "./providers/gemini.js";
+export type { OpenAIProviderConfig } from "./providers/openai.js";
+export { OpenAIProvider } from "./providers/openai.js";
+export type { RetryOptions } from "./retry.js";
+// Retry logic
+export {
+	computeDelay,
+	DEFAULT_RETRY_OPTIONS,
+	getRetryAfterMs,
+	isRetryableError,
+	RetryableError,
+	withRetry,
+} from "./retry.js";
+export { PermissionEngine } from "./safety/permissions.js";
+// Safety
+export { DANGEROUS_PATTERNS, SAFE_COMMANDS, validateCommand } from "./safety/sandbox.js";
+// SSE stream parser
+export { parseSSEStream } from "./stream.js";
+export { akashaDepositDefinition, akashaTracesDefinition, createAkashaHandlers } from "./tools/akasha.js";
+export { askDefinition, createAskHandler } from "./tools/ask.js";
+export { bashDefinition, bashHandler } from "./tools/bash.js";
+export { registerBuiltinTools } from "./tools/builtin.js";
+export { editDefinition, editHandler } from "./tools/edit.js";
+export { globDefinition, globHandler } from "./tools/glob.js";
+export { grepDefinition, grepHandler } from "./tools/grep.js";
+// Built-in tools
+export { readDefinition, readHandler } from "./tools/read.js";
+export type { ToolHandler } from "./tools/registry.js";
+// Tool registry
+export { ToolRegistry } from "./tools/registry.js";
+export { writeDefinition, writeHandler } from "./tools/write.js";

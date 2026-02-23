@@ -3,15 +3,12 @@
  * and dispatches execution.
  */
 
-import type { ToolDefinition, ToolResult, ToolContext } from "@takumi/core";
-import { ToolError, createLogger } from "@takumi/core";
+import type { ToolDefinition, ToolResult } from "@takumi/core";
+import { createLogger } from "@takumi/core";
 
 const log = createLogger("tool-registry");
 
-export type ToolHandler = (
-	input: Record<string, unknown>,
-	signal?: AbortSignal,
-) => Promise<ToolResult>;
+export type ToolHandler = (input: Record<string, unknown>, signal?: AbortSignal) => Promise<ToolResult>;
 
 interface RegisteredTool {
 	definition: ToolDefinition;
@@ -56,11 +53,7 @@ export class ToolRegistry {
 	}
 
 	/** Execute a tool by name with the given input. */
-	async execute(
-		name: string,
-		input: Record<string, unknown>,
-		signal?: AbortSignal,
-	): Promise<ToolResult> {
+	async execute(name: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> {
 		const tool = this.tools.get(name);
 		if (!tool) {
 			return {

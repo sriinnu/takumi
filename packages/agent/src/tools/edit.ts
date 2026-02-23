@@ -2,8 +2,8 @@
  * Edit file tool — performs exact string replacement in a file.
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import type { ToolDefinition, ToolResult } from "@takumi/core";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import type { ToolDefinition } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
 
 export const editDefinition: ToolDefinition = {
@@ -63,7 +63,8 @@ export const editHandler: ToolHandler = async (input) => {
 
 		if (count === 0) {
 			return {
-				output: "Error: old_string not found in file. Make sure it matches exactly (including whitespace and indentation).",
+				output:
+					"Error: old_string not found in file. Make sure it matches exactly (including whitespace and indentation).",
 				isError: true,
 			};
 		}

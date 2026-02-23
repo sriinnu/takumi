@@ -10,11 +10,11 @@
  */
 
 import { readdir } from "node:fs/promises";
-import { join, dirname, basename } from "node:path";
-import { signal } from "@takumi/render";
-import type { Signal } from "@takumi/render";
+import { basename, dirname, join } from "node:path";
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
+import type { Signal } from "@takumi/render";
+import { signal } from "@takumi/render";
 import type { SlashCommandRegistry } from "./commands.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -156,14 +156,10 @@ export class CompletionEngine {
 	 * List directory entries and build CompletionItems.
 	 * Skips node_modules, .git, dist, etc.
 	 */
-	private async listDirectory(
-		dir: string,
-		pathPrefix: string,
-		filter: string,
-	): Promise<CompletionItem[]> {
+	private async listDirectory(dir: string, pathPrefix: string, filter: string): Promise<CompletionItem[]> {
 		let entries: import("node:fs").Dirent[];
 		try {
-			entries = await readdir(dir, { withFileTypes: true }) as unknown as import("node:fs").Dirent[];
+			entries = (await readdir(dir, { withFileTypes: true })) as unknown as import("node:fs").Dirent[];
 		} catch {
 			return [];
 		}
@@ -185,9 +181,7 @@ export class CompletionEngine {
 			// Apply filter (case-insensitive fuzzy containment)
 			if (filter && !name.toLowerCase().includes(filter)) continue;
 
-			const insertPath = dirPrefix
-				? `${dirPrefix}${name}${isDir ? "/" : ""}`
-				: `${name}${isDir ? "/" : ""}`;
+			const insertPath = dirPrefix ? `${dirPrefix}${name}${isDir ? "/" : ""}` : `${name}${isDir ? "/" : ""}`;
 
 			results.push({
 				label: isDir ? `${name}/` : name,
@@ -233,13 +227,11 @@ export class CompletionEngine {
 	 */
 	getModelCompletions(partial: string): CompletionItem[] {
 		const lower = partial.toLowerCase();
-		return KNOWN_MODELS
-			.filter((m) => m.toLowerCase().includes(lower))
-			.map((m) => ({
-				label: m,
-				insertText: `/model ${m}`,
-				kind: "model" as CompletionKind,
-			}));
+		return KNOWN_MODELS.filter((m) => m.toLowerCase().includes(lower)).map((m) => ({
+			label: m,
+			insertText: `/model ${m}`,
+			kind: "model" as CompletionKind,
+		}));
 	}
 }
 

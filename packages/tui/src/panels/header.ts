@@ -3,8 +3,8 @@
  */
 
 import type { Rect } from "@takumi/core";
-import { Component } from "@takumi/render";
 import type { Screen } from "@takumi/render";
+import { Component } from "@takumi/render";
 import type { AppState } from "../state.js";
 
 export interface HeaderPanelProps {
@@ -41,7 +41,7 @@ export class HeaderPanel extends Component {
 		// Center: working directory
 		const cwd = process.cwd();
 		const maxCwd = rect.width - logo.length - 20;
-		const cwdDisplay = cwd.length > maxCwd ? "..." + cwd.slice(-maxCwd + 3) : cwd;
+		const cwdDisplay = cwd.length > maxCwd ? `...${cwd.slice(-maxCwd + 3)}` : cwd;
 		screen.writeText(rect.y, rect.x + logo.length + 2, cwdDisplay, { fg: 7, bg: 54 });
 
 		// Right: session info

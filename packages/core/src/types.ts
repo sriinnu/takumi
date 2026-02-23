@@ -177,12 +177,7 @@ export interface Message {
 	usage?: Usage;
 }
 
-export type ContentBlock =
-	| TextBlock
-	| ThinkingBlock
-	| ToolUseBlock
-	| ToolResultBlock
-	| ImageBlock;
+export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock | ImageBlock;
 
 export interface TextBlock {
 	type: "text";
@@ -239,6 +234,41 @@ export interface SessionInfo {
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
+/**
+ * Docker-specific options for cluster isolation.
+ * Only used when `OrchestrationConfig.isolationMode` is `"docker"`.
+ */
+export interface DockerIsolationConfig {
+	/** Docker image to run (e.g. `"node:22-alpine"`). */
+	image: string;
+	/** Short-name bind-mounts: `"git"`, `"ssh"`, `"gh"`, `"npm"`. */
+	mounts: string[];
+	/** Environment-variable glob patterns forwarded into the container (e.g. `"AWS_*"`). */
+	envPassthrough: string[];
+}
+
+/**
+ * Multi-agent orchestration settings.
+ * Stored under the `"orchestration"` key in `takumi.config.json`.
+ */
+export interface OrchestrationConfig {
+	/** Enable multi-agent orchestration (default: `true`). */
+	enabled: boolean;
+	/** Execution mode applied when complexity classifier has not overridden it. */
+	defaultMode: "single" | "multi";
+	/**
+	 * Minimum complexity level that triggers multi-agent mode.
+	 * Tasks below this threshold run with a single agent.
+	 */
+	complexityThreshold: "TRIVIAL" | "SIMPLE" | "STANDARD" | "CRITICAL";
+	/** Maximum validation-retry attempts per cluster run. */
+	maxValidationRetries: number;
+	/** Sandbox mode applied to cluster worker execution. */
+	isolationMode: "none" | "worktree" | "docker";
+	/** Docker configuration — only used when `isolationMode = "docker"`. */
+	docker?: DockerIsolationConfig;
+}
+
 export interface TakumiConfig {
 	/** API key (provider-specific or generic) */
 	apiKey: string;
@@ -284,4 +314,7 @@ export interface TakumiConfig {
 
 	/** Enable experimental features */
 	experimental: Record<string, boolean>;
+
+	/** Multi-agent orchestration settings (optional; uses sensible defaults if absent). */
+	orchestration?: OrchestrationConfig;
 }

@@ -4,7 +4,7 @@
  * emits an event that the TUI catches and resolves.
  */
 
-import type { ToolDefinition, ToolResult } from "@takumi/core";
+import type { ToolDefinition } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
 
 export const askDefinition: ToolDefinition = {
@@ -28,9 +28,7 @@ export const askDefinition: ToolDefinition = {
  * Create an ask handler that uses the provided callback to get user input.
  * The callback is supplied by the TUI layer.
  */
-export function createAskHandler(
-	getUserInput: (question: string) => Promise<string>,
-): ToolHandler {
+export function createAskHandler(getUserInput: (question: string) => Promise<string>): ToolHandler {
 	return async (input) => {
 		const question = input.question as string;
 

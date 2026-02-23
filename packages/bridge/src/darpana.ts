@@ -4,7 +4,7 @@
  * a clean interface to the proxy.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { createLogger } from "@takumi/core";
 
 const log = createLogger("darpana-client");
@@ -75,15 +75,11 @@ export class DarpanaClient {
 		if (!this.config.binaryPath) return false;
 
 		try {
-			this.childProcess = spawn(
-				this.config.binaryPath,
-				["--port", String(this.config.port)],
-				{
-					stdio: ["ignore", "pipe", "pipe"],
-					detached: true,
-					env: { ...process.env },
-				},
-			);
+			this.childProcess = spawn(this.config.binaryPath, ["--port", String(this.config.port)], {
+				stdio: ["ignore", "pipe", "pipe"],
+				detached: true,
+				env: { ...process.env },
+			});
 
 			this.childProcess.unref();
 
