@@ -2,9 +2,9 @@
  * Tests for extended syntax highlighting — C/C++, Java, Ruby, SQL, Markdown.
  */
 
-import { describe, it, expect } from "vitest";
-import { tokenizeLine, LANGUAGE_MAP } from "../src/components/syntax.js";
-import type { Token, TokenType } from "../src/components/syntax.js";
+import { describe, expect, it } from "vitest";
+import type { TokenType } from "../src/components/syntax.js";
+import { LANGUAGE_MAP, tokenizeLine } from "../src/components/syntax.js";
 
 /** Helper: tokenize a line for a given language and return token types paired with text. */
 function tok(line: string, lang: string): Array<[TokenType, string]> {
@@ -107,7 +107,7 @@ describe("C/C++ highlighting", () => {
 	});
 
 	it("highlights function calls", () => {
-		const fns = tokensOfType("printf(\"hello\"); malloc(sizeof(int));", "c", "function");
+		const fns = tokensOfType('printf("hello"); malloc(sizeof(int));', "c", "function");
 		expect(fns).toContain("printf");
 		expect(fns).toContain("malloc");
 	});
@@ -262,9 +262,9 @@ describe("Ruby highlighting", () => {
 	});
 
 	it("registers ruby and rb aliases", () => {
-		expect(LANGUAGE_MAP["ruby"]).toBeDefined();
-		expect(LANGUAGE_MAP["rb"]).toBeDefined();
-		expect(LANGUAGE_MAP["ruby"]).toBe(LANGUAGE_MAP["rb"]);
+		expect(LANGUAGE_MAP.ruby).toBeDefined();
+		expect(LANGUAGE_MAP.rb).toBeDefined();
+		expect(LANGUAGE_MAP.ruby).toBe(LANGUAGE_MAP.rb);
 	});
 });
 
@@ -412,9 +412,9 @@ describe("Markdown highlighting", () => {
 	});
 
 	it("registers markdown and md aliases", () => {
-		expect(LANGUAGE_MAP["markdown"]).toBeDefined();
-		expect(LANGUAGE_MAP["md"]).toBeDefined();
-		expect(LANGUAGE_MAP["markdown"]).toBe(LANGUAGE_MAP["md"]);
+		expect(LANGUAGE_MAP.markdown).toBeDefined();
+		expect(LANGUAGE_MAP.md).toBeDefined();
+		expect(LANGUAGE_MAP.markdown).toBe(LANGUAGE_MAP.md);
 	});
 });
 
@@ -422,32 +422,32 @@ describe("Markdown highlighting", () => {
 
 describe("Language registration", () => {
 	it("has Go registered", () => {
-		expect(LANGUAGE_MAP["go"]).toBeDefined();
-		expect(LANGUAGE_MAP["golang"]).toBeDefined();
+		expect(LANGUAGE_MAP.go).toBeDefined();
+		expect(LANGUAGE_MAP.golang).toBeDefined();
 	});
 
 	it("has Rust registered", () => {
-		expect(LANGUAGE_MAP["rust"]).toBeDefined();
-		expect(LANGUAGE_MAP["rs"]).toBeDefined();
+		expect(LANGUAGE_MAP.rust).toBeDefined();
+		expect(LANGUAGE_MAP.rs).toBeDefined();
 	});
 
 	it("has Bash registered", () => {
-		expect(LANGUAGE_MAP["bash"]).toBeDefined();
-		expect(LANGUAGE_MAP["sh"]).toBeDefined();
-		expect(LANGUAGE_MAP["shell"]).toBeDefined();
-		expect(LANGUAGE_MAP["zsh"]).toBeDefined();
+		expect(LANGUAGE_MAP.bash).toBeDefined();
+		expect(LANGUAGE_MAP.sh).toBeDefined();
+		expect(LANGUAGE_MAP.shell).toBeDefined();
+		expect(LANGUAGE_MAP.zsh).toBeDefined();
 	});
 
 	it("has JSON/YAML registered", () => {
-		expect(LANGUAGE_MAP["json"]).toBeDefined();
-		expect(LANGUAGE_MAP["yaml"]).toBeDefined();
-		expect(LANGUAGE_MAP["yml"]).toBeDefined();
+		expect(LANGUAGE_MAP.json).toBeDefined();
+		expect(LANGUAGE_MAP.yaml).toBeDefined();
+		expect(LANGUAGE_MAP.yml).toBeDefined();
 	});
 
 	it("has HTML/CSS registered", () => {
-		expect(LANGUAGE_MAP["html"]).toBeDefined();
-		expect(LANGUAGE_MAP["htm"]).toBeDefined();
-		expect(LANGUAGE_MAP["css"]).toBeDefined();
-		expect(LANGUAGE_MAP["scss"]).toBeDefined();
+		expect(LANGUAGE_MAP.html).toBeDefined();
+		expect(LANGUAGE_MAP.htm).toBeDefined();
+		expect(LANGUAGE_MAP.css).toBeDefined();
+		expect(LANGUAGE_MAP.scss).toBeDefined();
 	});
 });

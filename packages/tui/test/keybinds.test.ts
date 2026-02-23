@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import { KeyBindingRegistry } from "../src/keybinds.js";
 import type { KeyEvent } from "@takumi/core";
+import { describe, expect, it, vi } from "vitest";
+import { KeyBindingRegistry } from "../src/keybinds.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -281,9 +281,7 @@ describe("KeyBindingRegistry", () => {
 			expect(reg.get("ctrl+alt+shift+meta+x")).toBeDefined();
 
 			// Also verify the event builds the same string
-			const result = reg.handle(
-				makeKeyEvent({ key: "x", ctrl: true, alt: true, shift: true, meta: true }),
-			);
+			const result = reg.handle(makeKeyEvent({ key: "x", ctrl: true, alt: true, shift: true, meta: true }));
 			expect(result).toBe(true);
 			expect(handler).toHaveBeenCalledOnce();
 		});

@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { isGitRepo, gitBranch, gitStatus, gitLog, gitRoot } from "@takumi/bridge";
 import { join } from "node:path";
+import { gitBranch, gitLog, gitRoot, gitStatus, isGitRepo } from "@takumi/bridge";
+import { describe, expect, it } from "vitest";
 
 // These tests run against the actual takumi repo (or its parent)
 const PROJECT_ROOT = join(import.meta.dirname, "../../..");

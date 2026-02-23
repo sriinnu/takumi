@@ -3,15 +3,8 @@
  * Tests theme creation, registration, switching, and color validation.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
-import {
-	defaultTheme,
-	getTheme,
-	setTheme,
-	registerTheme,
-	listThemes,
-	type Theme,
-} from "../src/theme.js";
+import { beforeEach, describe, expect, it } from "vitest";
+import { defaultTheme, getTheme, listThemes, registerTheme, setTheme, type Theme } from "../src/theme.js";
 
 describe("theme", () => {
 	beforeEach(() => {

@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
 import { Readable, Writable } from "node:stream";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mock child_process ───────────────────────────────────────────────────────
 
@@ -33,31 +33,31 @@ vi.mock("node:child_process", () => ({
 	spawn: vi.fn(() => mockProc),
 }));
 
+import { spawn } from "node:child_process";
 // Must import AFTER mock is declared
 import { McpClient } from "@takumi/bridge";
-import { spawn } from "node:child_process";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Push a JSON-RPC response into the mock stdout. */
 function sendResponse(id: number, result: unknown) {
-	const line = JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n";
+	const line = `${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`;
 	mockProc.stdout.push(line);
 }
 
 /** Push a JSON-RPC error response into the mock stdout. */
 function sendError(id: number, code: number, message: string) {
-	const line = JSON.stringify({
+	const line = `${JSON.stringify({
 		jsonrpc: "2.0",
 		id,
 		error: { code, message },
-	}) + "\n";
+	})}\n`;
 	mockProc.stdout.push(line);
 }
 
 /** Push a server-initiated notification into the mock stdout. */
 function sendNotification(method: string, params?: Record<string, unknown>) {
-	const line = JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n";
+	const line = `${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`;
 	mockProc.stdout.push(line);
 }
 
@@ -191,11 +191,7 @@ describe("McpClient", () => {
 			sendResponse(1, { protocolVersion: "2024-11-05", capabilities: {} });
 			await startPromise;
 
-			expect(spawn).toHaveBeenCalledWith(
-				"test-mcp",
-				[],
-				expect.objectContaining({ cwd: "/tmp/project" }),
-			);
+			expect(spawn).toHaveBeenCalledWith("test-mcp", [], expect.objectContaining({ cwd: "/tmp/project" }));
 
 			await cwdClient.stop();
 		});
@@ -518,7 +514,7 @@ describe("McpClient", () => {
 			const fullLine = JSON.stringify({ jsonrpc: "2.0", id: 2, result: { ok: true } });
 			const mid = Math.floor(fullLine.length / 2);
 			mockProc.stdout.push(fullLine.slice(0, mid));
-			mockProc.stdout.push(fullLine.slice(mid) + "\n");
+			mockProc.stdout.push(`${fullLine.slice(mid)}\n`);
 
 			const result = await promise;
 			expect(result).toEqual({ ok: true });
@@ -549,10 +545,7 @@ describe("McpClient", () => {
 			const promise = client.call("tools/call", { name: "empty_line_tool" });
 			await vi.advanceTimersByTimeAsync(0);
 
-			const chunk =
-				"\n\n" +
-				JSON.stringify({ jsonrpc: "2.0", id: 2, result: { value: 42 } }) +
-				"\n\n";
+			const chunk = `\n\n${JSON.stringify({ jsonrpc: "2.0", id: 2, result: { value: 42 } })}\n\n`;
 			mockProc.stdout.push(chunk);
 
 			const result = await promise;
@@ -567,9 +560,7 @@ describe("McpClient", () => {
 			await vi.advanceTimersByTimeAsync(0);
 
 			mockProc.stdout.push("NOT VALID JSON\n");
-			mockProc.stdout.push(
-				JSON.stringify({ jsonrpc: "2.0", id: 2, result: { recovered: true } }) + "\n",
-			);
+			mockProc.stdout.push(`${JSON.stringify({ jsonrpc: "2.0", id: 2, result: { recovered: true } })}\n`);
 
 			const result = await promise;
 			expect(result).toEqual({ recovered: true });

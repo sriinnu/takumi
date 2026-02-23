@@ -1,28 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import {
-	mkdtempSync,
-	mkdirSync,
-	writeFileSync,
-	rmSync,
-} from "node:fs";
-import { join, basename } from "node:path";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import type { ToolDefinition } from "@takumi/core";
-import { buildSystemPrompt, type SystemPromptOptions } from "../src/context/builder.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { allocateTokenBudget, estimateTokens, truncateToTokenBudget } from "../src/context/budget.js";
+import { buildSystemPrompt } from "../src/context/builder.js";
 import type { ProjectContext } from "../src/context/project.js";
-import {
-	detectProjectContext,
-	detectLanguage,
-	detectFramework,
-	detectPackageManager,
-} from "../src/context/project.js";
+import { detectFramework, detectLanguage, detectPackageManager, detectProjectContext } from "../src/context/project.js";
 import type { SoulData } from "../src/context/soul.js";
-import {
-	allocateTokenBudget,
-	estimateTokens,
-	truncateToTokenBudget,
-	type TokenBudget,
-} from "../src/context/budget.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -216,9 +201,7 @@ describe("buildSystemPrompt", () => {
 	});
 
 	it("shows tool category and description", () => {
-		const tools = [
-			makeTool({ name: "write_file", description: "Write to a file.", category: "write" }),
-		];
+		const tools = [makeTool({ name: "write_file", description: "Write to a file.", category: "write" })];
 		const result = buildSystemPrompt({ tools });
 
 		expect(result).toContain("## write_file");
@@ -227,18 +210,14 @@ describe("buildSystemPrompt", () => {
 	});
 
 	it("marks tools that require permission", () => {
-		const tools = [
-			makeTool({ name: "bash", requiresPermission: true, category: "execute" }),
-		];
+		const tools = [makeTool({ name: "bash", requiresPermission: true, category: "execute" })];
 		const result = buildSystemPrompt({ tools });
 
 		expect(result).toContain("Requires user permission before execution.");
 	});
 
 	it("does not mark tools that do not require permission", () => {
-		const tools = [
-			makeTool({ name: "read_file", requiresPermission: false }),
-		];
+		const tools = [makeTool({ name: "read_file", requiresPermission: false })];
 		const result = buildSystemPrompt({ tools });
 
 		expect(result).not.toContain("Requires user permission before execution.");
@@ -271,9 +250,7 @@ describe("buildSystemPrompt", () => {
 			packageManager: undefined,
 			gitBranch: "main",
 		};
-		const tools = [
-			makeTool({ name: "cargo_build", description: "Build with cargo.", category: "execute" }),
-		];
+		const tools = [makeTool({ name: "cargo_build", description: "Build with cargo.", category: "execute" })];
 		const result = buildSystemPrompt({
 			tools,
 			soul,
@@ -386,10 +363,7 @@ describe("detectProjectContext", () => {
 	// ── Node / TypeScript project ────────────────────────────────────────────
 
 	it("detects a Node.js project with package.json", async () => {
-		writeFileSync(
-			join(tmpDir, "package.json"),
-			JSON.stringify({ name: "my-node-app", dependencies: {} }),
-		);
+		writeFileSync(join(tmpDir, "package.json"), JSON.stringify({ name: "my-node-app", dependencies: {} }));
 		const ctx = await detectProjectContext(tmpDir);
 
 		expect(ctx.name).toBe("my-node-app");
@@ -398,14 +372,8 @@ describe("detectProjectContext", () => {
 	});
 
 	it("detects TypeScript when tsconfig.json exists", async () => {
-		writeFileSync(
-			join(tmpDir, "package.json"),
-			JSON.stringify({ name: "my-ts-app" }),
-		);
-		writeFileSync(
-			join(tmpDir, "tsconfig.json"),
-			JSON.stringify({ compilerOptions: { strict: true } }),
-		);
+		writeFileSync(join(tmpDir, "package.json"), JSON.stringify({ name: "my-ts-app" }));
+		writeFileSync(join(tmpDir, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true } }));
 		const ctx = await detectProjectContext(tmpDir);
 
 		expect(ctx.language).toBe("TypeScript");
@@ -427,10 +395,7 @@ describe("detectProjectContext", () => {
 	// ── Python project ───────────────────────────────────────────────────────
 
 	it("detects a Python project with pyproject.toml", async () => {
-		writeFileSync(
-			join(tmpDir, "pyproject.toml"),
-			'[project]\nname = "my-python-app"\n',
-		);
+		writeFileSync(join(tmpDir, "pyproject.toml"), '[project]\nname = "my-python-app"\n');
 		const ctx = await detectProjectContext(tmpDir);
 
 		expect(ctx.language).toBe("Python");
@@ -453,10 +418,7 @@ describe("detectProjectContext", () => {
 	// ── Rust project ─────────────────────────────────────────────────────────
 
 	it("detects a Rust project with Cargo.toml", async () => {
-		writeFileSync(
-			join(tmpDir, "Cargo.toml"),
-			'[package]\nname = "my-rust-app"\nversion = "0.1.0"\n',
-		);
+		writeFileSync(join(tmpDir, "Cargo.toml"), '[package]\nname = "my-rust-app"\nversion = "0.1.0"\n');
 		const ctx = await detectProjectContext(tmpDir);
 
 		expect(ctx.language).toBe("Rust");
@@ -466,10 +428,7 @@ describe("detectProjectContext", () => {
 	// ── Go project ───────────────────────────────────────────────────────────
 
 	it("detects a Go project with go.mod", async () => {
-		writeFileSync(
-			join(tmpDir, "go.mod"),
-			"module github.com/user/my-go-app\n\ngo 1.21\n",
-		);
+		writeFileSync(join(tmpDir, "go.mod"), "module github.com/user/my-go-app\n\ngo 1.21\n");
 		const ctx = await detectProjectContext(tmpDir);
 
 		expect(ctx.language).toBe("Go");
@@ -615,10 +574,7 @@ describe("detectProjectContext", () => {
 	});
 
 	it("returns undefined packageManager for non-Node projects", async () => {
-		writeFileSync(
-			join(tmpDir, "Cargo.toml"),
-			'[package]\nname = "app"\nversion = "0.1.0"\n',
-		);
+		writeFileSync(join(tmpDir, "Cargo.toml"), '[package]\nname = "app"\nversion = "0.1.0"\n');
 		const ctx = await detectProjectContext(tmpDir);
 
 		expect(ctx.packageManager).toBeUndefined();
@@ -636,10 +592,7 @@ describe("detectProjectContext", () => {
 
 	it("detects TypeScript strict mode convention", async () => {
 		writeFileSync(join(tmpDir, "package.json"), JSON.stringify({ name: "app" }));
-		writeFileSync(
-			join(tmpDir, "tsconfig.json"),
-			JSON.stringify({ compilerOptions: { strict: true } }),
-		);
+		writeFileSync(join(tmpDir, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true } }));
 		const ctx = await detectProjectContext(tmpDir);
 
 		expect(ctx.conventions).toContain("TypeScript strict mode enabled.");
@@ -731,10 +684,7 @@ describe("detectFramework", () => {
 	});
 
 	it("detects Svelte from devDependencies", () => {
-		writeFileSync(
-			join(tmpDir, "package.json"),
-			JSON.stringify({ devDependencies: { svelte: "^4.0.0" } }),
-		);
+		writeFileSync(join(tmpDir, "package.json"), JSON.stringify({ devDependencies: { svelte: "^4.0.0" } }));
 		expect(detectFramework(tmpDir, "JavaScript")).toBe("Svelte");
 	});
 
@@ -749,10 +699,7 @@ describe("detectFramework", () => {
 	});
 
 	it("returns null when no framework is detected", () => {
-		writeFileSync(
-			join(tmpDir, "package.json"),
-			JSON.stringify({ dependencies: { "left-pad": "1.0.0" } }),
-		);
+		writeFileSync(join(tmpDir, "package.json"), JSON.stringify({ dependencies: { "left-pad": "1.0.0" } }));
 		expect(detectFramework(tmpDir, "JavaScript")).toBeNull();
 	});
 
@@ -806,10 +753,7 @@ describe("detectPackageManager", () => {
 	});
 
 	it("detects from packageManager field in package.json", () => {
-		writeFileSync(
-			join(tmpDir, "package.json"),
-			JSON.stringify({ name: "app", packageManager: "yarn@4.0.0" }),
-		);
+		writeFileSync(join(tmpDir, "package.json"), JSON.stringify({ name: "app", packageManager: "yarn@4.0.0" }));
 		expect(detectPackageManager(tmpDir)).toBe("yarn");
 	});
 

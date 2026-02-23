@@ -127,6 +127,46 @@ export function gitRoot(cwd: string): string | null {
 	return gitExec("rev-parse --show-toplevel", cwd);
 }
 
+// ── Worktree helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Create a linked git worktree at `path` checked out to `commitish` (default: HEAD).
+ * Returns the resolved worktree path on success, or `null` on failure.
+ *
+ * @param repoRoot - Absolute path to the repository root.
+ * @param path     - Destination directory for the new worktree.
+ * @param commitish - Git ref to check out (default: `"HEAD"`).
+ */
+export function gitWorktreeAdd(repoRoot: string, path: string, commitish = "HEAD"): string | null {
+	const result = gitExec(`worktree add "${path}" ${commitish}`, repoRoot);
+	return result !== null ? path : null;
+}
+
+/**
+ * Remove a linked git worktree created by {@link gitWorktreeAdd}.
+ * Passes `--force` so the worktree is removed even if it has local modifications.
+ *
+ * @param repoRoot - Absolute path to the repository root.
+ * @param path     - Path of the worktree to remove.
+ */
+export function gitWorktreeRemove(repoRoot: string, path: string): boolean {
+	return gitExec(`worktree remove --force "${path}"`, repoRoot) !== null;
+}
+
+/**
+ * List all registered git worktrees, returning an array of their paths.
+ *
+ * @param repoRoot - Absolute path to the repository root.
+ */
+export function gitWorktreeList(repoRoot: string): string[] {
+	const out = gitExec("worktree list --porcelain", repoRoot);
+	if (!out) return [];
+	return out
+		.split("\n")
+		.filter((l) => l.startsWith("worktree "))
+		.map((l) => l.slice("worktree ".length).trim());
+}
+
 // ── Internal ──────────────────────────────────────────────────────────────────
 
 function gitExec(args: string, cwd: string): string | null {

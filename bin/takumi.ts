@@ -444,7 +444,8 @@ async function main(): Promise<void> {
 
 	const app = new TakumiApp({
 		config,
-		sendMessage: (messages: any, system: any, toolDefs: any) => provider.sendMessage(messages, system, toolDefs),
+		sendMessage: (messages: any, system: any, toolDefs: any, signal: any, options: any) =>
+			provider.sendMessage(messages, system, toolDefs, signal, options),
 		tools,
 		resumeSessionId: args.resume,
 	});
@@ -481,7 +482,8 @@ async function runOneShot(config: TakumiConfig, prompt: string, fallbackName?: s
 	});
 
 	const loop = agentLoop(prompt, [], {
-		sendMessage: (messages: any, sys: any, toolDefs: any) => provider.sendMessage(messages, sys, toolDefs),
+		sendMessage: (messages: any, sys: any, toolDefs: any, signal: any, options: any) =>
+			provider.sendMessage(messages, sys, toolDefs, signal, options),
 		tools,
 		systemPrompt: system,
 		maxTurns: config.maxTurns,

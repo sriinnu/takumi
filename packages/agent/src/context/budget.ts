@@ -82,27 +82,18 @@ export function estimateTokens(text: string): number {
  *   4. Remaining goes to history
  *   5. If history needs more, steal from system (down to MIN_SYSTEM_TOKENS)
  */
-export function allocateTokenBudget(
-	totalTokens: number,
-	historyTokens: number,
-): TokenBudget {
+export function allocateTokenBudget(totalTokens: number, historyTokens: number): TokenBudget {
 	// Ensure sensible minimums
 	const total = Math.max(totalTokens, MIN_SYSTEM_TOKENS + MIN_RESPONSE_TOKENS);
 
 	// Step 1: Reserve response tokens
-	const response = Math.max(
-		MIN_RESPONSE_TOKENS,
-		Math.floor(total * RESPONSE_FRACTION),
-	);
+	const response = Math.max(MIN_RESPONSE_TOKENS, Math.floor(total * RESPONSE_FRACTION));
 
 	// Step 2: Reserve tool tokens
 	const tools = Math.floor(total * TOOLS_FRACTION);
 
 	// Step 3: Calculate system budget (includes tools)
-	let system = Math.max(
-		MIN_SYSTEM_TOKENS,
-		Math.floor(total * SYSTEM_FRACTION),
-	);
+	let system = Math.max(MIN_SYSTEM_TOKENS, Math.floor(total * SYSTEM_FRACTION));
 
 	// Step 4: Remaining goes to history
 	let history = total - response - system;

@@ -8,9 +8,9 @@
 
 import type { AgentEvent } from "@takumi/core";
 import { AgentErrorClass, createLogger } from "@takumi/core";
-import type { MessagePayload } from "../loop.js";
-import { RetryableError } from "../retry.js";
 import { ProviderUnavailableError } from "../errors.js";
+import type { MessagePayload, SendMessageOptions } from "../loop.js";
+import { RetryableError } from "../retry.js";
 
 const log = createLogger("openai-provider");
 
@@ -92,9 +92,7 @@ export function convertMessages(messages: MessagePayload[]): OpenAIMessage[] {
 						typeof block.content === "string"
 							? block.content
 							: Array.isArray(block.content)
-								? block.content
-									.map((c: any) => (c.type === "text" ? c.text : JSON.stringify(c)))
-									.join("\n")
+								? block.content.map((c: any) => (c.type === "text" ? c.text : JSON.stringify(c))).join("\n")
 								: JSON.stringify(block.content ?? "");
 					result.push({
 						role: "tool",
@@ -180,9 +178,7 @@ interface PendingToolCall {
 /**
  * Parse an OpenAI SSE stream into AgentEvent objects.
  */
-export async function* parseOpenAIStream(
-	stream: ReadableStream<Uint8Array>,
-): AsyncGenerator<AgentEvent> {
+export async function* parseOpenAIStream(stream: ReadableStream<Uint8Array>): AsyncGenerator<AgentEvent> {
 	const decoder = new TextDecoder();
 	const reader = stream.getReader();
 
@@ -308,9 +304,7 @@ export async function* parseOpenAIStream(
 	}
 }
 
-function* emitPendingToolCalls(
-	pendingToolCalls: Map<number, PendingToolCall>,
-): Generator<AgentEvent> {
+function* emitPendingToolCalls(pendingToolCalls: Map<number, PendingToolCall>): Generator<AgentEvent> {
 	// Emit in index order
 	const sorted = [...pendingToolCalls.entries()].sort((a, b) => a[0] - b[0]);
 	for (const [, tc] of sorted) {
@@ -366,6 +360,7 @@ export class OpenAIProvider {
 		system: string,
 		tools?: any[],
 		signal?: AbortSignal,
+		options?: SendMessageOptions,
 	): AsyncGenerator<AgentEvent> {
 		if (!this.apiKey) {
 			throw new AgentErrorClass(
@@ -381,8 +376,9 @@ export class OpenAIProvider {
 		}
 		openaiMessages.push(...convertMessages(messages));
 
+		const model = options?.model ?? this.model;
 		const body: Record<string, unknown> = {
-			model: this.model,
+			model,
 			messages: openaiMessages,
 			stream: true,
 			max_tokens: this.maxTokens,
@@ -395,7 +391,7 @@ export class OpenAIProvider {
 		}
 
 		log.info("Sending message to OpenAI-compatible API", {
-			model: this.model,
+			model,
 			endpoint: this.endpoint,
 		});
 
@@ -403,9 +399,7 @@ export class OpenAIProvider {
 		const timeoutController = new AbortController();
 		const timeoutId = setTimeout(() => timeoutController.abort(), this.streamingTimeout);
 
-		const compositeSignal = signal
-			? AbortSignal.any([signal, timeoutController.signal])
-			: timeoutController.signal;
+		const compositeSignal = signal ? AbortSignal.any([signal, timeoutController.signal]) : timeoutController.signal;
 
 		try {
 			const response = await fetch(this.endpoint, {
@@ -429,8 +423,7 @@ export class OpenAIProvider {
 				}
 
 				const message = parsed.error?.message ?? `HTTP ${response.status}`;
-				const retryable =
-					response.status >= 500 || response.status === 429;
+				const retryable = response.status >= 500 || response.status === 429;
 
 				// Extract Retry-After header for 429 responses
 				if (response.status === 429) {
@@ -441,18 +434,11 @@ export class OpenAIProvider {
 							: Number(retryAfterHeader) * 1000
 						: undefined;
 
-					throw new RetryableError(
-						`OpenAI API rate limited: ${message}`,
-						429,
-						retryAfterMs,
-					);
+					throw new RetryableError(`OpenAI API rate limited: ${message}`, 429, retryAfterMs);
 				}
 
 				if (retryable) {
-					throw new RetryableError(
-						`OpenAI API error: ${message}`,
-						response.status,
-					);
+					throw new RetryableError(`OpenAI API error: ${message}`, response.status);
 				}
 
 				throw new AgentErrorClass(`OpenAI API error: ${message}`, false);
@@ -472,17 +458,10 @@ export class OpenAIProvider {
 				if (signal?.aborted) {
 					throw err; // User-initiated abort, let it propagate
 				}
-				throw new ProviderUnavailableError(
-					"openai",
-					`OpenAI API request timed out after ${this.streamingTimeout}ms`,
-				);
+				throw new ProviderUnavailableError("openai", `OpenAI API request timed out after ${this.streamingTimeout}ms`);
 			}
 
-			throw new ProviderUnavailableError(
-				"openai",
-				`API connection error: ${(err as Error).message}`,
-				err as Error,
-			);
+			throw new ProviderUnavailableError("openai", `API connection error: ${(err as Error).message}`, err as Error);
 		} finally {
 			clearTimeout(timeoutId);
 		}

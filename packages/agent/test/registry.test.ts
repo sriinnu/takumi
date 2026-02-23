@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import { ToolRegistry, type ToolHandler } from "../src/tools/registry.js";
 import type { ToolDefinition, ToolResult } from "@takumi/core";
+import { describe, expect, it, vi } from "vitest";
+import { type ToolHandler, ToolRegistry } from "../src/tools/registry.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -290,7 +290,7 @@ describe("ToolRegistry", () => {
 
 		it("passes undefined signal when none is provided", async () => {
 			const reg = new ToolRegistry();
-			let receivedSignal: AbortSignal | undefined = undefined;
+			let receivedSignal: AbortSignal | undefined;
 			let signalWasPassed = false;
 
 			const handler: ToolHandler = async (_input, signal) => {

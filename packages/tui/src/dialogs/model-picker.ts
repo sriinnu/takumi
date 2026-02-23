@@ -4,16 +4,12 @@
  * Pure logic/state class — no rendering.
  */
 
-import { signal } from "@takumi/render";
-import type { Signal } from "@takumi/render";
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
+import type { Signal } from "@takumi/render";
+import { signal } from "@takumi/render";
 
-const DEFAULT_MODELS = [
-	"claude-opus-4-20250514",
-	"claude-sonnet-4-20250514",
-	"claude-haiku-3-20250307",
-];
+const DEFAULT_MODELS = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "claude-haiku-3-20250307"];
 
 export class ModelPicker {
 	private readonly _isOpen: Signal<boolean> = signal(false);

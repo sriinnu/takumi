@@ -1,14 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-	OpenAIProvider,
-	convertMessages,
-	convertTools,
-	parseOpenAIStream,
-} from "../src/providers/openai.js";
 import type { AgentEvent } from "@takumi/core";
-import { RetryableError } from "../src/retry.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProviderUnavailableError } from "../src/errors.js";
 import type { MessagePayload } from "../src/loop.js";
+import { convertMessages, convertTools, OpenAIProvider, parseOpenAIStream } from "../src/providers/openai.js";
+import { RetryableError } from "../src/retry.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -51,11 +46,7 @@ function sseData(data: unknown): string {
 }
 
 /** Build a typical OpenAI streaming chunk. */
-function chunk(
-	delta: Record<string, any>,
-	finishReason: string | null = null,
-	usage?: Record<string, any>,
-): string {
+function chunk(delta: Record<string, any>, finishReason: string | null = null, usage?: Record<string, any>): string {
 	const obj: any = {
 		id: "chatcmpl-test",
 		object: "chat.completion.chunk",
@@ -74,11 +65,7 @@ function chunk(
 }
 
 /** Build a mock Response for fetch. */
-function mockResponse(
-	body: string,
-	status = 200,
-	headers: Record<string, string> = {},
-): Response {
+function mockResponse(body: string, status = 200, headers: Record<string, string> = {}): Response {
 	const encoder = new TextEncoder();
 	const stream = new ReadableStream({
 		start(controller) {
@@ -98,11 +85,7 @@ function mockResponse(
 }
 
 /** Build an error Response (non-streaming JSON body). */
-function mockErrorResponse(
-	status: number,
-	message: string,
-	headers: Record<string, string> = {},
-): Response {
+function mockErrorResponse(status: number, message: string, headers: Record<string, string> = {}): Response {
 	return new Response(JSON.stringify({ error: { message } }), {
 		status,
 		statusText: "Error",
@@ -118,17 +101,13 @@ function mockErrorResponse(
 
 describe("convertMessages", () => {
 	it("converts simple user text message", () => {
-		const messages: MessagePayload[] = [
-			{ role: "user", content: "Hello" },
-		];
+		const messages: MessagePayload[] = [{ role: "user", content: "Hello" }];
 		const result = convertMessages(messages);
 		expect(result).toEqual([{ role: "user", content: "Hello" }]);
 	});
 
 	it("converts simple assistant text message", () => {
-		const messages: MessagePayload[] = [
-			{ role: "assistant", content: "Hi there!" },
-		];
+		const messages: MessagePayload[] = [{ role: "assistant", content: "Hi there!" }];
 		const result = convertMessages(messages);
 		expect(result).toEqual([{ role: "assistant", content: "Hi there!" }]);
 	});
@@ -312,9 +291,7 @@ describe("convertMessages", () => {
 		const messages: MessagePayload[] = [
 			{
 				role: "assistant",
-				content: [
-					{ type: "tool_use", id: "toolu_x", name: "get_status", input: {} },
-				],
+				content: [{ type: "tool_use", id: "toolu_x", name: "get_status", input: {} }],
 			},
 		];
 		const result = convertMessages(messages);
@@ -328,15 +305,11 @@ describe("convertMessages", () => {
 			{ role: "user", content: [{ type: "text", text: "Read this file" }] },
 			{
 				role: "assistant",
-				content: [
-					{ type: "tool_use", id: "t1", name: "read_file", input: { path: "/x.ts" } },
-				],
+				content: [{ type: "tool_use", id: "t1", name: "read_file", input: { path: "/x.ts" } }],
 			},
 			{
 				role: "user",
-				content: [
-					{ type: "tool_result", tool_use_id: "t1", content: "file contents" },
-				],
+				content: [{ type: "tool_result", tool_use_id: "t1", content: "file contents" }],
 			},
 			{ role: "assistant", content: [{ type: "text", text: "Here is the file." }] },
 		];
@@ -368,9 +341,7 @@ describe("convertMessages", () => {
 			},
 		];
 		const result = convertMessages(messages);
-		expect(result).toEqual([
-			{ role: "tool", tool_call_id: "toolu_arr", content: "First part\nSecond part" },
-		]);
+		expect(result).toEqual([{ role: "tool", tool_call_id: "toolu_arr", content: "First part\nSecond part" }]);
 	});
 });
 
@@ -456,11 +427,7 @@ describe("convertTools", () => {
 describe("parseOpenAIStream", () => {
 	describe("text deltas", () => {
 		it("emits text_delta for content in delta", async () => {
-			const sse =
-				chunk({ role: "assistant" }) +
-				chunk({ content: "Hello" }) +
-				chunk({ content: " world" }) +
-				"data: [DONE]\n\n";
+			const sse = `${chunk({ role: "assistant" }) + chunk({ content: "Hello" }) + chunk({ content: " world" })}data: [DONE]\n\n`;
 
 			const events = await collectEvents(createSSEStream(sse));
 			const textEvents = events.filter((e) => e.type === "text_delta");
@@ -470,10 +437,7 @@ describe("parseOpenAIStream", () => {
 		});
 
 		it("ignores delta with empty content string", async () => {
-			const sse =
-				chunk({ content: "" }) +
-				chunk({ content: "real" }) +
-				"data: [DONE]\n\n";
+			const sse = `${chunk({ content: "" }) + chunk({ content: "real" })}data: [DONE]\n\n`;
 
 			const events = await collectEvents(createSSEStream(sse));
 			const textEvents = events.filter((e) => e.type === "text_delta");
@@ -482,7 +446,7 @@ describe("parseOpenAIStream", () => {
 		});
 
 		it("handles unicode in text content", async () => {
-			const sse = chunk({ content: "Hello 匠 🎨" }) + "data: [DONE]\n\n";
+			const sse = `${chunk({ content: "Hello 匠 🎨" })}data: [DONE]\n\n`;
 			const events = await collectEvents(createSSEStream(sse));
 			const textEvents = events.filter((e) => e.type === "text_delta");
 			expect(textEvents[0]).toEqual({ type: "text_delta", text: "Hello 匠 🎨" });
@@ -503,14 +467,10 @@ describe("parseOpenAIStream", () => {
 					],
 				}) +
 				chunk({
-					tool_calls: [
-						{ index: 0, function: { arguments: '{"path":' } },
-					],
+					tool_calls: [{ index: 0, function: { arguments: '{"path":' } }],
 				}) +
 				chunk({
-					tool_calls: [
-						{ index: 0, function: { arguments: '"/src/main.ts"}' } },
-					],
+					tool_calls: [{ index: 0, function: { arguments: '"/src/main.ts"}' } }],
 				}) +
 				chunk({}, "tool_calls") +
 				"data: [DONE]\n\n";
@@ -545,14 +505,10 @@ describe("parseOpenAIStream", () => {
 					],
 				}) +
 				chunk({
-					tool_calls: [
-						{ index: 0, function: { arguments: '{"path":"a.ts"}' } },
-					],
+					tool_calls: [{ index: 0, function: { arguments: '{"path":"a.ts"}' } }],
 				}) +
 				chunk({
-					tool_calls: [
-						{ index: 1, function: { arguments: '{"command":"ls"}' } },
-					],
+					tool_calls: [{ index: 1, function: { arguments: '{"command":"ls"}' } }],
 				}) +
 				chunk({}, "tool_calls") +
 				"data: [DONE]\n\n";
@@ -629,10 +585,7 @@ describe("parseOpenAIStream", () => {
 
 	describe("finish reasons", () => {
 		it("emits done with end_turn for stop finish_reason", async () => {
-			const sse =
-				chunk({ content: "Hello" }) +
-				chunk({}, "stop") +
-				"data: [DONE]\n\n";
+			const sse = `${chunk({ content: "Hello" }) + chunk({}, "stop")}data: [DONE]\n\n`;
 
 			const events = await collectEvents(createSSEStream(sse));
 			const doneEvents = events.filter((e) => e.type === "done");
@@ -662,10 +615,7 @@ describe("parseOpenAIStream", () => {
 		});
 
 		it("emits done with max_tokens for length finish_reason", async () => {
-			const sse =
-				chunk({ content: "Truncated output" }) +
-				chunk({}, "length") +
-				"data: [DONE]\n\n";
+			const sse = `${chunk({ content: "Truncated output" }) + chunk({}, "length")}data: [DONE]\n\n`;
 
 			const events = await collectEvents(createSSEStream(sse));
 			const doneEvents = events.filter((e) => e.type === "done");
@@ -674,9 +624,7 @@ describe("parseOpenAIStream", () => {
 		});
 
 		it("emits end_turn when [DONE] received without finish_reason", async () => {
-			const sse =
-				chunk({ content: "Hello" }) +
-				"data: [DONE]\n\n";
+			const sse = `${chunk({ content: "Hello" })}data: [DONE]\n\n`;
 
 			const events = await collectEvents(createSSEStream(sse));
 			const doneEvents = events.filter((e) => e.type === "done");
@@ -711,13 +659,11 @@ describe("parseOpenAIStream", () => {
 		});
 
 		it("extracts cached_tokens from prompt_tokens_details", async () => {
-			const sse =
-				chunk({}, "stop", {
-					prompt_tokens: 200,
-					completion_tokens: 100,
-					prompt_tokens_details: { cached_tokens: 50 },
-				}) +
-				"data: [DONE]\n\n";
+			const sse = `${chunk({}, "stop", {
+				prompt_tokens: 200,
+				completion_tokens: 100,
+				prompt_tokens_details: { cached_tokens: 50 },
+			})}data: [DONE]\n\n`;
 
 			const events = await collectEvents(createSSEStream(sse));
 			const usageEvents = events.filter((e) => e.type === "usage_update");
@@ -726,9 +672,7 @@ describe("parseOpenAIStream", () => {
 		});
 
 		it("handles missing usage gracefully", async () => {
-			const sse =
-				chunk({ content: "No usage" }) +
-				"data: [DONE]\n\n";
+			const sse = `${chunk({ content: "No usage" })}data: [DONE]\n\n`;
 
 			const events = await collectEvents(createSSEStream(sse));
 			const usageEvents = events.filter((e) => e.type === "usage_update");
@@ -758,11 +702,7 @@ describe("parseOpenAIStream", () => {
 			});
 			// Split the JSON in the middle
 			const mid = Math.floor(full.length / 2);
-			const chunks = [
-				`data: ${full.slice(0, mid)}`,
-				`${full.slice(mid)}\n\n`,
-				"data: [DONE]\n\n",
-			];
+			const chunks = [`data: ${full.slice(0, mid)}`, `${full.slice(mid)}\n\n`, "data: [DONE]\n\n"];
 			const events = await collectEvents(createChunkedSSEStream(chunks));
 			const textEvents = events.filter((e) => e.type === "text_delta");
 			expect(textEvents).toHaveLength(1);
@@ -782,11 +722,7 @@ describe("parseOpenAIStream", () => {
 		});
 
 		it("ignores SSE comments (lines starting with :)", async () => {
-			const sse =
-				": this is a comment\n" +
-				chunk({ content: "Hi" }) +
-				": another comment\n" +
-				"data: [DONE]\n\n";
+			const sse = `: this is a comment\n${chunk({ content: "Hi" })}: another comment\ndata: [DONE]\n\n`;
 
 			const events = await collectEvents(createSSEStream(sse));
 			const textEvents = events.filter((e) => e.type === "text_delta");
@@ -794,10 +730,7 @@ describe("parseOpenAIStream", () => {
 		});
 
 		it("skips malformed JSON chunks without crashing", async () => {
-			const sse =
-				"data: {not valid json}\n\n" +
-				chunk({ content: "recovered" }) +
-				"data: [DONE]\n\n";
+			const sse = `data: {not valid json}\n\n${chunk({ content: "recovered" })}data: [DONE]\n\n`;
 
 			const events = await collectEvents(createSSEStream(sse));
 			const textEvents = events.filter((e) => e.type === "text_delta");
@@ -817,10 +750,7 @@ describe("parseOpenAIStream", () => {
 		});
 
 		it("ignores delta with only role field", async () => {
-			const sse =
-				chunk({ role: "assistant" }) +
-				chunk({ content: "Text" }) +
-				"data: [DONE]\n\n";
+			const sse = `${chunk({ role: "assistant" }) + chunk({ content: "Text" })}data: [DONE]\n\n`;
 
 			const events = await collectEvents(createSSEStream(sse));
 			const textEvents = events.filter((e) => e.type === "text_delta");
@@ -868,13 +798,7 @@ describe("parseOpenAIStream", () => {
 
 			const events = await collectEvents(createSSEStream(sse));
 			const types = events.map((e) => e.type);
-			expect(types).toEqual([
-				"text_delta",
-				"text_delta",
-				"text_delta",
-				"usage_update",
-				"done",
-			]);
+			expect(types).toEqual(["text_delta", "text_delta", "text_delta", "usage_update", "done"]);
 
 			// Verify text content
 			const text = events
@@ -944,14 +868,16 @@ describe("OpenAIProvider", () => {
 		globalThis.fetch = originalFetch;
 	});
 
-	function createProvider(overrides?: Partial<{
-		apiKey: string;
-		model: string;
-		maxTokens: number;
-		thinking: boolean;
-		thinkingBudget: number;
-		endpoint: string;
-	}>) {
+	function createProvider(
+		overrides?: Partial<{
+			apiKey: string;
+			model: string;
+			maxTokens: number;
+			thinking: boolean;
+			thinkingBudget: number;
+			endpoint: string;
+		}>,
+	) {
 		return new OpenAIProvider({
 			apiKey: "test-key",
 			model: "gpt-4.1",
@@ -979,19 +905,15 @@ describe("OpenAIProvider", () => {
 		let capturedBody: any;
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async (url: string, init: RequestInit) => {
+			vi.fn(async (_url: string, init: RequestInit) => {
 				capturedBody = JSON.parse(init.body as string);
-				const sse = chunk({ content: "Hi" }) + chunk({}, "stop") + "data: [DONE]\n\n";
+				const sse = `${chunk({ content: "Hi" }) + chunk({}, "stop")}data: [DONE]\n\n`;
 				return mockResponse(sse);
 			}),
 		);
 
 		const provider = createProvider();
-		await collectProviderEvents(
-			provider,
-			[{ role: "user", content: "Hello" }],
-			"You are a helpful assistant.",
-		);
+		await collectProviderEvents(provider, [{ role: "user", content: "Hello" }], "You are a helpful assistant.");
 
 		expect(capturedBody.messages[0]).toEqual({
 			role: "system",
@@ -1008,9 +930,9 @@ describe("OpenAIProvider", () => {
 		let capturedHeaders: any;
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async (url: string, init: RequestInit) => {
+			vi.fn(async (_url: string, init: RequestInit) => {
 				capturedHeaders = init.headers;
-				const sse = chunk({ content: "ok" }) + "data: [DONE]\n\n";
+				const sse = `${chunk({ content: "ok" })}data: [DONE]\n\n`;
 				return mockResponse(sse);
 			}),
 		);
@@ -1026,9 +948,9 @@ describe("OpenAIProvider", () => {
 		let capturedUrl: string = "";
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async (url: string, init: RequestInit) => {
+			vi.fn(async (url: string, _init: RequestInit) => {
 				capturedUrl = url;
-				const sse = chunk({ content: "ok" }) + "data: [DONE]\n\n";
+				const sse = `${chunk({ content: "ok" })}data: [DONE]\n\n`;
 				return mockResponse(sse);
 			}),
 		);
@@ -1046,9 +968,9 @@ describe("OpenAIProvider", () => {
 		let capturedBody: any;
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async (url: string, init: RequestInit) => {
+			vi.fn(async (_url: string, init: RequestInit) => {
 				capturedBody = JSON.parse(init.body as string);
-				const sse = chunk({ content: "ok" }) + "data: [DONE]\n\n";
+				const sse = `${chunk({ content: "ok" })}data: [DONE]\n\n`;
 				return mockResponse(sse);
 			}),
 		);
@@ -1080,9 +1002,9 @@ describe("OpenAIProvider", () => {
 		let capturedBody: any;
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async (url: string, init: RequestInit) => {
+			vi.fn(async (_url: string, init: RequestInit) => {
 				capturedBody = JSON.parse(init.body as string);
-				const sse = chunk({ content: "ok" }) + "data: [DONE]\n\n";
+				const sse = `${chunk({ content: "ok" })}data: [DONE]\n\n`;
 				return mockResponse(sse);
 			}),
 		);
@@ -1097,10 +1019,7 @@ describe("OpenAIProvider", () => {
 	it("throws AgentErrorClass when no API key", async () => {
 		const provider = createProvider({ apiKey: "" });
 		await expect(async () => {
-			for await (const _ of provider.sendMessage(
-				[{ role: "user", content: "Hi" }],
-				"sys",
-			)) {
+			for await (const _ of provider.sendMessage([{ role: "user", content: "Hi" }], "sys")) {
 				// consume
 			}
 		}).rejects.toThrow(/No API key/);
@@ -1114,10 +1033,8 @@ describe("OpenAIProvider", () => {
 
 		const provider = createProvider();
 		try {
-			for await (const _ of provider.sendMessage(
-				[{ role: "user", content: "Hi" }],
-				"sys",
-			)) {}
+			for await (const _ of provider.sendMessage([{ role: "user", content: "Hi" }], "sys")) {
+			}
 			expect.fail("Should have thrown");
 		} catch (err) {
 			expect(err).toBeInstanceOf(RetryableError);
@@ -1135,10 +1052,8 @@ describe("OpenAIProvider", () => {
 
 		const provider = createProvider();
 		try {
-			for await (const _ of provider.sendMessage(
-				[{ role: "user", content: "Hi" }],
-				"sys",
-			)) {}
+			for await (const _ of provider.sendMessage([{ role: "user", content: "Hi" }], "sys")) {
+			}
 			expect.fail("Should have thrown");
 		} catch (err) {
 			expect(err).toBeInstanceOf(RetryableError);
@@ -1155,10 +1070,8 @@ describe("OpenAIProvider", () => {
 
 		const provider = createProvider();
 		try {
-			for await (const _ of provider.sendMessage(
-				[{ role: "user", content: "Hi" }],
-				"sys",
-			)) {}
+			for await (const _ of provider.sendMessage([{ role: "user", content: "Hi" }], "sys")) {
+			}
 			expect.fail("Should have thrown");
 		} catch (err) {
 			expect(err).toBeInstanceOf(RetryableError);
@@ -1175,10 +1088,8 @@ describe("OpenAIProvider", () => {
 
 		const provider = createProvider();
 		try {
-			for await (const _ of provider.sendMessage(
-				[{ role: "user", content: "Hi" }],
-				"sys",
-			)) {}
+			for await (const _ of provider.sendMessage([{ role: "user", content: "Hi" }], "sys")) {
+			}
 			expect.fail("Should have thrown");
 		} catch (err) {
 			expect(err).not.toBeInstanceOf(RetryableError);
@@ -1198,10 +1109,8 @@ describe("OpenAIProvider", () => {
 
 		const provider = createProvider();
 		try {
-			for await (const _ of provider.sendMessage(
-				[{ role: "user", content: "Hi" }],
-				"sys",
-			)) {}
+			for await (const _ of provider.sendMessage([{ role: "user", content: "Hi" }], "sys")) {
+			}
 			expect.fail("Should have thrown");
 		} catch (err) {
 			expect(err).toBeInstanceOf(ProviderUnavailableError);
@@ -1215,7 +1124,7 @@ describe("OpenAIProvider", () => {
 
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async (_url: string, init: RequestInit) => {
+			vi.fn(async (_url: string, _init: RequestInit) => {
 				// Simulate the abort happening during fetch
 				controller.abort();
 				throw new DOMException("The operation was aborted.", "AbortError");
@@ -1229,7 +1138,8 @@ describe("OpenAIProvider", () => {
 				"sys",
 				undefined,
 				controller.signal,
-			)) {}
+			)) {
+			}
 		}).rejects.toThrow();
 		vi.unstubAllGlobals();
 	});
@@ -1238,9 +1148,9 @@ describe("OpenAIProvider", () => {
 		let capturedBody: any;
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async (url: string, init: RequestInit) => {
+			vi.fn(async (_url: string, init: RequestInit) => {
 				capturedBody = JSON.parse(init.body as string);
-				const sse = chunk({ content: "ok" }) + "data: [DONE]\n\n";
+				const sse = `${chunk({ content: "ok" })}data: [DONE]\n\n`;
 				return mockResponse(sse);
 			}),
 		);
@@ -1256,9 +1166,9 @@ describe("OpenAIProvider", () => {
 		let capturedBody: any;
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async (url: string, init: RequestInit) => {
+			vi.fn(async (_url: string, init: RequestInit) => {
 				capturedBody = JSON.parse(init.body as string);
-				const sse = chunk({ content: "ok" }) + "data: [DONE]\n\n";
+				const sse = `${chunk({ content: "ok" })}data: [DONE]\n\n`;
 				return mockResponse(sse);
 			}),
 		);
@@ -1285,11 +1195,7 @@ describe("OpenAIProvider", () => {
 		);
 
 		const provider = createProvider();
-		const events = await collectProviderEvents(
-			provider,
-			[{ role: "user", content: "Hi" }],
-			"You are helpful.",
-		);
+		const events = await collectProviderEvents(provider, [{ role: "user", content: "Hi" }], "You are helpful.");
 
 		const textEvents = events.filter((e) => e.type === "text_delta");
 		expect(textEvents).toHaveLength(2);
@@ -1309,9 +1215,9 @@ describe("OpenAIProvider", () => {
 		let capturedBody: any;
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async (url: string, init: RequestInit) => {
+			vi.fn(async (_url: string, init: RequestInit) => {
 				capturedBody = JSON.parse(init.body as string);
-				const sse = chunk({ content: "ok" }) + "data: [DONE]\n\n";
+				const sse = `${chunk({ content: "ok" })}data: [DONE]\n\n`;
 				return mockResponse(sse);
 			}),
 		);
@@ -1336,10 +1242,8 @@ describe("OpenAIProvider", () => {
 
 		const provider = createProvider();
 		try {
-			for await (const _ of provider.sendMessage(
-				[{ role: "user", content: "Hi" }],
-				"sys",
-			)) {}
+			for await (const _ of provider.sendMessage([{ role: "user", content: "Hi" }], "sys")) {
+			}
 			expect.fail("Should have thrown");
 		} catch (err) {
 			expect(err).toBeInstanceOf(RetryableError);
@@ -1352,9 +1256,9 @@ describe("OpenAIProvider", () => {
 		let capturedBody: any;
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async (url: string, init: RequestInit) => {
+			vi.fn(async (_url: string, init: RequestInit) => {
 				capturedBody = JSON.parse(init.body as string);
-				const sse = chunk({ content: "ok" }) + "data: [DONE]\n\n";
+				const sse = `${chunk({ content: "ok" })}data: [DONE]\n\n`;
 				return mockResponse(sse);
 			}),
 		);
@@ -1370,9 +1274,9 @@ describe("OpenAIProvider", () => {
 		let capturedBody: any;
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async (url: string, init: RequestInit) => {
+			vi.fn(async (_url: string, init: RequestInit) => {
 				capturedBody = JSON.parse(init.body as string);
-				const sse = chunk({ content: "ok" }) + "data: [DONE]\n\n";
+				const sse = `${chunk({ content: "ok" })}data: [DONE]\n\n`;
 				return mockResponse(sse);
 			}),
 		);
@@ -1401,10 +1305,8 @@ describe("OpenAIProvider", () => {
 
 		const provider = createProvider();
 		try {
-			for await (const _ of provider.sendMessage(
-				[{ role: "user", content: "Hi" }],
-				"sys",
-			)) {}
+			for await (const _ of provider.sendMessage([{ role: "user", content: "Hi" }], "sys")) {
+			}
 			expect.fail("Should have thrown");
 		} catch (err) {
 			expect((err as Error).message).toContain("No response body");

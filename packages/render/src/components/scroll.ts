@@ -95,7 +95,9 @@ export class Scroll extends Component {
 		const barCol = rect.x + rect.width - 1;
 		const ratio = rect.height / this.contentHeight;
 		const thumbHeight = Math.max(1, Math.round(ratio * rect.height));
-		const thumbOffset = Math.round((this.scrollY / Math.max(1, this.contentHeight - rect.height)) * (rect.height - thumbHeight));
+		const thumbOffset = Math.round(
+			(this.scrollY / Math.max(1, this.contentHeight - rect.height)) * (rect.height - thumbHeight),
+		);
 
 		for (let row = 0; row < rect.height; row++) {
 			const isThumb = row >= thumbOffset && row < thumbOffset + thumbHeight;

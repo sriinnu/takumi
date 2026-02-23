@@ -2,17 +2,17 @@
  * Component tests — Box, TextComponent, Spinner, Border, List, Input
  */
 
-import { describe, it, expect, beforeAll, vi } from "vitest";
-import { Box } from "../src/components/box.js";
-import { TextComponent } from "../src/components/text.js";
-import { Spinner, SPINNER_STYLES } from "../src/components/spinner.js";
-import { Border } from "../src/components/border.js";
-import { List, type ListItem } from "../src/components/list.js";
-import { Input } from "../src/components/input.js";
-import { initYoga, createNode, applyStyle } from "../src/yoga.js";
-import { Screen } from "../src/screen.js";
-import type { Rect, KeyEvent } from "@takumi/core";
+import type { KeyEvent, Rect } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { Border } from "../src/components/border.js";
+import { Box } from "../src/components/box.js";
+import { Input } from "../src/components/input.js";
+import { List, type ListItem } from "../src/components/list.js";
+import { SPINNER_STYLES, Spinner } from "../src/components/spinner.js";
+import { TextComponent } from "../src/components/text.js";
+import { Screen } from "../src/screen.js";
+import { createNode, initYoga } from "../src/yoga.js";
 
 // Initialize Yoga before all tests
 beforeAll(async () => {
@@ -206,22 +206,22 @@ describe("Spinner", () => {
 	});
 
 	it("has frames for dots style", () => {
-		const spinner = new Spinner({ style: "dots" });
+		const _spinner = new Spinner({ style: "dots" });
 		expect(SPINNER_STYLES.dots.frames.length).toBeGreaterThan(0);
 	});
 
 	it("has frames for line style", () => {
-		const spinner = new Spinner({ style: "line" });
+		const _spinner = new Spinner({ style: "line" });
 		expect(SPINNER_STYLES.line.frames.length).toBe(4);
 	});
 
 	it("has frames for arc style", () => {
-		const spinner = new Spinner({ style: "arc" });
+		const _spinner = new Spinner({ style: "arc" });
 		expect(SPINNER_STYLES.arc.frames.length).toBeGreaterThan(0);
 	});
 
 	it("has frames for braille style", () => {
-		const spinner = new Spinner({ style: "braille" });
+		const _spinner = new Spinner({ style: "braille" });
 		expect(SPINNER_STYLES.braille.frames.length).toBeGreaterThan(0);
 	});
 
@@ -535,12 +535,7 @@ describe("List", () => {
 });
 
 describe("Input", () => {
-	function makeKeyEvent(
-		key: string,
-		raw: string = key,
-		ctrl = false,
-		alt = false,
-	): KeyEvent {
+	function makeKeyEvent(key: string, raw: string = key, ctrl = false, alt = false): KeyEvent {
 		return { key, raw, ctrl, alt, shift: false, meta: false };
 	}
 

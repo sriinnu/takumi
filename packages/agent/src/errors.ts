@@ -5,7 +5,7 @@
  * error classes for retry logic, context overflow, and provider failures.
  */
 
-import { TakumiError, AgentErrorClass } from "@takumi/core";
+import { AgentErrorClass, TakumiError } from "@takumi/core";
 import { RetryableError } from "./retry.js";
 
 // ── Error classes ─────────────────────────────────────────────────────────────
@@ -18,10 +18,7 @@ export class ContextOverflowError extends TakumiError {
 	readonly maxTokens: number;
 
 	constructor(estimatedTokens: number, maxTokens: number) {
-		super(
-			`Context overflow: estimated ${estimatedTokens} tokens exceeds limit of ${maxTokens}`,
-			"CONTEXT_OVERFLOW",
-		);
+		super(`Context overflow: estimated ${estimatedTokens} tokens exceeds limit of ${maxTokens}`, "CONTEXT_OVERFLOW");
 		this.name = "ContextOverflowError";
 		this.estimatedTokens = estimatedTokens;
 		this.maxTokens = maxTokens;
@@ -36,11 +33,7 @@ export class ProviderUnavailableError extends TakumiError {
 	readonly provider: string;
 
 	constructor(provider: string, message?: string, cause?: Error) {
-		super(
-			message ?? `Provider "${provider}" is unavailable`,
-			"PROVIDER_UNAVAILABLE",
-			cause,
-		);
+		super(message ?? `Provider "${provider}" is unavailable`, "PROVIDER_UNAVAILABLE", cause);
 		this.name = "ProviderUnavailableError";
 		this.provider = provider;
 		Object.setPrototypeOf(this, new.target.prototype);
@@ -49,13 +42,7 @@ export class ProviderUnavailableError extends TakumiError {
 
 // ── Error categorization ──────────────────────────────────────────────────────
 
-export type ErrorCategory =
-	| "retryable"
-	| "context_overflow"
-	| "auth"
-	| "rate_limit"
-	| "provider_down"
-	| "unknown";
+export type ErrorCategory = "retryable" | "context_overflow" | "auth" | "rate_limit" | "provider_down" | "unknown";
 
 /**
  * Check whether an error is retryable based on its type and properties.
@@ -143,19 +130,12 @@ export function categorizeError(error: unknown): ErrorCategory {
 		}
 
 		// Context overflow patterns
-		if (
-			msg.includes("context") &&
-			(msg.includes("overflow") || msg.includes("too long") || msg.includes("exceeded"))
-		) {
+		if (msg.includes("context") && (msg.includes("overflow") || msg.includes("too long") || msg.includes("exceeded"))) {
 			return "context_overflow";
 		}
 
 		// Provider down patterns
-		if (
-			msg.includes("econnrefused") ||
-			msg.includes("unavailable") ||
-			msg.includes("provider")
-		) {
+		if (msg.includes("econnrefused") || msg.includes("unavailable") || msg.includes("provider")) {
 			return "provider_down";
 		}
 
@@ -196,8 +176,6 @@ export function friendlyErrorMessage(error: unknown): string {
 		case "retryable":
 			return "A temporary error occurred. Retrying...";
 		default:
-			return error instanceof Error
-				? error.message
-				: "An unexpected error occurred.";
+			return error instanceof Error ? error.message : "An unexpected error occurred.";
 	}
 }

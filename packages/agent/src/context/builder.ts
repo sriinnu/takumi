@@ -9,10 +9,9 @@
 
 import type { ToolDefinition } from "@takumi/core";
 import { buildSystemPrompt as buildBaseSystemPrompt } from "../message.js";
-import { detectProject, type ProjectInfo } from "./project.js";
-import { detectProjectContext, type ProjectContext } from "./project.js";
-import { loadSoul, formatSoulPrompt, type SoulData } from "./soul.js";
-import { truncateToTokenBudget, estimateTokens } from "./budget.js";
+import { truncateToTokenBudget } from "./budget.js";
+import { detectProject, type ProjectContext } from "./project.js";
+import { formatSoulPrompt, loadSoul, type SoulData } from "./soul.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

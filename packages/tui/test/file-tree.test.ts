@@ -1,18 +1,18 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import { Screen } from "@takumi/render";
-import { AppState } from "../src/state.js";
+import { describe, expect, it, vi } from "vitest";
+import type { FileNode } from "../src/panels/file-tree.js";
 import {
-	scanDirectory,
-	loadGitignore,
-	flattenTree,
-	parseGitignore,
-	matchesGitignore,
 	applyGitStatus,
 	FileTreePanel,
+	flattenTree,
+	loadGitignore,
+	matchesGitignore,
+	parseGitignore,
+	scanDirectory,
 } from "../src/panels/file-tree.js";
-import type { FileNode, FlatRow } from "../src/panels/file-tree.js";
+import { AppState } from "../src/state.js";
 
 // ── Mock fs ──────────────────────────────────────────────────────────────────
 
@@ -51,39 +51,21 @@ vi.mock("node:fs/promises", () => {
 			{ name: "editor.ts", isDirectory: () => false, isFile: () => true },
 			{ name: "file-tree.ts", isDirectory: () => false, isFile: () => true },
 		],
-		"/project/src/views": [
-			{ name: "chat.ts", isDirectory: () => false, isFile: () => true },
-		],
-		"/project/test": [
-			{ name: "file-tree.test.ts", isDirectory: () => false, isFile: () => true },
-		],
+		"/project/src/views": [{ name: "chat.ts", isDirectory: () => false, isFile: () => true }],
+		"/project/test": [{ name: "file-tree.test.ts", isDirectory: () => false, isFile: () => true }],
 		"/empty": [],
-		"/deep/l1": [
-			{ name: "l2", isDirectory: () => true, isFile: () => false },
-		],
-		"/deep/l1/l2": [
-			{ name: "l3", isDirectory: () => true, isFile: () => false },
-		],
-		"/deep/l1/l2/l3": [
-			{ name: "l4", isDirectory: () => true, isFile: () => false },
-		],
-		"/deep/l1/l2/l3/l4": [
-			{ name: "l5", isDirectory: () => true, isFile: () => false },
-		],
-		"/deep/l1/l2/l3/l4/l5": [
-			{ name: "l6", isDirectory: () => true, isFile: () => false },
-		],
-		"/deep/l1/l2/l3/l4/l5/l6": [
-			{ name: "deep-file.ts", isDirectory: () => false, isFile: () => true },
-		],
+		"/deep/l1": [{ name: "l2", isDirectory: () => true, isFile: () => false }],
+		"/deep/l1/l2": [{ name: "l3", isDirectory: () => true, isFile: () => false }],
+		"/deep/l1/l2/l3": [{ name: "l4", isDirectory: () => true, isFile: () => false }],
+		"/deep/l1/l2/l3/l4": [{ name: "l5", isDirectory: () => true, isFile: () => false }],
+		"/deep/l1/l2/l3/l4/l5": [{ name: "l6", isDirectory: () => true, isFile: () => false }],
+		"/deep/l1/l2/l3/l4/l5/l6": [{ name: "deep-file.ts", isDirectory: () => false, isFile: () => true }],
 		"/hidden": [
 			{ name: ".hidden-file", isDirectory: () => false, isFile: () => true },
 			{ name: ".hidden-dir", isDirectory: () => true, isFile: () => false },
 			{ name: "visible.ts", isDirectory: () => false, isFile: () => true },
 		],
-		"/hidden/.hidden-dir": [
-			{ name: "inside.ts", isDirectory: () => false, isFile: () => true },
-		],
+		"/hidden/.hidden-dir": [{ name: "inside.ts", isDirectory: () => false, isFile: () => true }],
 	};
 
 	return {
@@ -121,7 +103,9 @@ function createState(): AppState {
 	return new AppState();
 }
 
-function createPanel(overrides: Partial<Parameters<typeof FileTreePanel.prototype.constructor>[0]> = {}): FileTreePanel {
+function createPanel(
+	overrides: Partial<Parameters<typeof FileTreePanel.prototype.constructor>[0]> = {},
+): FileTreePanel {
 	const state = createState();
 	state.sidebarVisible.value = true;
 	return new FileTreePanel({
@@ -357,9 +341,7 @@ describe("flattenTree", () => {
 			path: "test",
 			isDirectory: true,
 			depth: 0,
-			children: [
-				{ name: "app.test.ts", path: "test/app.test.ts", isDirectory: false, depth: 1 },
-			],
+			children: [{ name: "app.test.ts", path: "test/app.test.ts", isDirectory: false, depth: 1 }],
 		},
 		{ name: "package.json", path: "package.json", isDirectory: false, depth: 0 },
 	];
@@ -435,17 +417,13 @@ describe("applyGitStatus", () => {
 	});
 
 	it("marks staged files", () => {
-		const tree: FileNode[] = [
-			{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 },
-		];
+		const tree: FileNode[] = [{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 }];
 		applyGitStatus(tree, [], ["a.ts"]);
 		expect(tree[0].staged).toBe(true);
 	});
 
 	it("marks both modified and staged", () => {
-		const tree: FileNode[] = [
-			{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 },
-		];
+		const tree: FileNode[] = [{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 }];
 		applyGitStatus(tree, ["a.ts"], ["a.ts"]);
 		expect(tree[0].modified).toBe(true);
 		expect(tree[0].staged).toBe(true);
@@ -458,9 +436,7 @@ describe("applyGitStatus", () => {
 				path: "src",
 				isDirectory: true,
 				depth: 0,
-				children: [
-					{ name: "app.ts", path: "src/app.ts", isDirectory: false, depth: 1 },
-				],
+				children: [{ name: "app.ts", path: "src/app.ts", isDirectory: false, depth: 1 }],
 			},
 		];
 		applyGitStatus(tree, ["src/app.ts"], []);
@@ -516,9 +492,7 @@ describe("FileTreePanel", () => {
 
 		it("selectPrev at top does not go below 0", () => {
 			const panel = createPanel();
-			panel.files.value = [
-				{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 },
-			];
+			panel.files.value = [{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 }];
 			panel.selectPrev();
 			expect(panel.selectedIndex.value).toBe(0);
 		});
@@ -551,9 +525,7 @@ describe("FileTreePanel", () => {
 
 		it("returns false for unhandled keys", () => {
 			const panel = createPanel();
-			panel.files.value = [
-				{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 },
-			];
+			panel.files.value = [{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 }];
 			const consumed = panel.handleKey(makeKey("x"));
 			expect(consumed).toBe(false);
 		});
@@ -629,9 +601,7 @@ describe("FileTreePanel", () => {
 
 		it("does nothing when toggling a file", () => {
 			const panel = createPanel();
-			panel.files.value = [
-				{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 },
-			];
+			panel.files.value = [{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 }];
 
 			panel.toggleExpand();
 			expect(panel.expandedDirs.value.size).toBe(0);
@@ -661,9 +631,7 @@ describe("FileTreePanel", () => {
 	describe("file selection", () => {
 		it("confirmSelection on file returns full path", () => {
 			const panel = createPanel();
-			panel.files.value = [
-				{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 },
-			];
+			panel.files.value = [{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 }];
 
 			const result = panel.confirmSelection();
 			expect(result).toBe("/project/a.ts");
@@ -674,9 +642,7 @@ describe("FileTreePanel", () => {
 			const state = createState();
 			state.sidebarVisible.value = true;
 			const panel = new FileTreePanel({ state, rootPath: "/project", onFileSelect: onSelect });
-			panel.files.value = [
-				{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 },
-			];
+			panel.files.value = [{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 }];
 
 			panel.confirmSelection();
 			expect(onSelect).toHaveBeenCalledWith("/project/a.ts");
@@ -687,9 +653,7 @@ describe("FileTreePanel", () => {
 			const state = createState();
 			state.sidebarVisible.value = true;
 			const panel = new FileTreePanel({ state, rootPath: "/project", onFileSelect: onSelect });
-			panel.files.value = [
-				{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 },
-			];
+			panel.files.value = [{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 }];
 
 			panel.handleKey(makeKey(KEY_CODES.ENTER));
 			expect(onSelect).toHaveBeenCalledWith("/project/a.ts");
@@ -768,9 +732,7 @@ describe("FileTreePanel", () => {
 
 		it("refreshGitStatus marks staged files", () => {
 			const panel = createPanel();
-			panel.files.value = [
-				{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 },
-			];
+			panel.files.value = [{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 }];
 			panel.refreshGitStatus([], ["a.ts"]);
 			const row = panel.getSelectedRow();
 			expect(row?.node.staged).toBe(true);
@@ -804,9 +766,7 @@ describe("FileTreePanel", () => {
 			const state = createState();
 			state.sidebarVisible.value = false;
 			const panel = new FileTreePanel({ state, rootPath: "/project" });
-			panel.files.value = [
-				{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 },
-			];
+			panel.files.value = [{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 }];
 
 			const screen = new Screen(40, 20);
 			panel.render(screen, { x: 0, y: 0, width: 30, height: 20 });
@@ -829,9 +789,7 @@ describe("FileTreePanel", () => {
 			const state = createState();
 			state.sidebarVisible.value = true;
 			const panel = new FileTreePanel({ state, rootPath: "/project" });
-			panel.files.value = [
-				{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 },
-			];
+			panel.files.value = [{ name: "a.ts", path: "a.ts", isDirectory: false, depth: 0 }];
 
 			const screen = new Screen(10, 10);
 			expect(() => {

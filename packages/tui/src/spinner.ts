@@ -7,7 +7,16 @@
 // ── Spinner frames ───────────────────────────────────────────────────────────
 
 const BRAILLE_FRAMES = [
-	"\u280B", "\u2819", "\u2839", "\u2838", "\u283C", "\u2834", "\u2826", "\u2827", "\u2807", "\u280F",
+	"\u280B",
+	"\u2819",
+	"\u2839",
+	"\u2838",
+	"\u283C",
+	"\u2834",
+	"\u2826",
+	"\u2827",
+	"\u2807",
+	"\u280F",
 ];
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -38,8 +47,6 @@ export class ToolSpinner {
 	private tools = new Map<string, ToolSpinnerEntry>();
 	private frameIndex = 0;
 	private completedTools = new Map<string, ToolSpinnerEntry>();
-
-	constructor() {}
 
 	/**
 	 * Start spinner for a tool call.
@@ -193,7 +200,7 @@ function truncateArgs(args: string, maxLen: number): string {
 	if (!args) return "";
 	const clean = args.replace(/\n/g, " ").trim();
 	if (clean.length <= maxLen) return clean;
-	return clean.slice(0, maxLen - 3) + "...";
+	return `${clean.slice(0, maxLen - 3)}...`;
 }
 
 /**

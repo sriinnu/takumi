@@ -4,7 +4,7 @@
  * and provides request/response correlation, timeouts, and crash recovery.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createLogger } from "@takumi/core";
 
@@ -118,7 +118,7 @@ export class McpClient extends EventEmitter {
 			method,
 			params,
 		};
-		this.child?.stdin?.write(JSON.stringify(notification) + "\n");
+		this.child?.stdin?.write(`${JSON.stringify(notification)}\n`);
 	}
 
 	/** Gracefully stop the child process. */
@@ -186,9 +186,7 @@ export class McpClient extends EventEmitter {
 			// Auto-restart if we didn't initiate the stop
 			if (!this.stopping && this.restartCount < MAX_RESTART_ATTEMPTS) {
 				this.restartCount++;
-				log.info(
-					`Auto-restart attempt ${this.restartCount}/${MAX_RESTART_ATTEMPTS} in ${RESTART_DELAY_MS}ms`,
-				);
+				log.info(`Auto-restart attempt ${this.restartCount}/${MAX_RESTART_ATTEMPTS} in ${RESTART_DELAY_MS}ms`);
 				setTimeout(() => {
 					if (!this.stopping) {
 						this.spawn().catch((err) => {
@@ -235,16 +233,12 @@ export class McpClient extends EventEmitter {
 			jsonrpc: "2.0",
 			method: "notifications/initialized",
 		};
-		this.child?.stdin?.write(JSON.stringify(notification) + "\n");
+		this.child?.stdin?.write(`${JSON.stringify(notification)}\n`);
 	}
 
 	// ── Internal: JSON-RPC messaging ──────────────────────────────────────
 
-	private sendRequest<T = unknown>(
-		method: string,
-		params?: Record<string, unknown>,
-		timeoutMs?: number,
-	): Promise<T> {
+	private sendRequest<T = unknown>(method: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<T> {
 		const timeout = timeoutMs ?? this.options.requestTimeoutMs;
 
 		return new Promise<T>((resolve, reject) => {
@@ -269,7 +263,7 @@ export class McpClient extends EventEmitter {
 				timer,
 			});
 
-			const data = JSON.stringify(request) + "\n";
+			const data = `${JSON.stringify(request)}\n`;
 			this.child?.stdin?.write(data, (err) => {
 				if (err) {
 					clearTimeout(timer);
