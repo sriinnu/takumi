@@ -215,3 +215,86 @@ export function inferProvider(modelString: string): ProviderFamily {
 	if (m.startsWith("gemini")) return "google";
 	return "openai-compat";
 }
+
+// ─── Dynamic Temperature Scaling ──────────────────────────────────────────────
+
+/**
+ * Calculates the optimal temperature for a task based on complexity, phase, and retry count.
+ *
+ * **Research Foundation:** Temperature controls exploration vs exploitation in LLM sampling.
+ * - Low temperature (0.0-0.3): Deterministic, focused, good for validation/critical tasks
+ * - Medium temperature (0.4-0.7): Balanced, good for standard coding
+ * - High temperature (0.8-1.0): Creative, diverse, good for brainstorming/first attempts
+ *
+ * **Algorithm:**
+ * 1. Base temperature from complexity:
+ *    - TRIVIAL: 0.3 (deterministic, one clear solution)
+ *    - SIMPLE: 0.5 (slight variation acceptable)
+ *    - STANDARD: 0.7 (moderate creativity)
+ *    - CRITICAL: 0.9 (explore solution space on first try)
+ *
+ * 2. Adjust by phase:
+ *    - PLANNING: +0.1 (want diverse plan options)
+ *    - EXECUTING: base (default worker behavior)
+ *    - VALIDATING: always 0.2 (consistency matters for validators)
+ *    - FIXING: -0.2 (more focused repair)
+ *
+ * 3. Decay on retries:
+ *    - attemptNumber > 1: reduce by 0.1 per retry (max 3 retries)
+ *    - Rationale: if high temp failed, try more deterministic approach
+ *
+ * 4. Clamp to [0.0, 1.0]
+ *
+ * @param complexity - Task complexity level (string to avoid circular dep)
+ * @param phase - Current cluster phase (string to avoid circular dep)
+ * @param attemptNumber - 1-indexed retry count (default: 1)
+ * @returns Temperature value in [0.0, 1.0]
+ *
+ * @example
+ * ```ts
+ * const temp = getTemperatureForTask("CRITICAL", "EXECUTING", 1);
+ * console.log(temp); // 0.9 (high exploration for first critical attempt)
+ *
+ * const temp2 = getTemperatureForTask("CRITICAL", "EXECUTING", 3);
+ * console.log(temp2); // 0.7 (reduced after 2 failed attempts)
+ *
+ * const temp3 = getTemperatureForTask("STANDARD", "VALIDATING", 1);
+ * console.log(temp3); // 0.2 (always low for validators)
+ * ```
+ */
+export function getTemperatureForTask(
+	complexity: "TRIVIAL" | "SIMPLE" | "STANDARD" | "CRITICAL",
+	phase: "PLANNING" | "EXECUTING" | "VALIDATING" | "FIXING",
+	attemptNumber = 1,
+): number {
+	// Step 1: Base temperature from complexity
+	const baseTemps: Record<string, number> = {
+		TRIVIAL: 0.3,
+		SIMPLE: 0.5,
+		STANDARD: 0.7,
+		CRITICAL: 0.9,
+	};
+	let temp = baseTemps[complexity] ?? 0.7;
+
+	// Step 2: Override for validation phase (always low, regardless of complexity)
+	if (phase === "VALIDATING") {
+		return 0.2;
+	}
+
+	// Step 3: Adjust by phase
+	const phaseAdjustments: Record<string, number> = {
+		PLANNING: 0.1, // Want diverse plan options
+		EXECUTING: 0.0, // Base temp
+		FIXING: -0.2, // More focused repair
+	};
+	temp += phaseAdjustments[phase] ?? 0;
+
+	// Step 4: Decay on retries (but not below 0.3 — never fully deterministic for workers)
+	if (attemptNumber > 1) {
+		const decayFactor = Math.min(attemptNumber - 1, 3) * 0.1;
+		temp = Math.max(0.3, temp - decayFactor);
+	}
+
+	// Step 5: Clamp to [0.0, 1.0]
+	return Math.max(0.0, Math.min(1.0, temp));
+}

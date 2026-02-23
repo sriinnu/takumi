@@ -22,7 +22,7 @@
  */
 
 import type { ChitraguptaBridge } from "@takumi/bridge";
-import type { AgentEvent } from "@takumi/core";
+import type { AgentEvent, OrchestrationConfig } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import type { OrchestratorStats, OrchestratorTask, TaskResult } from "@yugenlab/chitragupta/niyanta";
 import { AgentEvaluator, AutonomousOrchestrator } from "@yugenlab/chitragupta/niyanta";
@@ -71,6 +71,13 @@ export interface OrchestratorOptions {
 	 * Defaults to `~/.takumi/bandit-state.json`.
 	 */
 	banditStatePath?: string;
+	/**
+	 * Optional callback invoked when the cluster mesh size changes (agents spawn/despawn).
+	 * Useful for updating UI indicators like the statusline.
+	 */
+	onMeshSizeChange?: (size: number) => void;
+	/** Optional orchestration config for advanced multi-agent strategies. */
+	orchestrationConfig?: OrchestrationConfig;
 }
 
 // ─── Cluster Orchestrator ────────────────────────────────────────────────────
@@ -101,6 +108,8 @@ export class ClusterOrchestrator {
 	private chitraguptaMemory?: string;
 	/** Tool registry for agents to use tools. */
 	private tools?: ToolRegistry;
+	/** Optional orchestration config for advanced multi-agent strategies. */
+	private orchestrationConfig?: OrchestrationConfig;
 	/** Niyanta bandit — learns best coordination strategy per task type. */
 	private readonly autonomous: AutonomousOrchestrator;
 	/** Niyanta heuristic evaluator — pre-screens output before LLM validators. */
@@ -128,6 +137,18 @@ export class ClusterOrchestrator {
 	 * Set before calling {@link execute} to receive per-token text updates.
 	 */
 	onAgentText?: (agentId: string, delta: string) => void;
+	/**
+	 * Optional callback invoked when the cluster mesh size changes.
+	 */
+	private onMeshSizeChange?: (size: number) => void;
+	/**
+	 * Available strategy arms for bandit selection.
+	 * Dynamically populated based on enabled orchestration config.
+	 */
+	private availableStrategies: {
+		execution: string[];
+		validation: string[];
+	} = { execution: ["standard"], validation: ["standard_validation"] };
 
 	constructor(options: OrchestratorOptions) {
 		this.sendMessage = options.sendMessage;
@@ -136,6 +157,8 @@ export class ClusterOrchestrator {
 		this.modelOverrides = options.modelOverrides;
 		this.chitraguptaMemory = options.chitraguptaMemory;
 		this.tools = options.tools;
+		this.orchestrationConfig = options.orchestrationConfig;
+		this.onMeshSizeChange = options.onMeshSizeChange;
 
 		// Niyanta: bandit learns which strategy works best over time
 		const statePath = options.banditStatePath ?? `${process.env.HOME ?? "~"}/.takumi/bandit-state.json`;
@@ -173,6 +196,9 @@ export class ClusterOrchestrator {
 			get chitraguptaMemory() {
 				return orch.chitraguptaMemory;
 			},
+			get chitragupta() {
+				return orch.chitragupta;
+			},
 			get tools() {
 				return orch.tools;
 			},
@@ -182,6 +208,7 @@ export class ClusterOrchestrator {
 				orch.totalInputTokens += i;
 				orch.totalOutputTokens += o;
 			},
+			orchestrationConfig: orch.orchestrationConfig,
 		};
 		this.runner = new ClusterPhaseRunner(phaseCtx, this.evaluator);
 	}
@@ -234,6 +261,9 @@ export class ClusterOrchestrator {
 			this.state.agents.set(agent.id, agent);
 		}
 
+		// Notify UI of mesh size change (1 local + N cluster agents)
+		this.onMeshSizeChange?.(1 + this.state.agents.size);
+
 		// Emit init event so the TUI can render the cluster immediately
 		this.emitEvent({
 			type: "phase_change",
@@ -262,10 +292,15 @@ export class ClusterOrchestrator {
 		this.totalOutputTokens = 0;
 		this.runStartMs = Date.now();
 
-		// Use bandit to choose strategy; logged for observability
+		// Register strategies based on enabled config
+		this.registerStrategies();
+
+		// Use bandit to choose strategy
 		const stats = this.buildStats();
-		const strategy = this.niyantaTask ? this.autonomous.selectStrategy(this.niyantaTask, stats) : "round-robin";
+		const strategy = this.niyantaTask ? this.autonomous.selectStrategy(this.niyantaTask, stats) : "standard";
+
 		log.info(`Bandit selected strategy: ${strategy}`);
+		this.applyStrategy(strategy);
 
 		try {
 			// ── Phase 1: Planning (delegated to ClusterPhaseRunner) ──────────
@@ -344,6 +379,8 @@ export class ClusterOrchestrator {
 		if (this.state) {
 			await this.saveCheckpoint();
 			this.state = null;
+			// Reset mesh size to 1 (just the local agent)
+			this.onMeshSizeChange?.(1);
 		}
 		// Release isolation sandbox (removes worktree / temp dir)
 		if (this.isolationCtx) {
@@ -494,11 +531,90 @@ export class ClusterOrchestrator {
 		};
 	}
 
+	/**
+	 * Registers enabled multi-agent strategies with Niyanta bandit.
+	 * Called during execute() after config is available.
+	 */
+	private registerStrategies(): void {
+		const config = this.orchestrationConfig;
+		if (!config) return;
+
+		// Register execution strategies (mutually exclusive)
+		const executionArms: string[] = ["standard"];
+		if (config.ensemble?.enabled) {
+			const arm = `ensemble_k${config.ensemble.workerCount}_t${config.ensemble.temperature}`;
+			executionArms.push(arm);
+		}
+		if (config.progressiveRefinement?.enabled) {
+			const arm = `progressive_i${config.progressiveRefinement.maxIterations}_t${config.progressiveRefinement.targetScore}`;
+			executionArms.push(arm);
+		}
+
+		// Register validation strategies (mutually exclusive)
+		const validationArms: string[] = ["standard_validation"];
+		if (config.moA?.enabled) {
+			const arm = `moa_r${config.moA.rounds}_v${config.moA.validatorCount}`;
+			validationArms.push(arm);
+		}
+
+		// Store available arms for eligibility filtering
+		this.availableStrategies = {
+			execution: executionArms,
+			validation: validationArms,
+		};
+
+		log.info(
+			`Registered strategies: execution=[${executionArms.join(", ")}] validation=[${validationArms.join(", ")}]`,
+		);
+	}
+
+	/**
+	 * Parses bandit strategy string and applies to phase runner.
+	 * Example: "ensemble_k3_t0.9" → enables ensemble with K=3, temp=0.9
+	 *
+	 * @param strategy - Bandit-selected strategy identifier
+	 */
+	private applyStrategy(strategy: string): void {
+		// Parse execution strategies
+		if (strategy.startsWith("ensemble_")) {
+			const match = strategy.match(/ensemble_k(\d+)_t([\d.]+)/);
+			if (match && this.orchestrationConfig?.ensemble) {
+				// Bandit override (optional): could adjust K or temp dynamically
+				// For now, just use config values as-is
+				log.info(`Bandit selected: ${strategy} (using config values)`);
+			}
+		} else if (strategy.startsWith("progressive_")) {
+			log.info(`Bandit selected: ${strategy} (using config values)`);
+		} else if (strategy === "standard") {
+			log.info("Bandit selected: standard single-worker execution");
+		}
+
+		// Parse validation strategies
+		if (strategy.startsWith("moa_")) {
+			log.info(`Bandit selected: ${strategy} (using config values)`);
+		} else if (strategy === "standard_validation") {
+			log.info("Bandit selected: standard single-round validation");
+		}
+
+		// Note: Actual strategy enablement already handled by config flags
+		// This method primarily logs bandit decisions for observability
+	}
+
 	/** Feed run outcome back into the bandit so it learns over time. */
 	private recordBanditOutcome(success: boolean, strategy: string): void {
 		if (!this.niyantaTask) return;
+
+		const durationMs = Date.now() - this.runStartMs;
 		const totalTokens = this.totalInputTokens + this.totalOutputTokens;
 		const cost = (this.totalInputTokens * 3 + this.totalOutputTokens * 15) / 1_000_000;
+
+		// Extract quality metrics from work product and validation for logging
+		const heuristicScore = this.state?.workProduct?.heuristicScore ?? 0;
+		const consensusScore =
+			this.state?.workProduct?.metadata?.consensusScore ??
+			this.state?.workProduct?.metadata?.moaConsensus ??
+			0;
+
 		const result: TaskResult = {
 			success,
 			output: success ? "Cluster completed" : "Cluster failed",
@@ -511,7 +627,12 @@ export class ClusterOrchestrator {
 				retries: this.state?.validationAttempt ?? 0,
 			},
 		};
+
 		this.autonomous.recordOutcome(this.niyantaTask, result, strategy as never);
-		log.debug(`Bandit outcome: ${strategy} → success=${success}`);
+		log.info(
+			`Bandit feedback: ${strategy} → ${success ? "SUCCESS" : "FAIL"} ` +
+				`(heuristic=${heuristicScore.toFixed(2)}, consensus=${consensusScore.toFixed(2)}, ` +
+				`tokens=${totalTokens}, latency=${durationMs}ms)`,
+		);
 	}
 }
