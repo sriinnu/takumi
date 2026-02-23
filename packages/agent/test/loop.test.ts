@@ -1,7 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
-import { agentLoop, type AgentLoopOptions, type MessagePayload } from "../src/loop.js";
-import { ToolRegistry } from "../src/tools/registry.js";
 import type { AgentEvent, ToolDefinition, Usage } from "@takumi/core";
+import { describe, expect, it, vi } from "vitest";
+import { type AgentLoopOptions, agentLoop, type MessagePayload } from "../src/loop.js";
+import { ToolRegistry } from "../src/tools/registry.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -46,15 +46,15 @@ function mockSendMessage(callResponses: AgentEvent[][]): AgentLoopOptions["sendM
 
 /** Create a simple tool registry with optional tools. */
 function createRegistry(
-	tools?: Array<{ name: string; handler?: (input: Record<string, unknown>) => Promise<{ output: string; isError: boolean }> }>,
+	tools?: Array<{
+		name: string;
+		handler?: (input: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>;
+	}>,
 ): ToolRegistry {
 	const reg = new ToolRegistry();
 	if (tools) {
 		for (const t of tools) {
-			reg.register(
-				makeDef(t.name),
-				t.handler ?? (async () => ({ output: "ok", isError: false })),
-			);
+			reg.register(makeDef(t.name), t.handler ?? (async () => ({ output: "ok", isError: false })));
 		}
 	}
 	return reg;
@@ -114,9 +114,7 @@ describe("agentLoop", () => {
 				isError: false,
 			}));
 
-			const registry = createRegistry([
-				{ name: "read_file", handler: toolHandler },
-			]);
+			const registry = createRegistry([{ name: "read_file", handler: toolHandler }]);
 
 			const sendMessage = mockSendMessage([
 				// First call: text + tool_use + done with tool_use stop reason
@@ -139,20 +137,17 @@ describe("agentLoop", () => {
 
 			// Verify tool was called
 			expect(toolHandler).toHaveBeenCalledOnce();
-			expect(toolHandler).toHaveBeenCalledWith(
-				{ path: "/src/main.ts" },
-				undefined,
-			);
+			expect(toolHandler).toHaveBeenCalledWith({ path: "/src/main.ts" }, undefined);
 
 			// Check event sequence
 			const types = events.map((e) => e.type);
 			expect(types).toEqual([
-				"text_delta",   // "Let me read that."
-				"tool_use",     // read_file call
-				"done",         // tool_use stop
-				"tool_result",  // result of read_file
-				"text_delta",   // "Here is the file."
-				"done",         // end_turn
+				"text_delta", // "Let me read that."
+				"tool_use", // read_file call
+				"done", // tool_use stop
+				"tool_result", // result of read_file
+				"text_delta", // "Here is the file."
+				"done", // end_turn
 			]);
 
 			// Check tool_result content
@@ -255,9 +250,7 @@ describe("agentLoop", () => {
 			const controller = new AbortController();
 			controller.abort();
 
-			const sendMessage = mockSendMessage([
-				[{ type: "text_delta", text: "should not appear" }],
-			]);
+			const sendMessage = mockSendMessage([[{ type: "text_delta", text: "should not appear" }]]);
 
 			const events = await collectEvents("hi", [], {
 				sendMessage,
@@ -389,6 +382,7 @@ describe("agentLoop", () => {
 
 	describe("stream error (sendMessage throws)", () => {
 		it("yields error + stop when sendMessage throws synchronously", async () => {
+			// biome-ignore lint/correctness/useYield: Test helper intentionally has no yield
 			const sendMessage: AgentLoopOptions["sendMessage"] = async function* () {
 				throw new Error("Connection refused");
 			};
@@ -464,12 +458,18 @@ describe("agentLoop", () => {
 
 			const sendMessage = mockSendMessage([
 				[
-					{ type: "usage_update", usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+					{
+						type: "usage_update",
+						usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
+					},
 					{ type: "tool_use", id: "toolu_1", name: "tool_a", input: {} },
 					{ type: "done", stopReason: "tool_use" },
 				],
 				[
-					{ type: "usage_update", usage: { inputTokens: 20, outputTokens: 15, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+					{
+						type: "usage_update",
+						usage: { inputTokens: 20, outputTokens: 15, cacheReadTokens: 0, cacheWriteTokens: 0 },
+					},
 					{ type: "text_delta", text: "Done." },
 					{ type: "done", stopReason: "end_turn" },
 				],
@@ -580,7 +580,9 @@ describe("agentLoop", () => {
 			const registry = createRegistry([
 				{
 					name: "failing_tool",
-					handler: async () => { throw new Error("disk full"); },
+					handler: async () => {
+						throw new Error("disk full");
+					},
 				},
 			]);
 
@@ -617,7 +619,9 @@ describe("agentLoop", () => {
 			const registry = createRegistry([
 				{
 					name: "bad_tool",
-					handler: async () => { throw new Error("permission denied"); },
+					handler: async () => {
+						throw new Error("permission denied");
+					},
 				},
 			]);
 
@@ -626,9 +630,7 @@ describe("agentLoop", () => {
 					{ type: "tool_use", id: "toolu_bad", name: "bad_tool", input: {} },
 					{ type: "done", stopReason: "tool_use" },
 				],
-				[
-					{ type: "done", stopReason: "end_turn" },
-				],
+				[{ type: "done", stopReason: "end_turn" }],
 			]);
 
 			const events = await collectEvents("go", [], {
@@ -779,9 +781,7 @@ describe("agentLoop", () => {
 
 	describe("edge cases", () => {
 		it("handles empty text from LLM (no text_delta, just done)", async () => {
-			const sendMessage = mockSendMessage([
-				[{ type: "done", stopReason: "end_turn" }],
-			]);
+			const sendMessage = mockSendMessage([[{ type: "done", stopReason: "end_turn" }]]);
 
 			const events = await collectEvents("hi", [], {
 				sendMessage,

@@ -2,17 +2,17 @@
  * ChatView — the main chat interface combining message list and input.
  */
 
-import type { Rect, Message, KeyEvent } from "@takumi/core";
+import type { KeyEvent, Message, Rect } from "@takumi/core";
 import { createLogger } from "@takumi/core";
-import { Component, Box, Input, Scroll } from "@takumi/render";
 import type { Screen } from "@takumi/render";
-import type { AppState } from "../state.js";
+import { Component } from "@takumi/render";
 import type { AgentRunner } from "../agent-runner.js";
 import type { SlashCommandRegistry } from "../commands.js";
-import { MessageListPanel } from "../panels/message-list.js";
 import { EditorPanel } from "../panels/editor.js";
-import { StatusBarPanel } from "../panels/status-bar.js";
 import { HeaderPanel } from "../panels/header.js";
+import { MessageListPanel } from "../panels/message-list.js";
+import { StatusBarPanel } from "../panels/status-bar.js";
+import type { AppState } from "../state.js";
 
 const log = createLogger("chat-view");
 

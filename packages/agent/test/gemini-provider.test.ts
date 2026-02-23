@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { AgentEvent } from "@takumi/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	GeminiProvider,
 	cleanSchema,
 	convertMessages,
 	convertTools,
+	GeminiProvider,
 	generateToolCallId,
 	parseGeminiSSEStream,
 } from "../src/providers/gemini.js";
@@ -193,9 +193,7 @@ describe("convertMessages", () => {
 	});
 
 	it("converts array content blocks with text", () => {
-		const messages = [
-			{ role: "user" as const, content: [{ type: "text", text: "What is 2+2?" }] },
-		];
+		const messages = [{ role: "user" as const, content: [{ type: "text", text: "What is 2+2?" }] }];
 		const result = convertMessages(messages);
 		expect(result).toEqual([{ role: "user", parts: [{ text: "What is 2+2?" }] }]);
 	});
@@ -204,18 +202,14 @@ describe("convertMessages", () => {
 		const messages = [
 			{
 				role: "assistant" as const,
-				content: [
-					{ type: "tool_use", id: "toolu_123", name: "read_file", input: { path: "/src/main.ts" } },
-				],
+				content: [{ type: "tool_use", id: "toolu_123", name: "read_file", input: { path: "/src/main.ts" } }],
 			},
 		];
 		const result = convertMessages(messages);
 		expect(result).toEqual([
 			{
 				role: "model",
-				parts: [
-					{ functionCall: { name: "read_file", args: { path: "/src/main.ts" } } },
-				],
+				parts: [{ functionCall: { name: "read_file", args: { path: "/src/main.ts" } } }],
 			},
 		]);
 	});
@@ -225,7 +219,13 @@ describe("convertMessages", () => {
 			{
 				role: "user" as const,
 				content: [
-					{ type: "tool_result", name: "read_file", content: "file contents here", toolUseId: "toolu_123", isError: false },
+					{
+						type: "tool_result",
+						name: "read_file",
+						content: "file contents here",
+						toolUseId: "toolu_123",
+						isError: false,
+					},
 				],
 			},
 		];
@@ -233,9 +233,7 @@ describe("convertMessages", () => {
 		expect(result).toEqual([
 			{
 				role: "user",
-				parts: [
-					{ functionResponse: { name: "read_file", response: { content: "file contents here" } } },
-				],
+				parts: [{ functionResponse: { name: "read_file", response: { content: "file contents here" } } }],
 			},
 		]);
 	});
@@ -248,9 +246,7 @@ describe("convertMessages", () => {
 			},
 		];
 		const result = convertMessages(messages);
-		expect(result).toEqual([
-			{ role: "model", parts: [{ text: "Let me analyze...", thought: true }] },
-		]);
+		expect(result).toEqual([{ role: "model", parts: [{ text: "Let me analyze...", thought: true }] }]);
 	});
 
 	it("handles mixed content blocks", () => {
@@ -289,9 +285,7 @@ describe("convertMessages", () => {
 	});
 
 	it("skips empty content arrays", () => {
-		const messages = [
-			{ role: "user" as const, content: [] },
-		];
+		const messages = [{ role: "user" as const, content: [] }];
 		const result = convertMessages(messages);
 		expect(result).toHaveLength(0);
 	});
@@ -300,9 +294,7 @@ describe("convertMessages", () => {
 		const messages = [
 			{
 				role: "user" as const,
-				content: [
-					{ type: "tool_result", toolUseId: "toolu_abc", content: "result" },
-				],
+				content: [{ type: "tool_result", toolUseId: "toolu_abc", content: "result" }],
 			},
 		];
 		const result = convertMessages(messages);
@@ -565,10 +557,7 @@ describe("parseGeminiSSEStream", () => {
 				candidates: [
 					{
 						content: {
-							parts: [
-								{ text: "Let me analyze...", thought: true },
-								{ text: "The answer is 42." },
-							],
+							parts: [{ text: "Let me analyze...", thought: true }, { text: "The answer is 42." }],
 							role: "model",
 						},
 					},
@@ -738,11 +727,9 @@ describe("parseGeminiSSEStream", () => {
 		});
 
 		it("skips [DONE] marker", async () => {
-			const sse =
-				geminiFrame({
-					candidates: [{ content: { parts: [{ text: "Hi" }], role: "model" } }],
-				}) +
-				"data: [DONE]\n\n";
+			const sse = `${geminiFrame({
+				candidates: [{ content: { parts: [{ text: "Hi" }], role: "model" } }],
+			})}data: [DONE]\n\n`;
 			const events = await collectEvents(createSSEStream(sse));
 			const textEvents = events.filter((e) => e.type === "text_delta");
 			expect(textEvents).toHaveLength(1);
@@ -913,9 +900,7 @@ describe("GeminiProvider", () => {
 		expect(capturedBody.systemInstruction).toEqual({
 			parts: [{ text: "You are a helpful assistant" }],
 		});
-		expect(capturedBody.contents).toEqual([
-			{ role: "user", parts: [{ text: "Hello" }] },
-		]);
+		expect(capturedBody.contents).toEqual([{ role: "user", parts: [{ text: "Hello" }] }]);
 		expect(capturedBody.generationConfig).toEqual({
 			maxOutputTokens: 8192,
 			temperature: 1.0,
@@ -941,10 +926,7 @@ describe("GeminiProvider", () => {
 
 		const provider = createProvider({ thinking: true, thinkingBudget: 10000 });
 		const events: AgentEvent[] = [];
-		for await (const event of provider.sendMessage(
-			[{ role: "user", content: "Think" }],
-			"system",
-		)) {
+		for await (const event of provider.sendMessage([{ role: "user", content: "Think" }], "system")) {
 			events.push(event);
 		}
 
@@ -984,11 +966,7 @@ describe("GeminiProvider", () => {
 
 		const provider = createProvider();
 		const events: AgentEvent[] = [];
-		for await (const event of provider.sendMessage(
-			[{ role: "user", content: "Read a file" }],
-			"system",
-			tools,
-		)) {
+		for await (const event of provider.sendMessage([{ role: "user", content: "Read a file" }], "system", tools)) {
 			events.push(event);
 		}
 
@@ -1010,11 +988,9 @@ describe("GeminiProvider", () => {
 
 	it("throws RetryableError on 429 status", async () => {
 		globalThis.fetch = vi.fn(async () =>
-			createErrorResponse(
-				{ error: { code: 429, message: "Rate limited", status: "RESOURCE_EXHAUSTED" } },
-				429,
-				{ "retry-after": "5" },
-			),
+			createErrorResponse({ error: { code: 429, message: "Rate limited", status: "RESOURCE_EXHAUSTED" } }, 429, {
+				"retry-after": "5",
+			}),
 		) as any;
 
 		const provider = createProvider();
@@ -1024,10 +1000,7 @@ describe("GeminiProvider", () => {
 
 	it("throws RetryableError on 500 status", async () => {
 		globalThis.fetch = vi.fn(async () =>
-			createErrorResponse(
-				{ error: { code: 500, message: "Internal error" } },
-				500,
-			),
+			createErrorResponse({ error: { code: 500, message: "Internal error" } }, 500),
 		) as any;
 
 		const provider = createProvider();
@@ -1037,10 +1010,7 @@ describe("GeminiProvider", () => {
 
 	it("throws non-retryable AgentErrorClass on 400 status", async () => {
 		globalThis.fetch = vi.fn(async () =>
-			createErrorResponse(
-				{ error: { code: 400, message: "Invalid argument" } },
-				400,
-			),
+			createErrorResponse({ error: { code: 400, message: "Invalid argument" } }, 400),
 		) as any;
 
 		const provider = createProvider();
@@ -1083,22 +1053,13 @@ describe("GeminiProvider", () => {
 		}) as any;
 
 		const provider = createProvider();
-		const gen = provider.sendMessage(
-			[{ role: "user", content: "Hello" }],
-			"system",
-			undefined,
-			abortController.signal,
-		);
+		const gen = provider.sendMessage([{ role: "user", content: "Hello" }], "system", undefined, abortController.signal);
 		await expect(gen.next()).rejects.toThrow();
 	});
 
 	it("parses retry-after header on 429", async () => {
 		globalThis.fetch = vi.fn(async () =>
-			createErrorResponse(
-				{ error: { code: 429, message: "Rate limited" } },
-				429,
-				{ "retry-after": "10" },
-			),
+			createErrorResponse({ error: { code: 429, message: "Rate limited" } }, 429, { "retry-after": "10" }),
 		) as any;
 
 		const provider = createProvider();
@@ -1131,11 +1092,8 @@ describe("GeminiProvider", () => {
 		}) as any;
 
 		const provider = createProvider();
-		for await (const _ of provider.sendMessage(
-			[{ role: "user", content: "Hello" }],
-			"system",
-			[],
-		)) {}
+		for await (const _ of provider.sendMessage([{ role: "user", content: "Hello" }], "system", [])) {
+		}
 
 		expect(capturedBody.tools).toBeUndefined();
 	});

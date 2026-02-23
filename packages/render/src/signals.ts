@@ -76,6 +76,7 @@ export function signal<T>(initialValue: T): Signal<T> {
 			// Create an effect that calls fn
 			const dispose = effect(() => {
 				fn(node.value);
+				return undefined;
 			});
 			return dispose;
 		},
@@ -159,6 +160,7 @@ export function computed<T>(fn: () => T): ReadonlySignal<T> {
 		subscribe(fn: (value: T) => void): () => void {
 			const dispose = effect(() => {
 				fn(node.value);
+				return undefined;
 			});
 			return dispose;
 		},
@@ -170,8 +172,8 @@ export function computed<T>(fn: () => T): ReadonlySignal<T> {
 // ── Effect ────────────────────────────────────────────────────────────────────
 
 interface EffectNode extends Computation {
-	_fn: () => void | (() => void);
-	_cleanup: (() => void) | void;
+	_fn: () => undefined | (() => void);
+	_cleanup: (() => void) | undefined;
 	_disposed: boolean;
 }
 
@@ -179,7 +181,7 @@ interface EffectNode extends Computation {
  * Create a side effect that re-runs whenever its dependencies change.
  * Returns a dispose function.
  */
-export function effect(fn: () => void | (() => void)): () => void {
+export function effect(fn: () => undefined | (() => void)): () => void {
 	const node: EffectNode = {
 		_fn: fn,
 		_cleanup: undefined,

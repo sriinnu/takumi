@@ -9,9 +9,9 @@
 
 import type { AgentEvent } from "@takumi/core";
 import { AgentErrorClass, createLogger } from "@takumi/core";
-import type { MessagePayload } from "../loop.js";
-import { RetryableError } from "../retry.js";
 import { ProviderUnavailableError } from "../errors.js";
+import type { MessagePayload, SendMessageOptions } from "../loop.js";
+import { RetryableError } from "../retry.js";
 
 const log = createLogger("gemini-provider");
 
@@ -202,9 +202,7 @@ export function convertTools(tools: any[]): any[] {
  * Gemini does not provide tool call IDs like Anthropic/OpenAI.
  */
 export function generateToolCallId(): string {
-	const hex = Array.from({ length: 8 }, () =>
-		Math.floor(Math.random() * 16).toString(16),
-	).join("");
+	const hex = Array.from({ length: 8 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
 	return `call_${hex}`;
 }
 
@@ -251,10 +249,7 @@ function parseGeminiChunk(data: GeminiSSEData): AgentEvent[] {
 	if (data.error) {
 		events.push({
 			type: "error",
-			error: new AgentErrorClass(
-				data.error.message ?? "Unknown Gemini error",
-				false,
-			),
+			error: new AgentErrorClass(data.error.message ?? "Unknown Gemini error", false),
 		});
 		return events;
 	}
@@ -318,7 +313,7 @@ function parseGeminiChunk(data: GeminiSSEData): AgentEvent[] {
 	if (candidate.finishReason) {
 		let stopReason: "end_turn" | "max_tokens" | "tool_use" | "stop_sequence";
 
-		if (hasFunctionCalls || candidate.finishReason === "STOP" && hasFunctionCallsInParts(parts)) {
+		if (hasFunctionCalls || (candidate.finishReason === "STOP" && hasFunctionCallsInParts(parts))) {
 			stopReason = "tool_use";
 		} else {
 			switch (candidate.finishReason) {
@@ -383,6 +378,7 @@ export class GeminiProvider {
 		system: string,
 		tools?: any[],
 		signal?: AbortSignal,
+		options?: SendMessageOptions,
 	): AsyncGenerator<AgentEvent> {
 		if (!this.apiKey) {
 			throw new AgentErrorClass(
@@ -391,7 +387,8 @@ export class GeminiProvider {
 			);
 		}
 
-		const url = `${GEMINI_API_BASE}/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
+		const model = options?.model ?? this.model;
+		const url = `${GEMINI_API_BASE}/${model}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
 
 		// Build the request body
 		const body: Record<string, unknown> = {
@@ -415,15 +412,13 @@ export class GeminiProvider {
 			body.tools = convertTools(tools);
 		}
 
-		log.info("Sending message to Gemini API", { model: this.model });
+		log.info("Sending message to Gemini API", { model });
 
 		// Create a composite abort signal that combines user signal + timeout
 		const timeoutController = new AbortController();
 		const timeoutId = setTimeout(() => timeoutController.abort(), this.streamingTimeout);
 
-		const compositeSignal = signal
-			? AbortSignal.any([signal, timeoutController.signal])
-			: timeoutController.signal;
+		const compositeSignal = signal ? AbortSignal.any([signal, timeoutController.signal]) : timeoutController.signal;
 
 		try {
 			const response = await fetch(url, {
@@ -451,23 +446,16 @@ export class GeminiProvider {
 				if (response.status === 429) {
 					const retryAfterHeader = response.headers.get("retry-after");
 					const retryAfterMs = retryAfterHeader
-						? (Number.isNaN(Number(retryAfterHeader))
+						? Number.isNaN(Number(retryAfterHeader))
 							? undefined
-							: Number(retryAfterHeader) * 1000)
+							: Number(retryAfterHeader) * 1000
 						: undefined;
 
-					throw new RetryableError(
-						`Gemini API rate limited: ${message}`,
-						429,
-						retryAfterMs,
-					);
+					throw new RetryableError(`Gemini API rate limited: ${message}`, 429, retryAfterMs);
 				}
 
 				if (retryable) {
-					throw new RetryableError(
-						`Gemini API error: ${message}`,
-						response.status,
-					);
+					throw new RetryableError(`Gemini API error: ${message}`, response.status);
 				}
 
 				throw new AgentErrorClass(`Gemini API error: ${message}`, false);
@@ -488,10 +476,7 @@ export class GeminiProvider {
 				if (signal?.aborted) {
 					throw err; // User-initiated abort, let it propagate
 				}
-				throw new ProviderUnavailableError(
-					"gemini",
-					`Gemini API request timed out after ${this.streamingTimeout}ms`,
-				);
+				throw new ProviderUnavailableError("gemini", `Gemini API request timed out after ${this.streamingTimeout}ms`);
 			}
 
 			throw new ProviderUnavailableError(
@@ -513,9 +498,7 @@ export class GeminiProvider {
  * Gemini SSE format: `data: { "candidates": [...], "usageMetadata": {...} }`
  * Each `data:` line contains a complete JSON object.
  */
-export async function* parseGeminiSSEStream(
-	stream: ReadableStream<Uint8Array>,
-): AsyncGenerator<AgentEvent> {
+export async function* parseGeminiSSEStream(stream: ReadableStream<Uint8Array>): AsyncGenerator<AgentEvent> {
 	const decoder = new TextDecoder();
 	const reader = stream.getReader();
 
@@ -559,10 +542,7 @@ export async function* parseGeminiSSEStream(
 						});
 						yield {
 							type: "error",
-							error: new AgentErrorClass(
-								`Gemini SSE parse error: ${(err as Error).message}`,
-								false,
-							),
+							error: new AgentErrorClass(`Gemini SSE parse error: ${(err as Error).message}`, false),
 						};
 					}
 				}

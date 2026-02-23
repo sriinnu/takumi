@@ -2,8 +2,8 @@
  * Read file tool — reads file contents with optional line range.
  */
 
-import { readFileSync, statSync, existsSync } from "node:fs";
-import type { ToolDefinition, ToolResult } from "@takumi/core";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import type { ToolDefinition } from "@takumi/core";
 import { LIMITS } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
 

@@ -2,15 +2,8 @@
  * Tests for diff parser, renderer, and inline diff.
  */
 
-import { describe, it, expect } from "vitest";
-import {
-	parseDiff,
-	renderDiff,
-	renderMultiFileDiff,
-	renderInlineDiff,
-	isDiffContent,
-} from "../src/diff-parser.js";
-import type { DiffFile, DiffHunk } from "../src/diff-parser.js";
+import { describe, expect, it } from "vitest";
+import { isDiffContent, parseDiff, renderDiff, renderInlineDiff, renderMultiFileDiff } from "../src/diff-parser.js";
 import { defaultTheme } from "../src/theme.js";
 
 // ── Helper data ──────────────────────────────────────────────────────────────
@@ -342,11 +335,7 @@ describe("renderMultiFileDiff", () => {
 
 describe("renderInlineDiff", () => {
 	it("highlights changed words", () => {
-		const output = renderInlineDiff(
-			"const x = 1;",
-			"const x = 2;",
-			defaultTheme,
-		);
+		const output = renderInlineDiff("const x = 1;", "const x = 2;", defaultTheme);
 		// Should contain both the common parts and the changed parts
 		expect(output).toContain("const");
 		expect(output).toContain("x");
@@ -354,21 +343,13 @@ describe("renderInlineDiff", () => {
 	});
 
 	it("handles completely different strings", () => {
-		const output = renderInlineDiff(
-			"hello world",
-			"goodbye universe",
-			defaultTheme,
-		);
+		const output = renderInlineDiff("hello world", "goodbye universe", defaultTheme);
 		// Should contain ANSI escapes for highlighting
 		expect(output).toContain("\x1b[");
 	});
 
 	it("handles identical strings (no diff)", () => {
-		const output = renderInlineDiff(
-			"same text",
-			"same text",
-			defaultTheme,
-		);
+		const output = renderInlineDiff("same text", "same text", defaultTheme);
 		expect(output).toContain("same");
 		expect(output).toContain("text");
 		// Should not contain background color escapes for changes (since no changes)
@@ -376,29 +357,17 @@ describe("renderInlineDiff", () => {
 	});
 
 	it("handles empty old text (all additions)", () => {
-		const output = renderInlineDiff(
-			"",
-			"new content here",
-			defaultTheme,
-		);
+		const output = renderInlineDiff("", "new content here", defaultTheme);
 		expect(output).toContain("new");
 	});
 
 	it("handles empty new text (all removals)", () => {
-		const output = renderInlineDiff(
-			"old content here",
-			"",
-			defaultTheme,
-		);
+		const output = renderInlineDiff("old content here", "", defaultTheme);
 		expect(output).toContain("old");
 	});
 
 	it("preserves whitespace tokens", () => {
-		const output = renderInlineDiff(
-			"a  b",
-			"a  c",
-			defaultTheme,
-		);
+		const output = renderInlineDiff("a  b", "a  c", defaultTheme);
 		// The double space should be preserved
 		expect(output).toContain("a");
 	});
@@ -436,7 +405,7 @@ describe("isDiffContent", () => {
 	});
 
 	it("detects diff content within first 500 chars", () => {
-		const text = "some preamble\n".repeat(10) + "@@ -1,3 +1,4 @@\n context";
+		const text = `${"some preamble\n".repeat(10)}@@ -1,3 +1,4 @@\n context`;
 		expect(isDiffContent(text)).toBe(true);
 	});
 });

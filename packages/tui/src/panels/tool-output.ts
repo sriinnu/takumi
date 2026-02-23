@@ -3,10 +3,8 @@
  */
 
 import type { Rect } from "@takumi/core";
-import { Component, Border, Scroll } from "@takumi/render";
 import type { Screen } from "@takumi/render";
-import { wrapText } from "@takumi/render";
-import { effect } from "@takumi/render";
+import { Border, Component, effect, wrapText } from "@takumi/render";
 import type { AppState } from "../state.js";
 
 export interface ToolOutputPanelProps {
@@ -27,11 +25,12 @@ export class ToolOutputPanel extends Component {
 
 		this.disposeEffect = effect(() => {
 			const tool = this.state.activeTool.value;
-			const output = this.state.toolOutput.value;
+			const _output = this.state.toolOutput.value;
 			this.border.update({
 				title: tool ? `Tool: ${tool}` : "Tool Output",
 			});
 			this.markDirty();
+			return undefined;
 		});
 	}
 

@@ -8,18 +8,15 @@
 
 import type { AgentEvent, TakumiConfig } from "@takumi/core";
 import { AgentErrorClass, createLogger } from "@takumi/core";
-import { parseSSEStream } from "../stream.js";
-import type { MessagePayload } from "../loop.js";
-import { RetryableError } from "../retry.js";
 import { ProviderUnavailableError } from "../errors.js";
+import type { MessagePayload, SendMessageOptions } from "../loop.js";
+import { RetryableError } from "../retry.js";
+import { parseSSEStream } from "../stream.js";
 
 const log = createLogger("direct-provider");
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const API_VERSION = "2023-06-01";
-
-/** Default timeout for non-streaming requests (ms). */
-const DEFAULT_TIMEOUT = 30_000;
 
 /** Default timeout for streaming requests (ms). */
 const STREAMING_TIMEOUT = 120_000;
@@ -30,7 +27,6 @@ export class DirectProvider {
 	private maxTokens: number;
 	private thinking: boolean;
 	private thinkingBudget: number;
-	private timeout: number;
 	private streamingTimeout: number;
 
 	constructor(config: TakumiConfig) {
@@ -39,7 +35,6 @@ export class DirectProvider {
 		this.maxTokens = config.maxTokens;
 		this.thinking = config.thinking;
 		this.thinkingBudget = config.thinkingBudget;
-		this.timeout = DEFAULT_TIMEOUT;
 		this.streamingTimeout = STREAMING_TIMEOUT;
 	}
 
@@ -51,6 +46,7 @@ export class DirectProvider {
 		system: string,
 		tools?: any[],
 		signal?: AbortSignal,
+		options?: SendMessageOptions,
 	): AsyncGenerator<AgentEvent> {
 		if (!this.apiKey) {
 			throw new AgentErrorClass(
@@ -59,8 +55,9 @@ export class DirectProvider {
 			);
 		}
 
+		const model = options?.model ?? this.model;
 		const body: Record<string, unknown> = {
-			model: this.model,
+			model,
 			max_tokens: this.maxTokens,
 			system,
 			messages,
@@ -78,15 +75,13 @@ export class DirectProvider {
 			};
 		}
 
-		log.info("Sending message to Anthropic API", { model: this.model });
+		log.info("Sending message to Anthropic API", { model });
 
 		// Create a composite abort signal that combines user signal + timeout
 		const timeoutController = new AbortController();
 		const timeoutId = setTimeout(() => timeoutController.abort(), this.streamingTimeout);
 
-		const compositeSignal = signal
-			? AbortSignal.any([signal, timeoutController.signal])
-			: timeoutController.signal;
+		const compositeSignal = signal ? AbortSignal.any([signal, timeoutController.signal]) : timeoutController.signal;
 
 		try {
 			const response = await fetch(ANTHROPIC_API_URL, {
@@ -117,23 +112,16 @@ export class DirectProvider {
 				if (response.status === 429) {
 					const retryAfterHeader = response.headers.get("retry-after");
 					const retryAfterMs = retryAfterHeader
-						? (Number.isNaN(Number(retryAfterHeader))
+						? Number.isNaN(Number(retryAfterHeader))
 							? undefined
-							: Number(retryAfterHeader) * 1000)
+							: Number(retryAfterHeader) * 1000
 						: undefined;
 
-					throw new RetryableError(
-						`Anthropic API rate limited: ${message}`,
-						429,
-						retryAfterMs,
-					);
+					throw new RetryableError(`Anthropic API rate limited: ${message}`, 429, retryAfterMs);
 				}
 
 				if (retryable) {
-					throw new RetryableError(
-						`Anthropic API error: ${message}`,
-						response.status,
-					);
+					throw new RetryableError(`Anthropic API error: ${message}`, response.status);
 				}
 
 				throw new AgentErrorClass(`Anthropic API error: ${message}`, false);
@@ -159,11 +147,7 @@ export class DirectProvider {
 				);
 			}
 
-			throw new ProviderUnavailableError(
-				"anthropic",
-				`API connection error: ${(err as Error).message}`,
-				err as Error,
-			);
+			throw new ProviderUnavailableError("anthropic", `API connection error: ${(err as Error).message}`, err as Error);
 		} finally {
 			clearTimeout(timeoutId);
 		}

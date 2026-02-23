@@ -15,9 +15,9 @@
 
 import type { AgentEvent } from "@takumi/core";
 import { AgentErrorClass, createLogger } from "@takumi/core";
-import type { MessagePayload } from "../loop.js";
+import { categorizeError, ProviderUnavailableError } from "../errors.js";
+import type { MessagePayload, SendMessageOptions } from "../loop.js";
 import { RetryableError } from "../retry.js";
-import { ProviderUnavailableError, categorizeError } from "../errors.js";
 
 const log = createLogger("failover-provider");
 
@@ -30,6 +30,7 @@ export interface ProviderLike {
 		system: string,
 		tools?: any[],
 		signal?: AbortSignal,
+		options?: SendMessageOptions,
 	): AsyncGenerator<AgentEvent> | AsyncIterable<AgentEvent>;
 }
 
@@ -146,8 +147,7 @@ export class FailoverProvider {
 		const result = new Map<string, ProviderStatus>();
 
 		for (const [name, status] of this.statusMap) {
-			const cooledDown =
-				!status.available && status.lastFailure > 0 && now - status.lastFailure >= this.cooldownMs;
+			const cooledDown = !status.available && status.lastFailure > 0 && now - status.lastFailure >= this.cooldownMs;
 
 			result.set(name, {
 				failures: status.failures,
@@ -235,6 +235,7 @@ export class FailoverProvider {
 		system: string,
 		tools?: any[],
 		signal?: AbortSignal,
+		options?: SendMessageOptions,
 	): AsyncGenerator<AgentEvent> {
 		const available = this.getAvailableProviders();
 
@@ -254,8 +255,7 @@ export class FailoverProvider {
 
 			// Notify on switch (skip the first attempt — that's not a switch)
 			if (i > 0 && this.switchCallback) {
-				const reason =
-					lastError instanceof Error ? lastError.message : String(lastError ?? "unknown error");
+				const reason = lastError instanceof Error ? lastError.message : String(lastError ?? "unknown error");
 				this.switchCallback(previousProvider, entry.name, reason);
 			}
 
@@ -264,7 +264,7 @@ export class FailoverProvider {
 			try {
 				log.info(`Trying provider "${entry.name}"`);
 
-				const stream = entry.provider.sendMessage(messages, system, tools, signal);
+				const stream = entry.provider.sendMessage(messages, system, tools, signal, options);
 
 				for await (const event of stream) {
 					hasYielded = true;
@@ -279,9 +279,7 @@ export class FailoverProvider {
 			} catch (error) {
 				// Mid-stream failure: don't failover, we already sent partial data
 				if (hasYielded) {
-					log.error(
-						`Mid-stream failure on provider "${entry.name}", not failing over (partial data sent)`,
-					);
+					log.error(`Mid-stream failure on provider "${entry.name}", not failing over (partial data sent)`);
 					throw error;
 				}
 

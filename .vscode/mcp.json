@@ -1,0 +1,11 @@
+{
+	"mcpServers": {
+    "chitragupta": {
+      "command": "chitragupta-mcp",
+      "args": ["--stdio"],
+      "env": {
+        "CHITRAGUPTA_MCP_PROJECT": "/Users/srinivaspendela/Sriinnu/Personal/takumi"
+      }
+    }
+  }
+}

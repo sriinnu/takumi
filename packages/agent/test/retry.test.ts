@@ -1,26 +1,26 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
-	withRetry,
-	RetryableError,
-	computeDelay,
-	isRetryableError,
-	getRetryAfterMs,
-	DEFAULT_RETRY_OPTIONS,
-} from "../src/retry.js";
-import {
-	shouldCompact,
 	compactMessages,
 	estimatePayloadTokens,
 	estimateTotalPayloadTokens,
+	shouldCompact,
 } from "../src/context/compact.js";
 import {
 	ContextOverflowError,
-	ProviderUnavailableError,
-	isRetryable,
 	categorizeError,
 	friendlyErrorMessage,
+	isRetryable,
+	ProviderUnavailableError,
 } from "../src/errors.js";
 import type { MessagePayload } from "../src/loop.js";
+import {
+	computeDelay,
+	DEFAULT_RETRY_OPTIONS,
+	getRetryAfterMs,
+	isRetryableError,
+	RetryableError,
+	withRetry,
+} from "../src/retry.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -95,7 +95,9 @@ describe("withRetry", () => {
 
 	it("throws the original error after all retries are exhausted", async () => {
 		const error = new RetryableError("Always fails", 500);
-		const fn = async () => { throw error; };
+		const fn = async () => {
+			throw error;
+		};
 
 		await expect(withRetry(fn, { maxRetries: 2 }, instantSleep)).rejects.toThrow("Always fails");
 	});
@@ -150,7 +152,9 @@ describe("withRetry", () => {
 
 	it("calls sleep between retries", async () => {
 		const sleepCalls: number[] = [];
-		const trackingSleep = async (ms: number) => { sleepCalls.push(ms); };
+		const trackingSleep = async (ms: number) => {
+			sleepCalls.push(ms);
+		};
 
 		let calls = 0;
 		const fn = async () => {
@@ -167,7 +171,9 @@ describe("withRetry", () => {
 
 	it("uses Retry-After delay from RetryableError when present", async () => {
 		const sleepCalls: number[] = [];
-		const trackingSleep = async (ms: number) => { sleepCalls.push(ms); };
+		const trackingSleep = async (ms: number) => {
+			sleepCalls.push(ms);
+		};
 
 		let calls = 0;
 		const fn = async () => {
@@ -183,7 +189,9 @@ describe("withRetry", () => {
 
 	it("caps Retry-After at maxDelayMs", async () => {
 		const sleepCalls: number[] = [];
-		const trackingSleep = async (ms: number) => { sleepCalls.push(ms); };
+		const trackingSleep = async (ms: number) => {
+			sleepCalls.push(ms);
+		};
 
 		let calls = 0;
 		const fn = async () => {
@@ -249,13 +257,15 @@ describe("computeDelay", () => {
 		// attempt 0: base ~1000-1500
 		// attempt 1: base ~2000-3000
 		// attempt 2: base ~4000-6000
-		const d0min = 1000;
-		const d1min = 2000;
-		const d2min = 4000;
+		const _d0min = 1000;
+		const _d1min = 2000;
+		const _d2min = 4000;
 
 		// On average, higher attempts produce larger delays
 		const samples = 50;
-		let avg0 = 0, avg1 = 0, avg2 = 0;
+		let avg0 = 0,
+			avg1 = 0,
+			avg2 = 0;
 		for (let i = 0; i < samples; i++) {
 			avg0 += computeDelay(0, 1000, 100000);
 			avg1 += computeDelay(1, 1000, 100000);
@@ -494,12 +504,12 @@ describe("compactMessages", () => {
 	it("preserves tool_result messages referenced by recent tool_use blocks", () => {
 		const msgs = [
 			textPayload("user", "Start"),
-			toolResultPayload("tu_recent", "important result"),  // index 1 - old but referenced
+			toolResultPayload("tu_recent", "important result"), // index 1 - old but referenced
 			textPayload("assistant", "Processing..."),
 			textPayload("user", "Continue"),
 			textPayload("assistant", "More work"),
 			// These are the "recent" ones (preserveRecent=3)
-			toolUsePayload("tu_recent", "read_file"),            // references tu_recent
+			toolUsePayload("tu_recent", "read_file"), // references tu_recent
 			textPayload("user", "Go on"),
 			textPayload("assistant", "Done"),
 		];
@@ -512,14 +522,11 @@ describe("compactMessages", () => {
 
 	it("truncates long text in summaries to 80 chars", () => {
 		const longText = "A".repeat(200);
-		const msgs = [
-			textPayload("user", longText),
-			...generatePayloads(8, 100),
-		];
+		const msgs = [textPayload("user", longText), ...generatePayloads(8, 100)];
 		const result = compactMessages(msgs, { preserveRecent: 4 });
 
 		const summary = result[0].content[0].text;
-		expect(summary).toContain("A".repeat(80) + "...");
+		expect(summary).toContain(`${"A".repeat(80)}...`);
 		expect(summary).not.toContain("A".repeat(81));
 	});
 
@@ -551,8 +558,8 @@ describe("estimatePayloadTokens", () => {
 		const msg: MessagePayload = {
 			role: "assistant",
 			content: [
-				{ type: "text", text: "Hello" },       // 5 chars
-				{ type: "text", text: "World" },       // 5 chars
+				{ type: "text", text: "Hello" }, // 5 chars
+				{ type: "text", text: "World" }, // 5 chars
 			],
 		};
 		// 10 chars total -> ceil(10/4) = 3

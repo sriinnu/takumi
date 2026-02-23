@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import type { PermissionDecision, PermissionRule } from "@takumi/core";
+import { describe, expect, it, vi } from "vitest";
 import { PermissionEngine } from "../src/safety/permissions.js";
-import type { PermissionRule, PermissionDecision } from "@takumi/core";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -220,10 +220,12 @@ describe("PermissionEngine", () => {
 	describe("check — prompt callback", () => {
 		it("falls through to the prompt callback when no rule matches", async () => {
 			const engine = new PermissionEngine();
-			const promptFn = vi.fn(async (): Promise<PermissionDecision> => ({
-				allowed: true,
-				reason: "User approved",
-			}));
+			const promptFn = vi.fn(
+				async (): Promise<PermissionDecision> => ({
+					allowed: true,
+					reason: "User approved",
+				}),
+			);
 			engine.setPromptCallback(promptFn);
 
 			const decision = await engine.check("write_file", { file_path: "/tmp/x" });
@@ -238,10 +240,12 @@ describe("PermissionEngine", () => {
 			const engine = new PermissionEngine();
 			engine.grant(makeRule({ tool: "read_file", pattern: "*" }));
 
-			const promptFn = vi.fn(async (): Promise<PermissionDecision> => ({
-				allowed: false,
-				reason: "Should not be called",
-			}));
+			const promptFn = vi.fn(
+				async (): Promise<PermissionDecision> => ({
+					allowed: false,
+					reason: "Should not be called",
+				}),
+			);
 			engine.setPromptCallback(promptFn);
 
 			const decision = await engine.check("read_file", {});
@@ -296,9 +300,7 @@ describe("PermissionEngine", () => {
 		});
 
 		it("inserted rule takes priority (prepended)", async () => {
-			const engine = new PermissionEngine([
-				makeRule({ tool: "exec", pattern: "*", allow: false, scope: "global" }),
-			]);
+			const engine = new PermissionEngine([makeRule({ tool: "exec", pattern: "*", allow: false, scope: "global" })]);
 
 			// Grant with session scope — should be prepended and win
 			engine.grant(makeRule({ tool: "exec", pattern: "*", scope: "session" }));

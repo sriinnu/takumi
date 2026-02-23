@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mock fetch globally ──────────────────────────────────────────────────────
 
@@ -133,10 +133,7 @@ describe("DarpanaClient", () => {
 
 			const result = await client.listModels();
 			expect(result).toEqual(models);
-			expect(mockFetch).toHaveBeenCalledWith(
-				"http://localhost:3141/v1/models",
-				expect.objectContaining({}),
-			);
+			expect(mockFetch).toHaveBeenCalledWith("http://localhost:3141/v1/models", expect.objectContaining({}));
 		});
 
 		it("returns empty array on network error", async () => {

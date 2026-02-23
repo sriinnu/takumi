@@ -1,13 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
-import {
-	CompletionEngine,
-	CompletionPopup,
-	MAX_VISIBLE_ITEMS,
-} from "../src/completion.js";
-import type { CompletionItem } from "../src/completion.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SlashCommandRegistry } from "../src/commands.js";
+import type { CompletionItem } from "../src/completion.js";
+import { CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "../src/completion.js";
 
 // ── Mock fs ──────────────────────────────────────────────────────────────────
 
@@ -158,12 +154,8 @@ describe("CompletionEngine", () => {
 
 		it("sorts directories before files", async () => {
 			const items = await engine.getCompletions("@", 1);
-			const dirIndices = items
-				.map((item, idx) => ({ item, idx }))
-				.filter(({ item }) => item.label.endsWith("/"));
-			const fileIndices = items
-				.map((item, idx) => ({ item, idx }))
-				.filter(({ item }) => !item.label.endsWith("/"));
+			const dirIndices = items.map((item, idx) => ({ item, idx })).filter(({ item }) => item.label.endsWith("/"));
+			const fileIndices = items.map((item, idx) => ({ item, idx })).filter(({ item }) => !item.label.endsWith("/"));
 
 			if (dirIndices.length > 0 && fileIndices.length > 0) {
 				const maxDirIdx = Math.max(...dirIndices.map((d) => d.idx));

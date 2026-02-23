@@ -10,29 +10,29 @@
  * - Cumulative token tracking from usage_update events
  */
 
-import type {
-	AgentEvent,
-	Message,
-	ToolDefinition,
-	ToolResult,
-	Usage,
-} from "@takumi/core";
-import { LIMITS, createLogger } from "@takumi/core";
-import type { ToolRegistry } from "./tools/registry.js";
-import { buildSystemPrompt, buildUserMessage, buildToolResult } from "./message.js";
-import { withRetry, type RetryOptions } from "./retry.js";
+import type { AgentEvent, ToolDefinition, ToolResult, Usage } from "@takumi/core";
+import { createLogger, LIMITS } from "@takumi/core";
 import {
-	shouldCompact,
 	compactMessages,
 	estimateTotalPayloadTokens,
 	type PayloadCompactOptions,
+	shouldCompact,
 } from "./context/compact.js";
+import { buildSystemPrompt, buildToolResult, buildUserMessage } from "./message.js";
+import { type RetryOptions, withRetry } from "./retry.js";
+import type { ToolRegistry } from "./tools/registry.js";
 
 const log = createLogger("agent-loop");
 
 export interface AgentLoopOptions {
 	/** Function that sends messages to the LLM and returns a stream of events. */
-	sendMessage: (messages: MessagePayload[], system: string, tools?: ToolDefinition[]) => AsyncIterable<AgentEvent>;
+	sendMessage: (
+		messages: MessagePayload[],
+		system: string,
+		tools?: ToolDefinition[],
+		signal?: AbortSignal,
+		options?: SendMessageOptions,
+	) => AsyncIterable<AgentEvent>;
 
 	/** Tool registry for executing tool calls. */
 	tools: ToolRegistry;
@@ -61,6 +61,12 @@ export interface MessagePayload {
 	content: any;
 }
 
+/** Optional per-call overrides for LLM requests. */
+export interface SendMessageOptions {
+	/** Override the model used for this call (if provider supports it). */
+	model?: string;
+}
+
 /**
  * Run the agent loop as an async generator.
  *
@@ -85,10 +91,7 @@ export async function* agentLoop(
 
 	const toolDefs = tools.getDefinitions();
 	const system = systemPrompt ?? buildSystemPrompt(toolDefs);
-	let messages: MessagePayload[] = [
-		...history,
-		{ role: "user", content: buildUserMessage(userMessage) },
-	];
+	let messages: MessagePayload[] = [...history, { role: "user", content: buildUserMessage(userMessage) }];
 
 	// Cumulative token tracking from usage_update events
 	let cumulativeTokens = 0;
@@ -106,9 +109,7 @@ export async function* agentLoop(
 
 		// Context compaction check before each turn
 		if (compactOptions !== false) {
-			const estimatedTokens = cumulativeTokens > 0
-				? cumulativeTokens
-				: estimateTotalPayloadTokens(messages);
+			const estimatedTokens = cumulativeTokens > 0 ? cumulativeTokens : estimateTotalPayloadTokens(messages);
 
 			if (shouldCompact(messages, estimatedTokens, maxContextTokens)) {
 				log.info(`Context compaction triggered: ~${estimatedTokens} tokens`);
@@ -126,7 +127,7 @@ export async function* agentLoop(
 		let fullThinking = "";
 		const pendingToolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
 		let stopReason: string | undefined;
-		let usage: Usage | undefined;
+		let _usage: Usage | undefined;
 
 		// Stream events from the LLM (with retry wrapper)
 		try {
@@ -135,18 +136,19 @@ export async function* agentLoop(
 			 * For streaming APIs, we retry the initial connection/request.
 			 * Once streaming has started, we do not retry mid-stream.
 			 */
-			const stream = retryOptions !== false
-				? await withRetry(
-						async () => {
-							// Materialize the async iterable; the retry applies
-							// to the initial call (HTTP request). Once we get
-							// the iterable back, we consume it outside the retry.
-							const iterable = sendMessage(messages, system, toolDefs);
-							return iterable;
-						},
-						typeof retryOptions === "object" ? retryOptions : undefined,
-					)
-				: sendMessage(messages, system, toolDefs);
+			const stream =
+				retryOptions !== false
+					? await withRetry(
+							async () => {
+								// Materialize the async iterable; the retry applies
+								// to the initial call (HTTP request). Once we get
+								// the iterable back, we consume it outside the retry.
+								const iterable = sendMessage(messages, system, toolDefs);
+								return iterable;
+							},
+							typeof retryOptions === "object" ? retryOptions : undefined,
+						)
+					: sendMessage(messages, system, toolDefs);
 
 			for await (const event of stream) {
 				yield event;
@@ -169,7 +171,7 @@ export async function* agentLoop(
 						stopReason = event.stopReason;
 						break;
 					case "usage_update":
-						usage = event.usage;
+						_usage = event.usage;
 						// Track cumulative tokens for compaction decisions
 						cumulativeTokens = event.usage.inputTokens + event.usage.outputTokens;
 						break;

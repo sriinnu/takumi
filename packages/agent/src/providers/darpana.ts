@@ -8,10 +8,10 @@
 
 import type { AgentEvent, TakumiConfig } from "@takumi/core";
 import { AgentErrorClass, createLogger } from "@takumi/core";
-import { parseSSEStream } from "../stream.js";
-import type { MessagePayload } from "../loop.js";
+import { ProviderUnavailableError } from "../errors.js";
+import type { MessagePayload, SendMessageOptions } from "../loop.js";
 import { RetryableError } from "../retry.js";
-import { ProviderUnavailableError, friendlyErrorMessage } from "../errors.js";
+import { parseSSEStream } from "../stream.js";
 
 const log = createLogger("darpana-provider");
 
@@ -48,11 +48,12 @@ export class DarpanaProvider {
 		system: string,
 		tools?: any[],
 		signal?: AbortSignal,
+		options?: SendMessageOptions,
 	): AsyncGenerator<AgentEvent> {
 		const url = `${this.baseUrl}/v1/messages`;
 
 		const body: Record<string, unknown> = {
-			model: this.model,
+			model: options?.model ?? this.model,
 			max_tokens: this.maxTokens,
 			system,
 			messages,
@@ -70,15 +71,13 @@ export class DarpanaProvider {
 			};
 		}
 
-		log.info("Sending message to Darpana", { url, model: this.model });
+		log.info("Sending message to Darpana", { url, model: options?.model ?? this.model });
 
 		// Create a composite abort signal that combines user signal + timeout
 		const timeoutController = new AbortController();
 		const timeoutId = setTimeout(() => timeoutController.abort(), this.streamingTimeout);
 
-		const compositeSignal = signal
-			? AbortSignal.any([signal, timeoutController.signal])
-			: timeoutController.signal;
+		const compositeSignal = signal ? AbortSignal.any([signal, timeoutController.signal]) : timeoutController.signal;
 
 		try {
 			const response = await fetch(url, {
@@ -99,29 +98,19 @@ export class DarpanaProvider {
 				if (response.status === 429) {
 					const retryAfterHeader = response.headers.get("retry-after");
 					const retryAfterMs = retryAfterHeader
-						? (Number.isNaN(Number(retryAfterHeader))
+						? Number.isNaN(Number(retryAfterHeader))
 							? undefined
-							: Number(retryAfterHeader) * 1000)
+							: Number(retryAfterHeader) * 1000
 						: undefined;
 
-					throw new RetryableError(
-						`Darpana rate limited: ${errorBody}`,
-						429,
-						retryAfterMs,
-					);
+					throw new RetryableError(`Darpana rate limited: ${errorBody}`, 429, retryAfterMs);
 				}
 
 				if (retryable) {
-					throw new RetryableError(
-						`Darpana error ${response.status}: ${errorBody}`,
-						response.status,
-					);
+					throw new RetryableError(`Darpana error ${response.status}: ${errorBody}`, response.status);
 				}
 
-				throw new AgentErrorClass(
-					`Darpana error ${response.status}: ${errorBody}`,
-					false,
-				);
+				throw new AgentErrorClass(`Darpana error ${response.status}: ${errorBody}`, false);
 			}
 
 			if (!response.body) {
@@ -138,10 +127,7 @@ export class DarpanaProvider {
 				if (signal?.aborted) {
 					throw err; // User-initiated abort, let it propagate
 				}
-				throw new ProviderUnavailableError(
-					"darpana",
-					`Darpana request timed out after ${this.streamingTimeout}ms`,
-				);
+				throw new ProviderUnavailableError("darpana", `Darpana request timed out after ${this.streamingTimeout}ms`);
 			}
 
 			throw new ProviderUnavailableError(

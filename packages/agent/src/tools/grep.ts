@@ -6,7 +6,7 @@
 
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
-import type { ToolDefinition, ToolResult } from "@takumi/core";
+import type { ToolDefinition } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
 
 export const grepDefinition: ToolDefinition = {

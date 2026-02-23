@@ -6,10 +6,10 @@
  * token usage, and metadata.
  */
 
-import { readFile, writeFile, readdir, unlink, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import type { Message, Usage } from "./types.js";
+import { join } from "node:path";
+import type { Message } from "./types.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -73,10 +73,7 @@ export function generateSessionId(): string {
  * Save a session to disk.
  * Creates or overwrites the JSON file for the given session.
  */
-export async function saveSession(
-	session: SessionData,
-	sessionsDir?: string,
-): Promise<void> {
+export async function saveSession(session: SessionData, sessionsDir?: string): Promise<void> {
 	const dir = await ensureSessionsDir(sessionsDir);
 	const filePath = sessionPath(dir, session.id);
 	const json = JSON.stringify(session, null, 2);
@@ -87,10 +84,7 @@ export async function saveSession(
  * Load a session from disk by ID.
  * Returns null if the session file does not exist or is corrupt.
  */
-export async function loadSession(
-	id: string,
-	sessionsDir?: string,
-): Promise<SessionData | null> {
+export async function loadSession(id: string, sessionsDir?: string): Promise<SessionData | null> {
 	const dir = await ensureSessionsDir(sessionsDir);
 	const filePath = sessionPath(dir, id);
 	try {
@@ -110,10 +104,7 @@ export async function loadSession(
  * List available sessions, sorted by updatedAt descending (most recent first).
  * Optionally limit the number of results.
  */
-export async function listSessions(
-	limit?: number,
-	sessionsDir?: string,
-): Promise<SessionSummary[]> {
+export async function listSessions(limit?: number, sessionsDir?: string): Promise<SessionSummary[]> {
 	const dir = await ensureSessionsDir(sessionsDir);
 	let files: string[];
 	try {
@@ -138,10 +129,7 @@ export async function listSessions(
 				messageCount: data.messages.length,
 				model: data.model,
 			});
-		} catch {
-			// Skip corrupt files
-			continue;
-		}
+		} catch {}
 	}
 
 	// Sort by updatedAt descending
@@ -157,10 +145,7 @@ export async function listSessions(
  * Delete a session from disk.
  * Silently succeeds if the file does not exist.
  */
-export async function deleteSession(
-	id: string,
-	sessionsDir?: string,
-): Promise<void> {
+export async function deleteSession(id: string, sessionsDir?: string): Promise<void> {
 	const dir = await ensureSessionsDir(sessionsDir);
 	const filePath = sessionPath(dir, id);
 	try {
@@ -188,7 +173,7 @@ export interface AutoSaver {
  * @param sessionsDir - Override the sessions directory
  */
 export function createAutoSaver(
-	sessionId: string,
+	_sessionId: string,
 	getState: () => SessionData,
 	interval = 30_000,
 	sessionsDir?: string,

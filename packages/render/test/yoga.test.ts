@@ -3,21 +3,9 @@
  * Uses the fallback implementation since WASM may not be available in test environment.
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
-import {
-	initYoga,
-	createNode,
-	applyStyle,
-	computeLayout,
-	FLEX_DIRECTION_ROW,
-	FLEX_DIRECTION_COLUMN,
-	EDGE_ALL,
-	EDGE_TOP,
-	EDGE_RIGHT,
-	EDGE_BOTTOM,
-	EDGE_LEFT,
-} from "../src/yoga.js";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { ComponentStyle } from "../src/component.js";
+import { applyStyle, computeLayout, createNode, initYoga } from "../src/yoga.js";
 
 describe("yoga", () => {
 	beforeAll(async () => {

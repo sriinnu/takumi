@@ -2,13 +2,13 @@
  * Tests for FailoverProvider — provider failover with automatic switching.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { FailoverProvider } from "../src/providers/failover.js";
-import type { FailoverProviderConfig, ProviderLike } from "../src/providers/failover.js";
-import { RetryableError } from "../src/retry.js";
-import { ProviderUnavailableError } from "../src/errors.js";
-import { AgentErrorClass } from "@takumi/core";
 import type { AgentEvent } from "@takumi/core";
+import { AgentErrorClass } from "@takumi/core";
+import { describe, expect, it, vi } from "vitest";
+import { ProviderUnavailableError } from "../src/errors.js";
+import type { ProviderLike } from "../src/providers/failover.js";
+import { FailoverProvider } from "../src/providers/failover.js";
+import { RetryableError } from "../src/retry.js";
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
@@ -26,6 +26,7 @@ function mockProvider(events: AgentEvent[]): ProviderLike {
 /** Create a mock provider that throws on sendMessage. */
 function failingProvider(error: Error): ProviderLike {
 	return {
+		// biome-ignore lint/correctness/useYield: Test helper intentionally has no yield
 		async *sendMessage() {
 			throw error;
 		},
@@ -85,9 +86,7 @@ describe("FailoverProvider", () => {
 	// ── Construction ──────────────────────────────────────────────────────
 
 	it("throws if no providers are given", () => {
-		expect(
-			() => new FailoverProvider({ providers: [] }),
-		).toThrow("at least one provider");
+		expect(() => new FailoverProvider({ providers: [] })).toThrow("at least one provider");
 	});
 
 	it("accepts a single provider", () => {
@@ -165,9 +164,7 @@ describe("FailoverProvider", () => {
 	// ── Failover on ProviderUnavailableError ─────────────────────────────
 
 	it("switches to secondary after ProviderUnavailableError", async () => {
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", "Connection refused"),
-		);
+		const primary = failingProvider(new ProviderUnavailableError("primary", "Connection refused"));
 		const secondaryEvents: AgentEvent[] = [{ type: "text_delta", text: "fallback" }, doneEvent];
 		const secondary = mockProvider(secondaryEvents);
 
@@ -236,9 +233,7 @@ describe("FailoverProvider", () => {
 	});
 
 	it("marks provider unavailable after reaching failure threshold", async () => {
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", "down"),
-		);
+		const primary = failingProvider(new ProviderUnavailableError("primary", "down"));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -261,9 +256,7 @@ describe("FailoverProvider", () => {
 	// ── Non-retryable errors (auth) ──────────────────────────────────────
 
 	it("does not switch on auth errors (AgentErrorClass non-retryable)", async () => {
-		const primary = failingProvider(
-			new AgentErrorClass("No API key configured", false),
-		);
+		const primary = failingProvider(new AgentErrorClass("No API key configured", false));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -277,13 +270,11 @@ describe("FailoverProvider", () => {
 	});
 
 	it("does not switch on 401 errors", async () => {
-		const authError = new RetryableError("Unauthorized", 401);
+		const _authError = new RetryableError("Unauthorized", 401);
 		// Override: 401 errors should have retryable=false behavior via categorization
 		// But RetryableError always has a status. The categorization check for auth
 		// catches status 401/403.
-		const primary = failingProvider(
-			Object.assign(new Error("Unauthorized"), { status: 401 }),
-		);
+		const primary = failingProvider(Object.assign(new Error("Unauthorized"), { status: 401 }));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -297,9 +288,7 @@ describe("FailoverProvider", () => {
 	});
 
 	it("does not switch on 403 errors", async () => {
-		const primary = failingProvider(
-			Object.assign(new Error("Forbidden"), { status: 403 }),
-		);
+		const primary = failingProvider(Object.assign(new Error("Forbidden"), { status: 403 }));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -313,9 +302,7 @@ describe("FailoverProvider", () => {
 	});
 
 	it("does not switch on 400 bad request errors", async () => {
-		const primary = failingProvider(
-			Object.assign(new Error("Bad Request"), { status: 400 }),
-		);
+		const primary = failingProvider(Object.assign(new Error("Bad Request"), { status: 400 }));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -367,10 +354,7 @@ describe("FailoverProvider", () => {
 	// ── Mid-stream failures ──────────────────────────────────────────────
 
 	it("does not failover on mid-stream failures", async () => {
-		const primary = midStreamFailProvider(
-			[textEvent],
-			new ProviderUnavailableError("primary", "stream broke"),
-		);
+		const primary = midStreamFailProvider([textEvent], new ProviderUnavailableError("primary", "stream broke"));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -429,12 +413,8 @@ describe("FailoverProvider", () => {
 	// ── All providers fail ───────────────────────────────────────────────
 
 	it("throws last error when all providers fail", async () => {
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", "primary down"),
-		);
-		const secondary = failingProvider(
-			new ProviderUnavailableError("secondary", "secondary down"),
-		);
+		const primary = failingProvider(new ProviderUnavailableError("primary", "primary down"));
+		const secondary = failingProvider(new ProviderUnavailableError("secondary", "secondary down"));
 
 		const fp = new FailoverProvider({
 			providers: [
@@ -448,12 +428,8 @@ describe("FailoverProvider", () => {
 	});
 
 	it("throws 'all providers unavailable' when all are in cooldown", async () => {
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", "primary is down"),
-		);
-		const secondary = failingProvider(
-			new ProviderUnavailableError("secondary", "secondary is down"),
-		);
+		const primary = failingProvider(new ProviderUnavailableError("primary", "primary is down"));
+		const secondary = failingProvider(new ProviderUnavailableError("secondary", "secondary is down"));
 
 		const fp = new FailoverProvider({
 			providers: [
@@ -475,9 +451,7 @@ describe("FailoverProvider", () => {
 
 	it("fires onSwitch callback when switching providers", async () => {
 		const onSwitch = vi.fn();
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", "Connection refused"),
-		);
+		const primary = failingProvider(new ProviderUnavailableError("primary", "Connection refused"));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -518,12 +492,14 @@ describe("FailoverProvider", () => {
 		const callOrder: string[] = [];
 
 		const providerA: ProviderLike = {
+			// biome-ignore lint/correctness/useYield: Test helper intentionally has no yield
 			async *sendMessage() {
 				callOrder.push("a");
 				throw new ProviderUnavailableError("a", "a down");
 			},
 		};
 		const providerB: ProviderLike = {
+			// biome-ignore lint/correctness/useYield: Test helper intentionally has no yield
 			async *sendMessage() {
 				callOrder.push("b");
 				throw new ProviderUnavailableError("b", "b down");
@@ -552,9 +528,7 @@ describe("FailoverProvider", () => {
 	// ── resetFailures ────────────────────────────────────────────────────
 
 	it("resetFailures resets a specific provider", async () => {
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", "down"),
-		);
+		const primary = failingProvider(new ProviderUnavailableError("primary", "down"));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -574,12 +548,8 @@ describe("FailoverProvider", () => {
 	});
 
 	it("resetFailures with no args resets all providers", async () => {
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", "down"),
-		);
-		const secondary = failingProvider(
-			new ProviderUnavailableError("secondary", "down"),
-		);
+		const primary = failingProvider(new ProviderUnavailableError("primary", "down"));
+		const secondary = failingProvider(new ProviderUnavailableError("secondary", "down"));
 
 		const fp = new FailoverProvider({
 			providers: [
@@ -601,9 +571,7 @@ describe("FailoverProvider", () => {
 	// ── Rate limit (429) retry before failover ───────────────────────────
 
 	it("rate limit error (429) triggers failover", async () => {
-		const primary = failingProvider(
-			new RetryableError("Rate limited", 429, 5000),
-		);
+		const primary = failingProvider(new RetryableError("Rate limited", 429, 5000));
 		const secondaryEvents: AgentEvent[] = [{ type: "text_delta", text: "backup" }, doneEvent];
 		const secondary = mockProvider(secondaryEvents);
 
@@ -620,9 +588,7 @@ describe("FailoverProvider", () => {
 	});
 
 	it("429 from retry layer (after exhausting retries) triggers failover", async () => {
-		const primary = failingProvider(
-			new RetryableError("Rate limited after retries", 429),
-		);
+		const primary = failingProvider(new RetryableError("Rate limited after retries", 429));
 		const secondaryEvents: AgentEvent[] = [{ type: "text_delta", text: "ok" }, doneEvent];
 		const secondary = mockProvider(secondaryEvents);
 
@@ -641,9 +607,7 @@ describe("FailoverProvider", () => {
 	// ── Provider status tracking ─────────────────────────────────────────
 
 	it("tracks failure count per provider", async () => {
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", "down"),
-		);
+		const primary = failingProvider(new ProviderUnavailableError("primary", "down"));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -705,12 +669,8 @@ describe("FailoverProvider", () => {
 	// ── Three providers with cascading failure ───────────────────────────
 
 	it("cascades through three providers when first two fail", async () => {
-		const providerA = failingProvider(
-			new ProviderUnavailableError("a", "a is down"),
-		);
-		const providerB = failingProvider(
-			new RetryableError("b overloaded", 503),
-		);
+		const providerA = failingProvider(new ProviderUnavailableError("a", "a is down"));
+		const providerB = failingProvider(new RetryableError("b overloaded", 503));
 		const thirdEvents: AgentEvent[] = [{ type: "text_delta", text: "third" }, doneEvent];
 		const providerC = mockProvider(thirdEvents);
 
@@ -755,9 +715,7 @@ describe("FailoverProvider", () => {
 
 	it("handles ProviderUnavailableError with cause", async () => {
 		const cause = new Error("ECONNREFUSED");
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", "Connection refused", cause),
-		);
+		const primary = failingProvider(new ProviderUnavailableError("primary", "Connection refused", cause));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -837,9 +795,7 @@ describe("FailoverProvider", () => {
 	});
 
 	it("activeProvider reflects the last attempted provider", async () => {
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", "down"),
-		);
+		const primary = failingProvider(new ProviderUnavailableError("primary", "down"));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -856,10 +812,7 @@ describe("FailoverProvider", () => {
 	});
 
 	it("uses default maxFailuresBeforeSwitch of 2", async () => {
-		const primary = countingProvider([
-			{ error: new ProviderUnavailableError("p", "fail") },
-			{ events: basicEvents },
-		]);
+		const primary = countingProvider([{ error: new ProviderUnavailableError("p", "fail") }, { events: basicEvents }]);
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -877,10 +830,8 @@ describe("FailoverProvider", () => {
 	});
 
 	it("uses default cooldownMs of 60000", () => {
-		let now = 1000;
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", "down"),
-		);
+		const now = 1000;
+		const primary = failingProvider(new ProviderUnavailableError("primary", "down"));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -901,9 +852,7 @@ describe("FailoverProvider", () => {
 	});
 
 	it("multiple sequential calls accumulate failures correctly", async () => {
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", "down"),
-		);
+		const primary = failingProvider(new ProviderUnavailableError("primary", "down"));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -932,9 +881,7 @@ describe("FailoverProvider", () => {
 	it("network errors trigger failover", async () => {
 		const networkError = new Error("fetch failed: ECONNREFUSED");
 		// This is categorized as "provider_down" by the error categorizer
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", networkError.message, networkError),
-		);
+		const primary = failingProvider(new ProviderUnavailableError("primary", networkError.message, networkError));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -951,9 +898,7 @@ describe("FailoverProvider", () => {
 
 	it("onSwitch receives the error message as reason", async () => {
 		const onSwitch = vi.fn();
-		const primary = failingProvider(
-			new RetryableError("Service Unavailable", 503),
-		);
+		const primary = failingProvider(new RetryableError("Service Unavailable", 503));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({
@@ -967,18 +912,12 @@ describe("FailoverProvider", () => {
 
 		await collectEvents(fp.sendMessage([], "system"));
 
-		expect(onSwitch).toHaveBeenCalledWith(
-			"primary",
-			"secondary",
-			"Service Unavailable",
-		);
+		expect(onSwitch).toHaveBeenCalledWith("primary", "secondary", "Service Unavailable");
 	});
 
 	it("resetFailures for unknown provider name is a no-op", () => {
 		const fp = new FailoverProvider({
-			providers: [
-				{ name: "a", provider: mockProvider(basicEvents), priority: 0 },
-			],
+			providers: [{ name: "a", provider: mockProvider(basicEvents), priority: 0 }],
 		});
 
 		// Should not throw
@@ -988,9 +927,7 @@ describe("FailoverProvider", () => {
 
 	it("providerStatus reflects cooldown-based re-enablement", async () => {
 		let now = 1000;
-		const primary = failingProvider(
-			new ProviderUnavailableError("primary", "down"),
-		);
+		const primary = failingProvider(new ProviderUnavailableError("primary", "down"));
 		const secondary = mockProvider(basicEvents);
 
 		const fp = new FailoverProvider({

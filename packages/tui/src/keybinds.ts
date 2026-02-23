@@ -4,7 +4,6 @@
  */
 
 import type { KeyEvent } from "@takumi/core";
-import { KEY_CODES } from "@takumi/core";
 
 export interface KeyBinding {
 	key: string;
@@ -63,7 +62,10 @@ export class KeyBindingRegistry {
 
 /** Normalize a key string to lowercase with consistent modifier order. */
 function normalizeKey(key: string): string {
-	const parts = key.toLowerCase().split("+").map((p) => p.trim());
+	const parts = key
+		.toLowerCase()
+		.split("+")
+		.map((p) => p.trim());
 	const modifiers: string[] = [];
 	let mainKey = "";
 

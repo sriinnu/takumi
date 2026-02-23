@@ -2,13 +2,8 @@
  * Tests for OSC 52 clipboard integration.
  */
 
-import { describe, it, expect } from "vitest";
-import {
-	copyToClipboard,
-	requestClipboard,
-	parseClipboardResponse,
-	clearClipboard,
-} from "../src/clipboard.js";
+import { describe, expect, it } from "vitest";
+import { clearClipboard, copyToClipboard, parseClipboardResponse, requestClipboard } from "../src/clipboard.js";
 
 // ─── copyToClipboard ──────────────────────────────────────────────────────────
 

@@ -5,20 +5,46 @@
  * input handling, and agent interaction.
  */
 
-import type { TakumiConfig, KeyEvent, MouseEvent, AgentEvent, ToolDefinition, Message, AutoSaver, SessionData, ContentBlock } from "@takumi/core";
-import { ANSI, LIMITS, createLogger, loadSession, saveSession, listSessions, generateSessionId, createAutoSaver } from "@takumi/core";
+import { existsSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
-import { RenderScheduler, initYoga } from "@takumi/render";
-import { ToolRegistry, compactHistory } from "@takumi/agent";
+import { join } from "node:path";
 import type { MessagePayload } from "@takumi/agent";
-import { gitDiff, ChitraguptaBridge } from "@takumi/bridge";
-import type { MemoryResult, ChitraguptaSessionInfo } from "@takumi/bridge";
-import { AppState } from "./state.js";
-import { KeyBindingRegistry } from "./keybinds.js";
-import { SlashCommandRegistry } from "./commands.js";
-import { RootView } from "./views/root.js";
-import type { ChatView } from "./views/chat.js";
+import {
+	akashaDepositDefinition,
+	akashaTracesDefinition,
+	compactHistory,
+	createAkashaHandlers,
+	type ToolRegistry,
+} from "@takumi/agent";
+import { ChitraguptaBridge, gitDiff } from "@takumi/bridge";
+import type {
+	AgentEvent,
+	AutoSaver,
+	KeyEvent,
+	Message,
+	MouseEvent,
+	SessionData,
+	TakumiConfig,
+	ToolDefinition,
+} from "@takumi/core";
+import {
+	ANSI,
+	createAutoSaver,
+	createLogger,
+	generateSessionId,
+	LIMITS,
+	listSessions,
+	loadSession,
+	saveSession,
+} from "@takumi/core";
+import { initYoga, RenderScheduler } from "@takumi/render";
 import { AgentRunner } from "./agent-runner.js";
+import type { CodingAgent } from "./coding-agent.js";
+import { SlashCommandRegistry } from "./commands.js";
+import { KeyBindingRegistry } from "./keybinds.js";
+import { AppState } from "./state.js";
+import type { ChatView } from "./views/chat.js";
+import { RootView } from "./views/root.js";
 
 const log = createLogger("app");
 
@@ -27,7 +53,13 @@ export interface TakumiAppOptions {
 	stdin?: NodeJS.ReadableStream;
 	stdout?: NodeJS.WritableStream;
 	/** Optional: provide a sendMessage function and tool registry to enable the agent loop. */
-	sendMessage?: (messages: MessagePayload[], system: string, tools?: ToolDefinition[]) => AsyncIterable<AgentEvent>;
+	sendMessage?: (
+		messages: MessagePayload[],
+		system: string,
+		tools?: ToolDefinition[],
+		signal?: AbortSignal,
+		options?: { model?: string },
+	) => AsyncIterable<AgentEvent>;
 	tools?: ToolRegistry;
 	/** Optional: resume a previous session by ID (loads messages from disk). */
 	resumeSessionId?: string;
@@ -52,6 +84,8 @@ export class TakumiApp {
 	private running = false;
 	private autoSaver: AutoSaver | null = null;
 	private resumeSessionId: string | undefined;
+	/** Persisted CodingAgent instance so slash commands share state with /code. */
+	private activeCoder: CodingAgent | null = null;
 
 	constructor(options: TakumiAppOptions) {
 		this.config = options.config;
@@ -68,12 +102,7 @@ export class TakumiApp {
 
 		// Wire up the agent runner if sendMessage + tools are provided
 		if (options.sendMessage && options.tools) {
-			this.agentRunner = new AgentRunner(
-				this.state,
-				this.config,
-				options.sendMessage,
-				options.tools,
-			);
+			this.agentRunner = new AgentRunner(this.state, this.config, options.sendMessage, options.tools);
 			this.rootView.chatView.agentRunner = this.agentRunner;
 		} else {
 			this.agentRunner = null;
@@ -252,9 +281,7 @@ export class TakumiApp {
 		// Click: focus panel based on position
 		if (event.type === "mousedown") {
 			const { width } = this.state.terminalSize.value;
-			const sidebarWidth = this.state.sidebarVisible.value
-				? Math.min(30, Math.floor(width * 0.25))
-				: 0;
+			const sidebarWidth = this.state.sidebarVisible.value ? Math.min(30, Math.floor(width * 0.25)) : 0;
 
 			if (event.x >= width - sidebarWidth && this.state.sidebarVisible.value) {
 				this.state.focusedPanel.value = "sidebar";
@@ -318,10 +345,39 @@ export class TakumiApp {
 	/** Start the periodic auto-saver for session persistence. */
 	private startAutoSaver(): void {
 		if (this.autoSaver) return;
-		this.autoSaver = createAutoSaver(
-			this.state.sessionId.value,
-			() => this.buildSessionData(),
-		);
+		this.autoSaver = createAutoSaver(this.state.sessionId.value, () => this.buildSessionData());
+	}
+
+	/**
+	 * Load MCP server configuration from .vscode/mcp.json.
+	 * Returns the chitragupta server config if found, null otherwise.
+	 */
+	private loadMcpConfig(): { command: string; args: string[] } | null {
+		try {
+			const mcpPath = join(process.cwd(), ".vscode", "mcp.json");
+			if (!existsSync(mcpPath)) {
+				log.debug("No .vscode/mcp.json found");
+				return null;
+			}
+
+			const raw = readFileSync(mcpPath, "utf-8");
+			const parsed = JSON.parse(raw);
+
+			// Look for chitragupta server config
+			const chitraguptaConfig = parsed?.mcpServers?.chitragupta;
+			if (chitraguptaConfig?.command) {
+				log.info("Loaded MCP config from .vscode/mcp.json");
+				return {
+					command: chitraguptaConfig.command,
+					args: chitraguptaConfig.args || [],
+				};
+			}
+
+			return null;
+		} catch (err) {
+			log.debug(`Failed to load MCP config: ${(err as Error).message}`);
+			return null;
+		}
 	}
 
 	/**
@@ -331,7 +387,12 @@ export class TakumiApp {
 	 * to work without Chitragupta features.
 	 */
 	private connectChitragupta(): void {
+		// Try to load MCP config from .vscode/mcp.json
+		const mcpConfig = this.loadMcpConfig();
+
 		const bridge = new ChitraguptaBridge({
+			command: mcpConfig?.command,
+			args: mcpConfig?.args,
 			projectPath: process.cwd(),
 			startupTimeoutMs: 8_000,
 		});
@@ -339,17 +400,35 @@ export class TakumiApp {
 		// Store the bridge instance immediately so commands can reference it
 		this.state.chitraguptaBridge.value = bridge;
 
-		bridge.connect()
+		bridge
+			.connect()
 			.then(async () => {
 				this.state.chitraguptaConnected.value = true;
 				log.info("Chitragupta bridge connected");
 
-				// Load relevant memory for the current project
+				// Register Akasha tools if we have a tool registry
+				if (this.agentRunner) {
+					const tools = this.agentRunner.getTools();
+					const handlers = createAkashaHandlers(bridge);
+					tools.register(akashaDepositDefinition, handlers.deposit);
+					tools.register(akashaTracesDefinition, handlers.traces);
+					log.info("Registered Akasha tools");
+				}
+
+				// Load relevant memory for the current project and inject into state
+				// so AgentRunner can prepend it to every system prompt as context.
 				try {
 					const cwd = process.cwd();
 					const projectName = cwd.split("/").pop() ?? cwd;
 					const results = await bridge.memorySearch(projectName, 5);
 					if (results.length > 0) {
+						// Format as a numbered list of memory snippets with relevance scores
+						this.state.chitraguptaMemory.value = results
+							.map(
+								(r, i) =>
+									`${i + 1}. [relevance ${r.relevance.toFixed(2)}${r.source ? ` | ${r.source}` : ""}]\n${r.content}`,
+							)
+							.join("\n\n");
 						log.info(`Loaded ${results.length} memory entries from Chitragupta`);
 					}
 				} catch (err) {
@@ -453,19 +532,17 @@ export class TakumiApp {
 		});
 		this.commands.register("/help", "Show help", () => {
 			const commands = this.commands.list();
-			const helpText = commands
-				.map((cmd) => `  ${cmd.name.padEnd(16)} ${cmd.description}`)
-				.join("\n");
-			log.info("Available commands:\n" + helpText);
+			const helpText = commands.map((cmd) => `  ${cmd.name.padEnd(16)} ${cmd.description}`).join("\n");
+			log.info(`Available commands:\n${helpText}`);
 		});
 		this.commands.register("/status", "Show session statistics", () => {
 			log.info(
 				`Session: ${this.state.sessionId.value || "(none)"}\n` +
-				`Turns: ${this.state.turnCount.value}\n` +
-				`Tokens: ${this.state.totalTokens.value} (in: ${this.state.totalInputTokens.value}, out: ${this.state.totalOutputTokens.value})\n` +
-				`Cost: ${this.state.formattedCost.value}\n` +
-				`Messages: ${this.state.messageCount.value}\n` +
-				`Model: ${this.state.model.value}`,
+					`Turns: ${this.state.turnCount.value}\n` +
+					`Tokens: ${this.state.totalTokens.value} (in: ${this.state.totalInputTokens.value}, out: ${this.state.totalOutputTokens.value})\n` +
+					`Cost: ${this.state.formattedCost.value}\n` +
+					`Messages: ${this.state.messageCount.value}\n` +
+					`Model: ${this.state.model.value}`,
 			);
 		});
 		this.commands.register("/compact", "Trigger conversation compaction", () => {
@@ -570,13 +647,13 @@ export class TakumiApp {
 			this.state.addMessage(diffMessage);
 		});
 		this.commands.register("/cost", "Show token costs breakdown", () => {
-			const inCost = this.state.totalInputTokens.value * 3 / 1_000_000;
-			const outCost = this.state.totalOutputTokens.value * 15 / 1_000_000;
+			const inCost = (this.state.totalInputTokens.value * 3) / 1_000_000;
+			const outCost = (this.state.totalOutputTokens.value * 15) / 1_000_000;
 			log.info(
 				`Cost breakdown:\n` +
-				`  Input:  ${this.state.totalInputTokens.value} tokens  ($${inCost.toFixed(4)})\n` +
-				`  Output: ${this.state.totalOutputTokens.value} tokens  ($${outCost.toFixed(4)})\n` +
-				`  Total:  ${this.state.formattedCost.value}`,
+					`  Input:  ${this.state.totalInputTokens.value} tokens  ($${inCost.toFixed(4)})\n` +
+					`  Output: ${this.state.totalOutputTokens.value} tokens  ($${outCost.toFixed(4)})\n` +
+					`  Total:  ${this.state.formattedCost.value}`,
 			);
 		});
 		this.commands.register("/sidebar", "Toggle sidebar", () => {
@@ -660,9 +737,7 @@ export class TakumiApp {
 					if (rules.length === 0) {
 						this.addInfoMessage("No permission rules configured");
 					} else {
-						const lines = rules.map(r =>
-							`  ${r.allow ? "allow" : "deny"} ${r.tool} ${r.pattern} (${r.scope})`,
-						);
+						const lines = rules.map((r) => `  ${r.allow ? "allow" : "deny"} ${r.tool} ${r.pattern} (${r.scope})`);
 						this.addInfoMessage(`Permission rules:\n${lines.join("\n")}`);
 					}
 				} else {
@@ -688,9 +763,25 @@ export class TakumiApp {
 				this.addInfoMessage("No agent runner configured");
 				return;
 			}
+			if (this.activeCoder?.isActive) {
+				this.addInfoMessage("A coding task is already running. Cancel with Ctrl+C or wait for it to finish.");
+				return;
+			}
+			if (this.activeCoder) {
+				await this.activeCoder.shutdown();
+			}
 			const { CodingAgent } = await import("./coding-agent.js");
-			const coder = new CodingAgent(this.state, this.agentRunner);
-			await coder.start(args);
+			const orchCfg = this.config.orchestration;
+			// Persist instance so /cluster, /checkpoint, /resume can share state
+			this.activeCoder = new CodingAgent(this.state, this.agentRunner, {
+				enableOrchestration: orchCfg?.enabled ?? false,
+				maxValidationRetries: orchCfg?.maxValidationRetries ?? 3,
+			});
+			// Apply config isolation mode (can be overridden later via /isolation)
+			if (orchCfg?.isolationMode) {
+				this.state.isolationMode.value = orchCfg.isolationMode;
+			}
+			await this.activeCoder.start(args);
 		});
 
 		// ── /think — Toggle extended thinking ────────────────────────────────────
@@ -699,9 +790,7 @@ export class TakumiApp {
 				// Toggle
 				this.state.thinking.value = !this.state.thinking.value;
 				const status = this.state.thinking.value ? "enabled" : "disabled";
-				const budgetInfo = this.state.thinking.value
-					? ` (budget: ${this.state.thinkingBudget.value} tokens)`
-					: "";
+				const budgetInfo = this.state.thinking.value ? ` (budget: ${this.state.thinkingBudget.value} tokens)` : "";
 				this.addInfoMessage(`Extended thinking ${status}${budgetInfo}`);
 				return;
 			}
@@ -721,7 +810,7 @@ export class TakumiApp {
 			if (args.startsWith("budget ")) {
 				const budgetStr = args.slice(7).trim();
 				const budget = parseInt(budgetStr, 10);
-				if (isNaN(budget) || budget <= 0) {
+				if (Number.isNaN(budget) || budget <= 0) {
 					this.addInfoMessage(`Invalid budget: "${budgetStr}" — must be a positive number`);
 					return;
 				}
@@ -770,11 +859,7 @@ export class TakumiApp {
 				if (format === "json") {
 					content = JSON.stringify(messages, null, 2);
 				} else {
-					content = formatMessagesAsMarkdown(
-						messages,
-						this.state.sessionId.value,
-						this.state.model.value,
-					);
+					content = formatMessagesAsMarkdown(messages, this.state.sessionId.value, this.state.model.value);
 				}
 
 				await writeFile(outputPath, content, "utf-8");
@@ -805,7 +890,7 @@ export class TakumiApp {
 			let turnIndex: number | undefined;
 			if (args) {
 				turnIndex = parseInt(args.trim(), 10);
-				if (isNaN(turnIndex) || turnIndex < 0) {
+				if (Number.isNaN(turnIndex) || turnIndex < 0) {
 					this.addInfoMessage(`Invalid turn number: "${args.trim()}"`);
 					return;
 				}
@@ -868,6 +953,105 @@ export class TakumiApp {
 			this.agentRunner.clearHistory();
 			// Re-submit the last user message
 			await this.agentRunner.submit(lastUserText);
+		});
+
+		// ── /cluster — Show active cluster status ─────────────────────────────────
+		this.commands.register("/cluster", "Show cluster status", () => {
+			const phase = this.state.clusterPhase.value;
+			const id = this.state.clusterId.value;
+			const agents = this.state.clusterAgentCount.value;
+			const attempts = this.state.clusterValidationAttempt.value;
+			const isolation = this.state.isolationMode.value;
+			if (!id || phase === "idle") {
+				this.addInfoMessage("No active cluster. Run /code <task> with orchestration enabled.");
+				return;
+			}
+			this.addInfoMessage(
+				`Cluster: ${id}\n  Phase:    ${phase}\n  Agents:   ${agents}\n` +
+					`  Attempts: ${attempts}\n  Isolation: ${isolation}`,
+			);
+		});
+
+		// ── /checkpoint — List or manually save cluster checkpoints ───────────────
+		this.commands.register("/checkpoint", "List or save cluster checkpoints", async (args) => {
+			// Default action: list saved checkpoints
+			if (!args || args === "list") {
+				const { CheckpointManager } = await import("@takumi/agent");
+				const mgr = new CheckpointManager({
+					chitragupta: this.state.chitraguptaBridge.value ?? undefined,
+				});
+				const checkpoints = await mgr.list();
+				if (checkpoints.length === 0) {
+					this.addInfoMessage("No saved checkpoints found.");
+					return;
+				}
+				const lines = checkpoints.map((cp) => {
+					const date = new Date(cp.savedAt).toLocaleString();
+					const task = cp.taskDescription.slice(0, 60);
+					return `  ${cp.clusterId.slice(0, 24)}  ${date}  phase=${cp.phase}  "${task}"`;
+				});
+				this.addInfoMessage(`Checkpoints (${checkpoints.length}):\n${lines.join("\n")}`);
+				return;
+			}
+
+			// Save a manual checkpoint for the running cluster
+			if (args === "save") {
+				const orch = this.activeCoder?.getOrchestrator();
+				const clusterState = orch?.getState();
+				if (!clusterState) {
+					this.addInfoMessage("No active cluster to checkpoint. Start one with /code <task>.");
+					return;
+				}
+				const { CheckpointManager } = await import("@takumi/agent");
+				const mgr = new CheckpointManager({
+					chitragupta: this.state.chitraguptaBridge.value ?? undefined,
+				});
+				await mgr.save(CheckpointManager.fromState(clusterState));
+				this.addInfoMessage(`Checkpoint saved: ${clusterState.id} @ ${clusterState.phase}`);
+				return;
+			}
+
+			this.addInfoMessage("Usage: /checkpoint [list|save]");
+		});
+
+		// ── /resume — Resume a cluster from checkpoint ────────────────────────────
+		this.commands.register("/resume", "Resume cluster from checkpoint", async (args) => {
+			if (!args) {
+				this.addInfoMessage("Usage: /resume <clusterId>");
+				return;
+			}
+			if (!this.agentRunner) {
+				this.addInfoMessage("No agent runner configured.");
+				return;
+			}
+			// Lazily create a CodingAgent with orchestration if one isn't active
+			if (!this.activeCoder) {
+				const { CodingAgent } = await import("./coding-agent.js");
+				const orchCfg = this.config.orchestration;
+				this.activeCoder = new CodingAgent(this.state, this.agentRunner, {
+					enableOrchestration: orchCfg?.enabled ?? true,
+					maxValidationRetries: orchCfg?.maxValidationRetries ?? 3,
+				});
+			}
+			await this.activeCoder.resume(args.trim());
+		});
+
+		// ── /isolation — Get or set cluster isolation mode ────────────────────────
+		this.commands.register("/isolation", "Get/set cluster isolation mode", (args) => {
+			const validModes = ["none", "worktree", "docker"] as const;
+			if (!args) {
+				// Show current mode
+				this.addInfoMessage(
+					`Isolation mode: ${this.state.isolationMode.value}\n` + `Usage: /isolation [${validModes.join("|")}]`,
+				);
+				return;
+			}
+			if (!(validModes as readonly string[]).includes(args)) {
+				this.addInfoMessage(`Unknown mode "${args}". Valid modes: ${validModes.join(", ")}`);
+				return;
+			}
+			this.state.isolationMode.value = args as "none" | "worktree" | "docker";
+			this.addInfoMessage(`Isolation mode set to: ${args}`);
 		});
 	}
 }
@@ -957,20 +1141,9 @@ function parseKeyEvent(raw: string): KeyEvent {
 /**
  * Format messages as a Markdown document suitable for /export.
  */
-export function formatMessagesAsMarkdown(
-	messages: Message[],
-	sessionId: string,
-	model: string,
-): string {
+export function formatMessagesAsMarkdown(messages: Message[], sessionId: string, model: string): string {
 	const date = new Date().toISOString().slice(0, 10);
-	const lines: string[] = [
-		`# Takumi Session: ${sessionId}`,
-		`Date: ${date}`,
-		`Model: ${model}`,
-		"",
-		"---",
-		"",
-	];
+	const lines: string[] = [`# Takumi Session: ${sessionId}`, `Date: ${date}`, `Model: ${model}`, "", "---", ""];
 
 	for (const msg of messages) {
 		const role = msg.role === "user" ? "User" : "Assistant";
