@@ -267,6 +267,73 @@ export interface OrchestrationConfig {
 	isolationMode: "none" | "worktree" | "docker";
 	/** Docker configuration — only used when `isolationMode = "docker"`. */
 	docker?: DockerIsolationConfig;
+
+	/**
+	 * Ensemble execution: spawn K workers in parallel, select best via voting.
+	 * Based on "Self-Consistency Improves Chain of Thought" (Wang et al., arXiv:2203.11171)
+	 */
+	ensemble?: {
+		enabled: boolean;
+		workerCount: number;
+		temperature: number;
+		parallel: boolean;
+	};
+
+	/**
+	 * Weighted voting: aggregate validator decisions by confidence scores.
+	 */
+	weightedVoting?: {
+		minConfidenceThreshold: number;
+	};
+
+	/**
+	 * Reflexion: self-critique and learning from past failures.
+	 * Based on "Reflexion: Language Agents with Verbal Reinforcement Learning"
+	 * (Shinn et al., arXiv:2303.11366)
+	 */
+	reflexion?: {
+		enabled: boolean;
+		maxHistorySize: number;
+		useAkasha: boolean;
+	};
+
+	/**
+	 * Mixture-of-Agents: multi-round collaborative validation with cross-talk.
+	 * Based on "Mixture-of-Agents Enhances LLM Capabilities"
+	 * (Wang et al., arXiv:2406.04692)
+	 */
+	moA?: {
+		enabled: boolean;
+		rounds: number;
+		validatorCount: number;
+		allowCrossTalk: boolean;
+		temperatures: number[];
+	};
+
+	/**
+	 * Progressive refinement: iterative improvement via critic feedback.
+	 * Inspired by AlphaCodium (arXiv:2401.08500) and Reflexion.
+	 */
+	progressiveRefinement?: {
+		enabled: boolean;
+		maxIterations: number;
+		minImprovement: number;
+		useCriticModel: boolean;
+		targetScore: number;
+	};
+
+	/**
+	 * Adaptive temperature sampling: dynamic temperature per task complexity/phase.
+	 */
+	adaptiveTemperature?: {
+		enabled: boolean;
+		baseTemperatures?: {
+			TRIVIAL?: number;
+			SIMPLE?: number;
+			STANDARD?: number;
+			CRITICAL?: number;
+		};
+	};
 }
 
 export interface TakumiConfig {
