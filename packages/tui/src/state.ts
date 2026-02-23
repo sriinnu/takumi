@@ -25,6 +25,7 @@ export class AppState {
 	// ── Session ───────────────────────────────────────────────────────────────
 	readonly sessionId: Signal<string> = signal("");
 	readonly model: Signal<string> = signal("claude-sonnet-4-20250514");
+	readonly provider: Signal<string> = signal("anthropic");
 	readonly theme: Signal<string> = signal("default");
 
 	// ── Thinking ──────────────────────────────────────────────────────────────
