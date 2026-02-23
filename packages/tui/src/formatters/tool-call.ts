@@ -3,7 +3,7 @@
  * into display-friendly strings.
  */
 
-import type { ToolUseBlock, ToolResultBlock } from "@takumi/core";
+import type { ToolResultBlock, ToolUseBlock } from "@takumi/core";
 import { bold, dim, fg, reset } from "@takumi/render";
 
 /** Icons for tool categories. */
@@ -30,8 +30,8 @@ export function formatToolCall(block: ToolUseBlock): string {
 	const input = block.input;
 	for (const [key, value] of Object.entries(input)) {
 		const strValue = typeof value === "string" ? value : JSON.stringify(value);
-		const truncated = strValue.length > 80 ? strValue.slice(0, 77) + "..." : strValue;
-		lines.push(`  ${dim(key + ":")} ${truncated}`);
+		const truncated = strValue.length > 80 ? `${strValue.slice(0, 77)}...` : strValue;
+		lines.push(`  ${dim(`${key}:`)} ${truncated}`);
 	}
 
 	return lines.join("\n");
@@ -70,18 +70,10 @@ export function formatToolResult(block: ToolResultBlock): string {
 /**
  * Format a tool execution summary (name + duration).
  */
-export function formatToolSummary(
-	name: string,
-	durationMs: number,
-	isError: boolean,
-): string {
+export function formatToolSummary(name: string, durationMs: number, isError: boolean): string {
 	const icon = TOOL_ICONS[name] ?? "\u{2699}\u{FE0F}";
-	const status = isError
-		? `${fg(1)}failed${reset()}`
-		: `${fg(2)}done${reset()}`;
-	const duration = durationMs < 1000
-		? `${durationMs}ms`
-		: `${(durationMs / 1000).toFixed(1)}s`;
+	const status = isError ? `${fg(1)}failed${reset()}` : `${fg(2)}done${reset()}`;
+	const duration = durationMs < 1000 ? `${durationMs}ms` : `${(durationMs / 1000).toFixed(1)}s`;
 
 	return `${icon} ${name} ${status} ${dim(`(${duration})`)}`;
 }

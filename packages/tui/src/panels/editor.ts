@@ -3,13 +3,13 @@
  * and tab-completion popup overlay.
  */
 
-import type { Rect, KeyEvent } from "@takumi/core";
+import type { KeyEvent, Rect } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
-import { Component, Input as InputComponent } from "@takumi/render";
 import type { Screen } from "@takumi/render";
-import { CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "../completion.js";
-import type { CompletionItem } from "../completion.js";
+import { Component, Input as InputComponent } from "@takumi/render";
 import type { SlashCommandRegistry } from "../commands.js";
+import type { CompletionItem } from "../completion.js";
+import { CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "../completion.js";
 
 export interface EditorPanelProps {
 	onSubmit: (text: string) => void;
@@ -23,8 +23,6 @@ export class EditorPanel extends Component {
 	private input: InputComponent;
 	readonly completion: CompletionPopup;
 	private engine: CompletionEngine;
-	/** Last rect used for rendering (for overlay positioning). */
-	private lastRect: Rect = { x: 0, y: 0, width: 0, height: 0 };
 
 	constructor(props: EditorPanelProps) {
 		super();
@@ -116,17 +114,20 @@ export class EditorPanel extends Component {
 		// Cursor is always at the end for single-line input
 		const cursorCol = value.length;
 
-		this.engine.getCompletions(value, cursorCol).then((items) => {
-			if (items.length > 0) {
-				this.completion.show(items);
-			} else {
+		this.engine
+			.getCompletions(value, cursorCol)
+			.then((items) => {
+				if (items.length > 0) {
+					this.completion.show(items);
+				} else {
+					this.completion.hide();
+				}
+				this.markDirty();
+			})
+			.catch(() => {
 				this.completion.hide();
-			}
-			this.markDirty();
-		}).catch(() => {
-			this.completion.hide();
-			this.markDirty();
-		});
+				this.markDirty();
+			});
 	}
 
 	/** Called when input text changes — auto-trigger completions for @ and / . */
@@ -137,16 +138,19 @@ export class EditorPanel extends Component {
 
 		if (shouldAutoTrigger || isModelTrigger) {
 			const cursorCol = value.length;
-			this.engine.getCompletions(value, cursorCol).then((items) => {
-				if (items.length > 0) {
-					this.completion.show(items);
-				} else {
-					this.completion.hide();
-				}
-				this.markDirty();
-			}).catch(() => {
-				// Silently fail
-			});
+			this.engine
+				.getCompletions(value, cursorCol)
+				.then((items) => {
+					if (items.length > 0) {
+						this.completion.show(items);
+					} else {
+						this.completion.hide();
+					}
+					this.markDirty();
+				})
+				.catch(() => {
+					// Silently fail
+				});
 		} else if (this.completion.isVisible.value) {
 			// Text changed to something without a trigger — hide popup
 			this.completion.hide();
@@ -162,8 +166,6 @@ export class EditorPanel extends Component {
 	}
 
 	render(screen: Screen, rect: Rect): void {
-		this.lastRect = { ...rect };
-
 		// Draw separator line
 		const separator = "\u2500".repeat(rect.width);
 		screen.writeText(rect.y, rect.x, separator, { fg: 8, dim: true });
@@ -206,8 +208,8 @@ export class EditorPanel extends Component {
 		const scrollOff = this.completion.scrollOffset.value;
 
 		// Draw border
-		const topBorder = "\u250C" + "\u2500".repeat(popupWidth - 2) + "\u2510";
-		const bottomBorder = "\u2514" + "\u2500".repeat(popupWidth - 2) + "\u2518";
+		const topBorder = `\u250C${"\u2500".repeat(popupWidth - 2)}\u2510`;
+		const bottomBorder = `\u2514${"\u2500".repeat(popupWidth - 2)}\u2518`;
 
 		screen.writeText(popupY, popupX, topBorder, { fg: 8 });
 		screen.writeText(popupY + popupHeight - 1, popupX, bottomBorder, { fg: 8 });
@@ -227,16 +229,14 @@ export class EditorPanel extends Component {
 			if (item.detail) {
 				const remaining = innerWidth - displayText.length - 2;
 				if (remaining > 0) {
-					const detail = item.detail.length > remaining
-						? item.detail.slice(0, remaining - 1) + "\u2026"
-						: item.detail;
-					displayText += "  " + detail;
+					const detail = item.detail.length > remaining ? `${item.detail.slice(0, remaining - 1)}\u2026` : item.detail;
+					displayText += `  ${detail}`;
 				}
 			}
 
 			// Truncate to fit
 			if (displayText.length > innerWidth) {
-				displayText = displayText.slice(0, innerWidth - 1) + "\u2026";
+				displayText = `${displayText.slice(0, innerWidth - 1)}\u2026`;
 			}
 
 			// Pad to fill width

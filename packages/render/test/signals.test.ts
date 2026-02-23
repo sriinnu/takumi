@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { signal, computed, effect, batch, untrack } from "@takumi/render";
+import { batch, computed, effect, signal, untrack } from "@takumi/render";
+import { describe, expect, it, vi } from "vitest";
 
 describe("signal", () => {
 	it("holds a value and allows reads/writes", () => {

@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
 import { Readable, Writable } from "node:stream";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mock child_process ───────────────────────────────────────────────────────
 
@@ -32,22 +32,22 @@ vi.mock("node:child_process", () => ({
 	spawn: vi.fn(() => mockProc),
 }));
 
+import { spawn } from "node:child_process";
 // Must import AFTER mock is declared
 import {
-	ChitraguptaBridge,
-	type MemoryResult,
-	type ChitraguptaSessionInfo,
-	type SessionDetail,
-	type HandoverSummary,
 	type AkashaTrace,
+	ChitraguptaBridge,
+	type ChitraguptaSessionInfo,
+	type HandoverSummary,
+	type MemoryResult,
+	type SessionDetail,
 } from "@takumi/bridge";
-import { spawn } from "node:child_process";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Push a JSON-RPC response into the mock stdout. */
 function sendResponse(id: number, result: unknown) {
-	const line = JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n";
+	const line = `${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`;
 	mockProc.stdout.push(line);
 }
 
@@ -139,11 +139,7 @@ describe("ChitraguptaBridge", () => {
 			sendResponse(1, { protocolVersion: "2024-11-05", capabilities: {} });
 			await startPromise;
 
-			expect(spawn).toHaveBeenCalledWith(
-				"chitragupta-mcp",
-				["--transport", "stdio"],
-				expect.any(Object),
-			);
+			expect(spawn).toHaveBeenCalledWith("chitragupta-mcp", ["--transport", "stdio"], expect.any(Object));
 
 			await defaultBridge.disconnect();
 		});
@@ -178,9 +174,7 @@ describe("ChitraguptaBridge", () => {
 			await connectBridge(bridge);
 			const writeSpy = vi.spyOn(mockProc.stdin, "write");
 
-			const expected: MemoryResult[] = [
-				{ content: "architecture uses SQLite", relevance: 0.95, source: "session-1" },
-			];
+			const expected: MemoryResult[] = [{ content: "architecture uses SQLite", relevance: 0.95, source: "session-1" }];
 			const promise = bridge.memorySearch("architecture");
 			await vi.advanceTimersByTimeAsync(0);
 
@@ -345,11 +339,7 @@ describe("ChitraguptaBridge", () => {
 			await connectBridge(bridge);
 			const writeSpy = vi.spyOn(mockProc.stdin, "write");
 
-			const promise = bridge.akashaDeposit(
-				"Use EventEmitter for MCP client",
-				"solution",
-				["mcp", "architecture"],
-			);
+			const promise = bridge.akashaDeposit("Use EventEmitter for MCP client", "solution", ["mcp", "architecture"]);
 			await vi.advanceTimersByTimeAsync(0);
 
 			const callData = writeSpy.mock.calls[writeSpy.mock.calls.length - 1]![0] as string;

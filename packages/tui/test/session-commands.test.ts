@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Message } from "@takumi/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SlashCommandRegistry } from "../src/commands.js";
 import { AppState } from "../src/state.js";
-import type { Message } from "@takumi/core";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -72,10 +72,7 @@ function registerTestCommands(
 				if (rules.length === 0) {
 					addInfoMessage("No permission rules configured");
 				} else {
-					const lines = rules.map(
-						(r: any) =>
-							`  ${r.allow ? "allow" : "deny"} ${r.tool} ${r.pattern} (${r.scope})`,
-					);
+					const lines = rules.map((r: any) => `  ${r.allow ? "allow" : "deny"} ${r.tool} ${r.pattern} (${r.scope})`);
 					addInfoMessage(`Permission rules:\n${lines.join("\n")}`);
 				}
 			} else {

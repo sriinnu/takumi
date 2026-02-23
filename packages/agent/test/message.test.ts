@@ -1,10 +1,6 @@
-import { describe, it, expect } from "vitest";
-import {
-	buildSystemPrompt,
-	buildUserMessage,
-	buildToolResult,
-} from "../src/message.js";
 import type { ToolDefinition, ToolResult } from "@takumi/core";
+import { describe, expect, it } from "vitest";
+import { buildSystemPrompt, buildToolResult, buildUserMessage } from "../src/message.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

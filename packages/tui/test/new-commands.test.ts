@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AppState } from "../src/state.js";
-import { SlashCommandRegistry } from "../src/commands.js";
-import { formatMessagesAsMarkdown } from "../src/app.js";
 import type { Message } from "@takumi/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { formatMessagesAsMarkdown } from "../src/app.js";
+import { SlashCommandRegistry } from "../src/commands.js";
+import { AppState } from "../src/state.js";
 
 /* ── Mock fs ───────────────────────────────────────────────────────────────── */
 
@@ -95,9 +95,7 @@ function createTestSetup() {
 		if (!args) {
 			state.thinking.value = !state.thinking.value;
 			const status = state.thinking.value ? "enabled" : "disabled";
-			const budgetInfo = state.thinking.value
-				? ` (budget: ${state.thinkingBudget.value} tokens)`
-				: "";
+			const budgetInfo = state.thinking.value ? ` (budget: ${state.thinkingBudget.value} tokens)` : "";
 			addInfoMessage(`Extended thinking ${status}${budgetInfo}`);
 			return;
 		}
@@ -117,7 +115,7 @@ function createTestSetup() {
 		if (args.startsWith("budget ")) {
 			const budgetStr = args.slice(7).trim();
 			const budget = parseInt(budgetStr, 10);
-			if (isNaN(budget) || budget <= 0) {
+			if (Number.isNaN(budget) || budget <= 0) {
 				addInfoMessage(`Invalid budget: "${budgetStr}" — must be a positive number`);
 				return;
 			}
@@ -163,11 +161,7 @@ function createTestSetup() {
 			if (format === "json") {
 				content = JSON.stringify(messages, null, 2);
 			} else {
-				content = formatMessagesAsMarkdown(
-					messages,
-					state.sessionId.value,
-					state.model.value,
-				);
+				content = formatMessagesAsMarkdown(messages, state.sessionId.value, state.model.value);
 			}
 
 			await (writeFile as ReturnType<typeof vi.fn>)(outputPath, content, "utf-8");
@@ -193,7 +187,7 @@ function createTestSetup() {
 		let turnIndex: number | undefined;
 		if (args) {
 			turnIndex = parseInt(args.trim(), 10);
-			if (isNaN(turnIndex) || turnIndex < 0) {
+			if (Number.isNaN(turnIndex) || turnIndex < 0) {
 				addInfoMessage(`Invalid turn number: "${args.trim()}"`);
 				return;
 			}
@@ -329,7 +323,7 @@ describe("/think command", () => {
 	});
 
 	it("rejects zero budget", async () => {
-		const { state, commands, infoMessages } = setup;
+		const { commands, infoMessages } = setup;
 
 		await commands.execute("/think budget 0");
 
@@ -337,7 +331,7 @@ describe("/think command", () => {
 	});
 
 	it("rejects negative budget", async () => {
-		const { state, commands, infoMessages } = setup;
+		const { commands, infoMessages } = setup;
 
 		await commands.execute("/think budget -100");
 
@@ -526,17 +520,14 @@ describe("/retry command", () => {
 
 	it("removes last assistant message and re-submits", async () => {
 		const { state, commands, agentRunner } = setup;
-		state.messages.value = [
-			makeUserMessage("explain this code"),
-			makeAssistantMessage("Here is the explanation."),
-		];
+		state.messages.value = [makeUserMessage("explain this code"), makeAssistantMessage("Here is the explanation.")];
 
 		await commands.execute("/retry");
 
 		// Should have removed the assistant message
 		const remaining = state.messages.value;
 		// The info message is added, and the user message is kept
-		const nonInfoMessages = remaining.filter(m => !m.id.startsWith("info-"));
+		const nonInfoMessages = remaining.filter((m) => !m.id.startsWith("info-"));
 		expect(nonInfoMessages).toHaveLength(1);
 		expect(nonInfoMessages[0].role).toBe("user");
 		expect(agentRunner.submit).toHaveBeenCalledWith("explain this code");
@@ -555,7 +546,7 @@ describe("/retry command", () => {
 		await commands.execute("/retry 2");
 
 		// Should keep only first 2 messages (index 0 and 1)
-		const nonInfoMessages = state.messages.value.filter(m => !m.id.startsWith("info-"));
+		const nonInfoMessages = state.messages.value.filter((m) => !m.id.startsWith("info-"));
 		expect(nonInfoMessages).toHaveLength(2);
 		expect(agentRunner.submit).toHaveBeenCalledWith("first question");
 	});
@@ -571,14 +562,11 @@ describe("/retry command", () => {
 
 	it("removes tool results along with assistant message", async () => {
 		const { state, commands, agentRunner } = setup;
-		state.messages.value = [
-			makeUserMessage("read the file"),
-			makeToolMessage(),
-		];
+		state.messages.value = [makeUserMessage("read the file"), makeToolMessage()];
 
 		await commands.execute("/retry");
 
-		const nonInfoMessages = state.messages.value.filter(m => !m.id.startsWith("info-"));
+		const nonInfoMessages = state.messages.value.filter((m) => !m.id.startsWith("info-"));
 		expect(nonInfoMessages).toHaveLength(1);
 		expect(nonInfoMessages[0].role).toBe("user");
 		expect(agentRunner.submit).toHaveBeenCalledWith("read the file");
@@ -625,7 +613,7 @@ describe("/retry command", () => {
 
 		await commands.execute("/retry");
 
-		const nonInfoMessages = state.messages.value.filter(m => !m.id.startsWith("info-"));
+		const nonInfoMessages = state.messages.value.filter((m) => !m.id.startsWith("info-"));
 		expect(nonInfoMessages).toHaveLength(1);
 		expect(nonInfoMessages[0].id).toBe(userMsg.id);
 	});
@@ -640,7 +628,7 @@ describe("/retry command", () => {
 
 		await commands.execute("/retry");
 
-		const nonInfoMessages = state.messages.value.filter(m => !m.id.startsWith("info-"));
+		const nonInfoMessages = state.messages.value.filter((m) => !m.id.startsWith("info-"));
 		expect(nonInfoMessages).toHaveLength(1);
 		expect(nonInfoMessages[0].role).toBe("user");
 		expect(agentRunner.submit).toHaveBeenCalledWith("question");
@@ -648,10 +636,7 @@ describe("/retry command", () => {
 
 	it("retry from turn 0 removes all messages", async () => {
 		const { state, commands, agentRunner, infoMessages } = setup;
-		state.messages.value = [
-			makeUserMessage("hello"),
-			makeAssistantMessage("world"),
-		];
+		state.messages.value = [makeUserMessage("hello"), makeAssistantMessage("world")];
 
 		await commands.execute("/retry 0");
 
@@ -662,10 +647,7 @@ describe("/retry command", () => {
 
 	it("retry with turn number larger than message count does not crash", async () => {
 		const { state, commands, agentRunner } = setup;
-		state.messages.value = [
-			makeUserMessage("hello"),
-			makeAssistantMessage("world"),
-		];
+		state.messages.value = [makeUserMessage("hello"), makeAssistantMessage("world")];
 
 		await commands.execute("/retry 100");
 
@@ -675,10 +657,7 @@ describe("/retry command", () => {
 
 	it("clears agent history before resubmitting", async () => {
 		const { state, commands, agentRunner } = setup;
-		state.messages.value = [
-			makeUserMessage("test"),
-			makeAssistantMessage("response"),
-		];
+		state.messages.value = [makeUserMessage("test"), makeAssistantMessage("response")];
 
 		await commands.execute("/retry");
 
@@ -700,10 +679,7 @@ describe("formatMessagesAsMarkdown", () => {
 	});
 
 	it("formats user and assistant messages with role headings", () => {
-		const messages: Message[] = [
-			makeUserMessage("question"),
-			makeAssistantMessage("answer"),
-		];
+		const messages: Message[] = [makeUserMessage("question"), makeAssistantMessage("answer")];
 		const md = formatMessagesAsMarkdown(messages, "s1", "m1");
 
 		expect(md).toContain("## User");

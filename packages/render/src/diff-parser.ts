@@ -9,8 +9,8 @@
  * - isDiffContent() — detect if text looks like unified diff output
  */
 
-import type { Theme } from "./theme.js";
 import { hexToRgb } from "./color.js";
+import type { Theme } from "./theme.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,10 +86,16 @@ export function parseDiff(diffText: string): DiffFile[] {
 		}
 
 		// Skip "diff --git" lines and other preamble
-		if (line.startsWith("diff ") || line.startsWith("index ") ||
-			line.startsWith("new file") || line.startsWith("deleted file") ||
-			line.startsWith("similarity") || line.startsWith("rename") ||
-			line.startsWith("old mode") || line.startsWith("new mode")) {
+		if (
+			line.startsWith("diff ") ||
+			line.startsWith("index ") ||
+			line.startsWith("new file") ||
+			line.startsWith("deleted file") ||
+			line.startsWith("similarity") ||
+			line.startsWith("rename") ||
+			line.startsWith("old mode") ||
+			line.startsWith("new mode")
+		) {
 			i++;
 			continue;
 		}
@@ -229,9 +235,7 @@ export function renderDiff(diff: DiffFile, theme: Theme, width: number): string 
 	// File header
 	const filePath = diff.newPath !== "/dev/null" ? diff.newPath : diff.oldPath;
 	const headerSep = "\u2500".repeat(Math.max(1, width - filePath.length - 5));
-	lines.push(
-		`${DIM}\u2500\u2500 ${RESET}${BOLD}${filePath}${RESET} ${DIM}${headerSep}${RESET}`,
-	);
+	lines.push(`${DIM}\u2500\u2500 ${RESET}${BOLD}${filePath}${RESET} ${DIM}${headerSep}${RESET}`);
 
 	for (const hunk of diff.hunks) {
 		// Hunk header in cyan/dim
@@ -256,37 +260,29 @@ export function renderDiff(diff: DiffFile, theme: Theme, width: number): string 
 /**
  * Format a single diff line with line numbers and colors.
  */
-function formatDiffLine(
-	line: DiffLine,
-	theme: Theme,
-	gutterWidth: number,
-): string {
+function formatDiffLine(line: DiffLine, theme: Theme, gutterWidth: number): string {
 	switch (line.type) {
 		case "add": {
-			const lineNo = line.newLineNo !== undefined
-				? String(line.newLineNo).padStart(gutterWidth)
-				: " ".repeat(gutterWidth);
+			const lineNo =
+				line.newLineNo !== undefined ? String(line.newLineNo).padStart(gutterWidth) : " ".repeat(gutterWidth);
 			const oldGutter = " ".repeat(gutterWidth);
 			const fgColor = hexToAnsi(theme.diffAdd);
 			const bgColor = hexToBgAnsi(theme.diffAdd);
 			return `${DIM}${oldGutter} ${lineNo} ${RESET}${fgColor}${bgColor}\u2502+${line.content}${RESET}`;
 		}
 		case "remove": {
-			const lineNo = line.oldLineNo !== undefined
-				? String(line.oldLineNo).padStart(gutterWidth)
-				: " ".repeat(gutterWidth);
+			const lineNo =
+				line.oldLineNo !== undefined ? String(line.oldLineNo).padStart(gutterWidth) : " ".repeat(gutterWidth);
 			const newGutter = " ".repeat(gutterWidth);
 			const fgColor = hexToAnsi(theme.diffRemove);
 			const bgColor = hexToBgAnsi(theme.diffRemove);
 			return `${DIM}${lineNo} ${newGutter} ${RESET}${fgColor}${bgColor}\u2502-${line.content}${RESET}`;
 		}
 		case "context": {
-			const oldNo = line.oldLineNo !== undefined
-				? String(line.oldLineNo).padStart(gutterWidth)
-				: " ".repeat(gutterWidth);
-			const newNo = line.newLineNo !== undefined
-				? String(line.newLineNo).padStart(gutterWidth)
-				: " ".repeat(gutterWidth);
+			const oldNo =
+				line.oldLineNo !== undefined ? String(line.oldLineNo).padStart(gutterWidth) : " ".repeat(gutterWidth);
+			const newNo =
+				line.newLineNo !== undefined ? String(line.newLineNo).padStart(gutterWidth) : " ".repeat(gutterWidth);
 			return `${DIM}${oldNo} ${newNo} \u2502${RESET} ${line.content}`;
 		}
 		case "header": {
@@ -298,11 +294,7 @@ function formatDiffLine(
 /**
  * Render multi-file diff (array of DiffFile) as a single ANSI string.
  */
-export function renderMultiFileDiff(
-	files: DiffFile[],
-	theme: Theme,
-	width: number,
-): string {
+export function renderMultiFileDiff(files: DiffFile[], theme: Theme, width: number): string {
 	return files.map((f) => renderDiff(f, theme, width)).join("\n\n");
 }
 
@@ -312,11 +304,7 @@ export function renderMultiFileDiff(
  * Compute a word-level inline diff between two strings.
  * Returns an ANSI-colored string showing changed words highlighted.
  */
-export function renderInlineDiff(
-	oldText: string,
-	newText: string,
-	theme: Theme,
-): string {
+export function renderInlineDiff(oldText: string, newText: string, theme: Theme): string {
 	const oldWords = tokenizeWords(oldText);
 	const newWords = tokenizeWords(newText);
 
@@ -401,9 +389,7 @@ function computeLCS(a: string[], b: string[]): [number, number][] {
 	const n = b.length;
 
 	// Build DP table
-	const dp: number[][] = Array.from({ length: m + 1 }, () =>
-		new Array(n + 1).fill(0),
-	);
+	const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
 
 	for (let i = 1; i <= m; i++) {
 		for (let j = 1; j <= n; j++) {

@@ -3,10 +3,10 @@
  * All UI components observe these signals and re-render when they change.
  */
 
-import type { Message, Usage, Size, PermissionDecision } from "@takumi/core";
-import { signal, computed } from "@takumi/render";
-import type { Signal, ReadonlySignal } from "@takumi/render";
 import type { ChitraguptaBridge } from "@takumi/bridge";
+import type { Message, PermissionDecision, Size, Usage } from "@takumi/core";
+import type { ReadonlySignal, Signal } from "@takumi/render";
+import { computed, signal } from "@takumi/render";
 import { ToolSpinner } from "./spinner.js";
 
 export class AppState {
@@ -69,9 +69,26 @@ export class AppState {
 	// ── Coding agent ──────────────────────────────────────────────────────────
 	readonly codingPhase: Signal<string> = signal("idle");
 
+	// ── Cluster orchestration ─────────────────────────────────────────────────
+	/** Current cluster phase (PLANNING / EXECUTING / VALIDATING / FIXING / DONE). */
+	readonly clusterPhase: Signal<string> = signal("idle");
+	/** Active cluster ID, null when no cluster is running. */
+	readonly clusterId: Signal<string | null> = signal(null);
+	/** Number of agents in the active cluster. */
+	readonly clusterAgentCount: Signal<number> = signal(0);
+	/** How many validation retry rounds have been attempted. */
+	readonly clusterValidationAttempt: Signal<number> = signal(0);
+	/** Isolation mode for cluster execution. */
+	readonly isolationMode: Signal<"none" | "worktree" | "docker"> = signal("none");
+
 	// ── Chitragupta integration ───────────────────────────────────────────────
 	readonly chitraguptaConnected: Signal<boolean> = signal(false);
 	readonly chitraguptaBridge: Signal<ChitraguptaBridge | null> = signal(null);
+	/**
+	 * Formatted memory context loaded from Chitragupta on startup.
+	 * Injected into agent system prompts to give the LLM project-level memory.
+	 */
+	readonly chitraguptaMemory: Signal<string> = signal("");
 
 	// ── Computed values ───────────────────────────────────────────────────────
 
@@ -88,13 +105,21 @@ export class AppState {
 	});
 
 	readonly statusText: ReadonlySignal<string> = computed(() => {
+		const clusterId = this.clusterId.value;
+		if (clusterId) {
+			const phase = this.clusterPhase.value || "idle";
+			const agents = this.clusterAgentCount.value;
+			const attempt = this.clusterValidationAttempt.value;
+			const attemptText = attempt > 0 ? ` | attempt ${attempt}` : "";
+			return `🤖 Cluster [${String(phase).toUpperCase()}] — ${agents} agent${agents === 1 ? "" : "s"}${attemptText}`;
+		}
 		if (this.isStreaming.value) {
 			const phase = this.agentPhase.value;
 			if (phase && phase !== "idle") return phase;
 			const tool = this.activeTool.value;
 			return tool ? `Running ${tool}...` : "Thinking...";
 		}
-		return `${this.turnCount.value} turns | ${this.totalTokens.value} tokens | ${this.formattedCost.value}`;
+		return "Ready";
 	});
 
 	// ── Methods ───────────────────────────────────────────────────────────────
@@ -125,9 +150,9 @@ export class AppState {
 		this.totalInputTokens.value += usage.inputTokens;
 		this.totalOutputTokens.value += usage.outputTokens;
 		// Rough cost estimation (Sonnet pricing)
-		const inputCost = usage.inputTokens * 3 / 1_000_000;
-		const outputCost = usage.outputTokens * 15 / 1_000_000;
-		const cacheReadDiscount = usage.cacheReadTokens * 2.7 / 1_000_000; // 90% discount
+		const inputCost = (usage.inputTokens * 3) / 1_000_000;
+		const outputCost = (usage.outputTokens * 15) / 1_000_000;
+		const cacheReadDiscount = (usage.cacheReadTokens * 2.7) / 1_000_000; // 90% discount
 		this.totalCost.value += inputCost + outputCost - cacheReadDiscount;
 	}
 
@@ -151,9 +176,14 @@ export class AppState {
 		this.previewFile.value = "";
 		this.previewVisible.value = false;
 		this.codingPhase.value = "idle";
+		this.clusterPhase.value = "idle";
+		this.clusterId.value = null;
+		this.clusterAgentCount.value = 0;
+		this.clusterValidationAttempt.value = 0;
 		this.thinking.value = false;
 		this.thinkingBudget.value = 10000;
 		this.chitraguptaConnected.value = false;
 		this.chitraguptaBridge.value = null;
+		this.chitraguptaMemory.value = "";
 	}
 }

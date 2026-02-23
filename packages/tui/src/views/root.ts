@@ -8,17 +8,16 @@
  * - With preview: [file tree | messages | file preview]  (replaces info sidebar)
  */
 
-import type { Rect, KeyEvent } from "@takumi/core";
+import type { KeyEvent, Rect } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
-import { Component } from "@takumi/render";
 import type { Screen } from "@takumi/render";
-import { effect } from "@takumi/render";
-import type { AppState } from "../state.js";
+import { Component, effect } from "@takumi/render";
 import type { SlashCommandRegistry } from "../commands.js";
-import { ChatView } from "./chat.js";
-import { SidebarPanel } from "../panels/sidebar.js";
-import { FileTreePanel } from "../panels/file-tree.js";
 import { FilePreviewPanel } from "../panels/file-preview.js";
+import { FileTreePanel } from "../panels/file-tree.js";
+import { SidebarPanel } from "../panels/sidebar.js";
+import type { AppState } from "../state.js";
+import { ChatView } from "./chat.js";
 
 export interface RootViewProps {
 	state: AppState;
@@ -69,6 +68,7 @@ export class RootView extends Component {
 				const _preview = this.state.previewVisible.value;
 				const _previewFile = this.state.previewFile.value;
 				this.markDirty();
+				return undefined;
 			}),
 		);
 	}
@@ -145,11 +145,14 @@ export class RootView extends Component {
 	showFilePreview(filePath: string): void {
 		this.state.previewFile.value = filePath;
 		this.state.previewVisible.value = true;
-		this.filePreview.loadFile(filePath).then(() => {
-			this.markDirty();
-		}).catch(() => {
-			// loadFile handles errors internally
-		});
+		this.filePreview
+			.loadFile(filePath)
+			.then(() => {
+				this.markDirty();
+			})
+			.catch(() => {
+				// loadFile handles errors internally
+			});
 	}
 
 	/** Hide the file preview pane. */

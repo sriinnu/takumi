@@ -4,10 +4,10 @@
  * Supports: headings, bold, italic, code, code blocks, lists, links, blockquotes.
  */
 
-import type { Rect, Cell } from "@takumi/core";
+import type { Rect } from "@takumi/core";
 import { Component } from "../component.js";
 import type { Screen } from "../screen.js";
-import { wrapText, measureText } from "../text.js";
+import { measureText } from "../text.js";
 
 interface StyledLine {
 	segments: Array<{
@@ -103,10 +103,7 @@ export class Markdown extends Component {
 				const indent = listMatch[1];
 				const text = listMatch[2];
 				this.lines.push({
-					segments: [
-						{ text: `${indent}• `, fg: 8 },
-						...this.parseInline(text, linkColor, codeColor),
-					],
+					segments: [{ text: `${indent}• `, fg: 8 }, ...this.parseInline(text, linkColor, codeColor)],
 				});
 				continue;
 			}
@@ -118,10 +115,7 @@ export class Markdown extends Component {
 				const text = orderedMatch[2];
 				const num = line.match(/(\d+)/)?.[1] ?? "1";
 				this.lines.push({
-					segments: [
-						{ text: `${indent}${num}. `, fg: 8 },
-						...this.parseInline(text, linkColor, codeColor),
-					],
+					segments: [{ text: `${indent}${num}. `, fg: 8 }, ...this.parseInline(text, linkColor, codeColor)],
 				});
 				continue;
 			}
@@ -175,7 +169,7 @@ export class Markdown extends Component {
 			}
 
 			// Plain text — consume up to the next special character
-			const nextSpecial = remaining.search(/[`*\[]/);
+			const nextSpecial = remaining.search(/[`*[]/);
 			if (nextSpecial === -1) {
 				segments.push({ text: remaining });
 				break;

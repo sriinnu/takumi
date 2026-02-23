@@ -8,14 +8,10 @@
 
 import { readFile } from "node:fs/promises";
 import { basename, extname } from "node:path";
-import type { Rect, KeyEvent } from "@takumi/core";
+import type { KeyEvent, Rect } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
-import { Component, Border } from "@takumi/render";
-import type { Screen } from "@takumi/render";
-import { tokenizeLine, LANGUAGE_MAP } from "@takumi/render";
-import { getTheme, hexToRgb } from "@takumi/render";
-import { signal } from "@takumi/render";
-import type { Signal } from "@takumi/render";
+import type { Screen, Signal } from "@takumi/render";
+import { Border, Component, getTheme, hexToRgb, LANGUAGE_MAP, signal, tokenizeLine } from "@takumi/render";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -203,9 +199,7 @@ export class FilePreviewPanel extends Component {
 
 		// Header: file name
 		const fileName = basename(filePath);
-		const headerText = fileName.length > innerW
-			? fileName.slice(0, innerW - 1) + "\u2026"
-			: fileName;
+		const headerText = fileName.length > innerW ? `${fileName.slice(0, innerW - 1)}\u2026` : fileName;
 		screen.writeText(innerY, innerX, headerText, { fg: 14, bold: true });
 
 		// Content area starts after header
@@ -274,9 +268,7 @@ export class FilePreviewPanel extends Component {
 				for (const token of tokens) {
 					if (col >= innerX + innerW) break;
 					const maxChars = innerX + innerW - col;
-					const text = token.text.length > maxChars
-						? token.text.slice(0, maxChars)
-						: token.text;
+					const text = token.text.length > maxChars ? token.text.slice(0, maxChars) : token.text;
 
 					const hex = colorMap[token.type] ?? theme.foreground;
 					const [r, g, b] = hexToRgb(hex);
@@ -291,9 +283,7 @@ export class FilePreviewPanel extends Component {
 				}
 			} else {
 				// Plain text rendering
-				const displayText = codeLine.length > codeWidth
-					? codeLine.slice(0, codeWidth)
-					: codeLine;
+				const displayText = codeLine.length > codeWidth ? codeLine.slice(0, codeWidth) : codeLine;
 				screen.writeText(row, innerX + gutterWidth, displayText, {});
 			}
 		}
@@ -312,10 +302,8 @@ export class FilePreviewPanel extends Component {
 
 		// Scrollbar
 		if (lines.length > contentH) {
-			const scrollbarHeight = Math.max(1, Math.floor(contentH * contentH / lines.length));
-			const scrollbarPos = maxOffset > 0
-				? Math.floor(startLine * (contentH - scrollbarHeight) / maxOffset)
-				: 0;
+			const scrollbarHeight = Math.max(1, Math.floor((contentH * contentH) / lines.length));
+			const scrollbarPos = maxOffset > 0 ? Math.floor((startLine * (contentH - scrollbarHeight)) / maxOffset) : 0;
 			for (let i = 0; i < scrollbarHeight; i++) {
 				const row = contentY + scrollbarPos + i;
 				if (row < contentY + contentH) {
@@ -336,5 +324,5 @@ export function detectLanguage(filePath: string): string {
 
 /** Convert RGB (0-255) to a 256-color palette index. */
 function rgbTo256(r: number, g: number, b: number): number {
-	return 16 + 36 * Math.round(r / 255 * 5) + 6 * Math.round(g / 255 * 5) + Math.round(b / 255 * 5);
+	return 16 + 36 * Math.round((r / 255) * 5) + 6 * Math.round((g / 255) * 5) + Math.round((b / 255) * 5);
 }

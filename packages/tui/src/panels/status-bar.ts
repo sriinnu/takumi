@@ -3,10 +3,8 @@
  */
 
 import type { Rect } from "@takumi/core";
-import { Component } from "@takumi/render";
 import type { Screen } from "@takumi/render";
-import { effect } from "@takumi/render";
-import { truncate } from "@takumi/render";
+import { Component, effect } from "@takumi/render";
 import type { AppState } from "../state.js";
 
 export interface StatusBarPanelProps {
@@ -24,7 +22,14 @@ export class StatusBarPanel extends Component {
 		this.disposeEffect = effect(() => {
 			const _status = this.state.statusText.value;
 			const _chi = this.state.chitraguptaConnected.value;
+			// Cluster signals — trigger re-render when active cluster state changes
+			const _clusterId = this.state.clusterId.value;
+			const _clusterPhase = this.state.clusterPhase.value;
+			const _agentCount = this.state.clusterAgentCount.value;
+			const _tokens = this.state.totalTokens.value;
+			const _cost = this.state.totalCost.value;
 			this.markDirty();
+			return undefined;
 		});
 	}
 
@@ -37,6 +42,9 @@ export class StatusBarPanel extends Component {
 		const model = this.state.model.value;
 		const status = this.state.statusText.value;
 		const isStreaming = this.state.isStreaming.value;
+		const clusterId = this.state.clusterId.value;
+		const clusterPhase = this.state.clusterPhase.value;
+		const agentCount = this.state.clusterAgentCount.value;
 
 		// Background fill
 		for (let col = rect.x; col < rect.x + rect.width; col++) {
@@ -61,10 +69,23 @@ export class StatusBarPanel extends Component {
 		const chiIndicator = chiConnected ? " \u091A\u093F " : " \u091A\u093F ";
 		const chiCol = rect.x + leftText.length;
 		screen.writeText(rect.y, chiCol, chiIndicator, {
-			fg: chiConnected ? 2 : 8,  // green when connected, gray when not
+			fg: chiConnected ? 2 : 8, // green when connected, gray when not
 			bg: 236,
 			dim: !chiConnected,
 		});
+
+		// Cluster state indicator — shown when a cluster is actively running
+		let afterChiCol = chiCol + chiIndicator.length;
+		if (clusterId) {
+			// Show phase + agent count badge: e.g. " ⬡ VALIDATING 4↑ "
+			const clusterText = ` \u2B21 ${clusterPhase} ${agentCount}\u2191 `;
+			screen.writeText(rect.y, afterChiCol, clusterText, {
+				fg: clusterPhase === "DONE" ? 2 : clusterPhase === "FAILED" ? 1 : 3,
+				bg: 236,
+				bold: true,
+			});
+			afterChiCol += clusterText.length;
+		}
 
 		// Center: status
 		const centerText = ` ${status} `;
@@ -74,8 +95,11 @@ export class StatusBarPanel extends Component {
 			bg: 236,
 		});
 
-		// Right side: keybind hints
-		const rightText = "Ctrl+C quit  Ctrl+K cmd  Ctrl+L clear ";
+		// Right side: tokens, cost, keybind hints
+		const tokens = this.state.totalTokens.value;
+		const cost = this.state.totalCost.value;
+		const metricsText = tokens > 0 ? ` ${tokens.toLocaleString()}t | $${cost.toFixed(3)} ` : "";
+		const rightText = `${metricsText} Ctrl+C quit  Ctrl+K cmd  Ctrl+L clear `;
 		const rightCol = rect.x + rect.width - rightText.length;
 		if (rightCol > centerCol + centerText.length) {
 			screen.writeText(rect.y, rightCol, rightText, { fg: 8, bg: 236, dim: true });

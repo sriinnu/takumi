@@ -3,8 +3,7 @@
  * in a collapsible, dimmed style.
  */
 
-import { dim, italic, fg, reset } from "@takumi/render";
-import { wrapText } from "@takumi/render";
+import { dim, fg, italic, reset, wrapText } from "@takumi/render";
 
 export interface ThinkingFormatOptions {
 	/** Maximum width in columns. */
@@ -20,10 +19,7 @@ export interface ThinkingFormatOptions {
 /**
  * Format a thinking block for display.
  */
-export function formatThinkingBlock(
-	thinking: string,
-	options?: ThinkingFormatOptions,
-): string {
+export function formatThinkingBlock(thinking: string, options?: ThinkingFormatOptions): string {
 	const maxWidth = options?.maxWidth ?? 80;
 	const collapsed = options?.collapsed ?? false;
 	const collapsedLines = options?.collapsedLines ?? 3;
@@ -31,23 +27,23 @@ export function formatThinkingBlock(
 	const lines: string[] = [];
 
 	// Header
-	lines.push(`${dim(fg(8) + italic("\u{1F4AD} Thinking..." + reset()))}`);
+	lines.push(`${dim(fg(8) + italic(`\u{1F4AD} Thinking...${reset()}`))}`);
 
 	if (collapsed) {
 		// Show summary
 		const wrapped = wrapText(thinking, maxWidth - 4);
 		const preview = wrapped.slice(0, collapsedLines);
 		for (const line of preview) {
-			lines.push(`${dim(fg(8) + "  " + line + reset())}`);
+			lines.push(`${dim(`${fg(8)}  ${line}${reset()}`)}`);
 		}
 		if (wrapped.length > collapsedLines) {
-			lines.push(`${dim(fg(8) + `  ... (${wrapped.length - collapsedLines} more lines)` + reset())}`);
+			lines.push(`${dim(`${fg(8)}  ... (${wrapped.length - collapsedLines} more lines)${reset()}`)}`);
 		}
 	} else {
 		// Show full thinking
 		const wrapped = wrapText(thinking, maxWidth - 4);
 		for (const line of wrapped) {
-			lines.push(`${dim(fg(8) + italic("  " + line + reset()))}`);
+			lines.push(`${dim(fg(8) + italic(`  ${line}${reset()}`))}`);
 		}
 	}
 

@@ -5,11 +5,10 @@
  * lists (ordered/unordered), links, blockquotes, horizontal rules.
  */
 
-import type { Theme } from "./theme.js";
-import { bold, dim, italic, underline, reset, fgRgb, bgRgb } from "./ansi.js";
+import { bold, dim, fgRgb, italic, reset, underline } from "./ansi.js";
 import { hexToRgb } from "./color.js";
-import { tokenizeLine, LANGUAGE_MAP } from "./components/syntax.js";
-import type { Token } from "./components/syntax.js";
+import { LANGUAGE_MAP, tokenizeLine } from "./components/syntax.js";
+import type { Theme } from "./theme.js";
 
 /**
  * Render Markdown text to ANSI-styled terminal output.
@@ -79,7 +78,7 @@ export function renderMarkdown(text: string, theme: Theme): string {
 			const [qr, qg, qb] = hexToRgb(theme.muted);
 			const content = line.slice(2);
 			const styledContent = renderInline(content, theme);
-			output.push(`${dim(fgRgb(qr, qg, qb) + "│")} ${italic(styledContent)}${reset()}`);
+			output.push(`${dim(`${fgRgb(qr, qg, qb)}│`)} ${italic(styledContent)}${reset()}`);
 			continue;
 		}
 
@@ -100,7 +99,7 @@ export function renderMarkdown(text: string, theme: Theme): string {
 			const num = olMatch[2];
 			const content = olMatch[3];
 			const styledContent = renderInline(content, theme);
-			output.push(`${indent}${dim(num + ".")} ${styledContent}${reset()}`);
+			output.push(`${indent}${dim(`${num}.`)} ${styledContent}${reset()}`);
 			continue;
 		}
 
@@ -161,7 +160,7 @@ function renderInline(text: string, theme: Theme): string {
 		}
 
 		// Plain text — consume up to next special character
-		const nextSpecial = remaining.search(/[`*\[]/);
+		const nextSpecial = remaining.search(/[`*[]/);
 		if (nextSpecial === -1) {
 			result += remaining;
 			break;

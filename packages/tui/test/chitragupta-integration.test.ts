@@ -1,8 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { AppState } from "../src/state.js";
+import type { ChitraguptaBridge, ChitraguptaSessionInfo, MemoryResult } from "@takumi/bridge";
+import { describe, expect, it, vi } from "vitest";
 import { SlashCommandRegistry } from "../src/commands.js";
-import { ChitraguptaBridge } from "@takumi/bridge";
-import type { MemoryResult, ChitraguptaSessionInfo } from "@takumi/bridge";
+import { AppState } from "../src/state.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -40,9 +39,7 @@ function collectMessages(state: AppState): string[] {
 	const texts: string[] = [];
 	const origAdd = state.addMessage.bind(state);
 	state.addMessage = (msg) => {
-		const textBlock = msg.content.find(
-			(c: any) => c.type === "text",
-		) as any;
+		const textBlock = msg.content.find((c: any) => c.type === "text") as any;
 		if (textBlock?.text) texts.push(textBlock.text);
 		origAdd(msg);
 	};
@@ -114,9 +111,7 @@ describe("Chitragupta TUI Integration", () => {
 		it("does not crash when chitragupta-mcp binary is not found", async () => {
 			const state = new AppState();
 			const bridge = createMockBridge(false);
-			(bridge.connect as any).mockRejectedValue(
-				new Error("spawn chitragupta-mcp ENOENT"),
-			);
+			(bridge.connect as any).mockRejectedValue(new Error("spawn chitragupta-mcp ENOENT"));
 
 			state.chitraguptaBridge.value = bridge;
 
@@ -461,9 +456,7 @@ describe("Chitragupta TUI Integration", () => {
 			try {
 				await Promise.race([
 					bridge.handover(),
-					new Promise((_, reject) =>
-						setTimeout(() => reject(new Error("handover timeout")), 100),
-					),
+					new Promise((_, reject) => setTimeout(() => reject(new Error("handover timeout")), 100)),
 				]);
 			} catch (err) {
 				handoverError = err as Error;

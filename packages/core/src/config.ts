@@ -1,8 +1,8 @@
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import type { TakumiConfig } from "./types.js";
+import { join } from "node:path";
 import { ConfigError } from "./errors.js";
+import type { TakumiConfig } from "./types.js";
 
 /** Default API endpoints per provider (OpenAI-compatible chat completions). */
 export const PROVIDER_ENDPOINTS: Record<string, string> = {
@@ -31,6 +31,14 @@ const DEFAULT_CONFIG: TakumiConfig = {
 	logLevel: "info",
 	maxTurns: 100,
 	experimental: {},
+	// Orchestration defaults — safe, single-agent unless complexity warrants multi
+	orchestration: {
+		enabled: true,
+		defaultMode: "multi",
+		complexityThreshold: "STANDARD",
+		maxValidationRetries: 3,
+		isolationMode: "none",
+	},
 };
 
 /** Config file search paths, in priority order (first found wins). */

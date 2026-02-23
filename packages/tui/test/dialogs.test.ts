@@ -1,12 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { KEY_CODES } from "@takumi/core";
 import type { KeyEvent } from "@takumi/core";
-import { CommandPalette } from "../src/dialogs/command-palette.js";
-import { PermissionDialog } from "../src/dialogs/permission.js";
-import { ModelPicker } from "../src/dialogs/model-picker.js";
-import { SessionList } from "../src/dialogs/session-list.js";
-import { FilePicker } from "../src/dialogs/file-picker.js";
+import { KEY_CODES } from "@takumi/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SlashCommandRegistry } from "../src/commands.js";
+import { CommandPalette } from "../src/dialogs/command-palette.js";
+import { FilePicker } from "../src/dialogs/file-picker.js";
+import { ModelPicker } from "../src/dialogs/model-picker.js";
+import { PermissionDialog } from "../src/dialogs/permission.js";
+import { SessionList } from "../src/dialogs/session-list.js";
 import { KeyBindingRegistry } from "../src/keybinds.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
@@ -245,9 +245,7 @@ describe("CommandPalette", () => {
 			palette.handleKey(charKey("d"));
 
 			palette.handleKey(enterKey());
-			expect(executed).toHaveBeenCalledWith(
-				expect.objectContaining({ name: "/model", type: "command" }),
-			);
+			expect(executed).toHaveBeenCalledWith(expect.objectContaining({ name: "/model", type: "command" }));
 		});
 	});
 
@@ -652,14 +650,7 @@ describe("SessionList", () => {
 describe("FilePicker", () => {
 	let picker: FilePicker;
 
-	const sampleFiles = [
-		"src/index.ts",
-		"src/app.ts",
-		"src/state.ts",
-		"test/app.test.ts",
-		"package.json",
-		"README.md",
-	];
+	const sampleFiles = ["src/index.ts", "src/app.ts", "src/state.ts", "test/app.test.ts", "package.json", "README.md"];
 
 	beforeEach(() => {
 		picker = new FilePicker();
