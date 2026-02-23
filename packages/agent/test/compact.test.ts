@@ -1,16 +1,12 @@
-import { describe, it, expect } from "vitest";
+import type { ContentBlock, Message } from "@takumi/core";
+import { describe, expect, it } from "vitest";
 import { compactHistory } from "../src/context/compact.js";
-import type { Message, ContentBlock } from "@takumi/core";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 let nextId = 0;
 
-function makeMessage(
-	role: "user" | "assistant",
-	content: ContentBlock[],
-	timestamp?: number,
-): Message {
+function makeMessage(role: "user" | "assistant", content: ContentBlock[], timestamp?: number): Message {
 	return {
 		id: `msg-${++nextId}`,
 		role,
@@ -199,16 +195,13 @@ describe("compactHistory — summary content", () => {
 		const result = compactHistory(msgs, { keepRecent: 5, maxTokens: 1 });
 
 		// The summary should contain the first 100 chars followed by "..."
-		expect(result.summary).toContain("A".repeat(100) + "...");
+		expect(result.summary).toContain(`${"A".repeat(100)}...`);
 		expect(result.summary).not.toContain("A".repeat(101));
 	});
 
 	it("summary keeps short text without truncation", () => {
 		const shortText = "Fix the bug please";
-		const msgs = [
-			textMsg("user", shortText),
-			...generateMessages(12, 100),
-		];
+		const msgs = [textMsg("user", shortText), ...generateMessages(12, 100)];
 
 		const result = compactHistory(msgs, { keepRecent: 5, maxTokens: 1 });
 
@@ -219,9 +212,7 @@ describe("compactHistory — summary content", () => {
 
 	it("summary shows [Used tool: name] for tool_use blocks", () => {
 		const msgs = [
-			makeMessage("assistant", [
-				{ type: "tool_use", id: "tu_1", name: "read_file", input: { path: "/foo" } },
-			]),
+			makeMessage("assistant", [{ type: "tool_use", id: "tu_1", name: "read_file", input: { path: "/foo" } }]),
 			...generateMessages(12, 100),
 		];
 
@@ -232,9 +223,7 @@ describe("compactHistory — summary content", () => {
 
 	it("summary shows [Tool result: success] for successful tool_result blocks", () => {
 		const msgs = [
-			makeMessage("user", [
-				{ type: "tool_result", toolUseId: "tu_1", content: "file contents", isError: false },
-			]),
+			makeMessage("user", [{ type: "tool_result", toolUseId: "tu_1", content: "file contents", isError: false }]),
 			...generateMessages(12, 100),
 		];
 
@@ -245,9 +234,7 @@ describe("compactHistory — summary content", () => {
 
 	it("summary shows [Tool result: error] for error tool_result blocks", () => {
 		const msgs = [
-			makeMessage("user", [
-				{ type: "tool_result", toolUseId: "tu_1", content: "ENOENT", isError: true },
-			]),
+			makeMessage("user", [{ type: "tool_result", toolUseId: "tu_1", content: "ENOENT", isError: true }]),
 			...generateMessages(12, 100),
 		];
 
@@ -258,9 +245,7 @@ describe("compactHistory — summary content", () => {
 
 	it("summary shows [thinking] for thinking blocks", () => {
 		const msgs = [
-			makeMessage("assistant", [
-				{ type: "thinking", thinking: "Let me think about this..." },
-			]),
+			makeMessage("assistant", [{ type: "thinking", thinking: "Let me think about this..." }]),
 			...generateMessages(12, 100),
 		];
 
@@ -354,11 +339,7 @@ describe("compactHistory — edge cases", () => {
 	});
 
 	it("handles messages with empty text content", () => {
-		const msgs = [
-			textMsg("user", ""),
-			textMsg("assistant", ""),
-			...generateMessages(12, 100),
-		];
+		const msgs = [textMsg("user", ""), textMsg("assistant", ""), ...generateMessages(12, 100)];
 
 		const result = compactHistory(msgs, { keepRecent: 5, maxTokens: 1 });
 

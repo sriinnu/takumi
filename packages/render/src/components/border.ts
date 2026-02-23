@@ -97,7 +97,15 @@ export class Border extends Component {
 
 		const chars = BORDER_CHARS[borderStyle];
 		const fg = this.props.color ?? 8;
-		const cellStyle = { fg, bg: -1 as number, bold: false, dim: false, italic: false, underline: false, strikethrough: false };
+		const cellStyle = {
+			fg,
+			bg: -1 as number,
+			bold: false,
+			dim: false,
+			italic: false,
+			underline: false,
+			strikethrough: false,
+		};
 
 		const { x, y, width, height } = rect;
 		if (width < 2 || height < 2) return;

@@ -3,10 +3,9 @@
  * Handles message submission, streaming, and state updates.
  */
 
-import type { TakumiConfig, AgentEvent, Message, ToolDefinition, PermissionDecision } from "@takumi/core";
+import { agentLoop, type MessagePayload, PermissionEngine, type ToolRegistry } from "@takumi/agent";
+import type { AgentEvent, Message, PermissionDecision, TakumiConfig, ToolDefinition } from "@takumi/core";
 import { createLogger } from "@takumi/core";
-import { agentLoop, PermissionEngine, type MessagePayload } from "@takumi/agent";
-import { ToolRegistry } from "@takumi/agent";
 import type { AppState } from "./state.js";
 
 const log = createLogger("agent-runner");
@@ -23,6 +22,8 @@ export class AgentRunner {
 		messages: MessagePayload[],
 		system: string,
 		tools?: ToolDefinition[],
+		signal?: AbortSignal,
+		options?: { model?: string },
 	) => AsyncIterable<AgentEvent>;
 
 	readonly permissions: PermissionEngine;
@@ -34,6 +35,8 @@ export class AgentRunner {
 			messages: MessagePayload[],
 			system: string,
 			tools?: ToolDefinition[],
+			signal?: AbortSignal,
+			options?: { model?: string },
 		) => AsyncIterable<AgentEvent>,
 		tools: ToolRegistry,
 	) {
@@ -45,6 +48,10 @@ export class AgentRunner {
 		// Set up permission engine with TUI prompt callback
 		this.permissions = new PermissionEngine();
 		this.permissions.setPromptCallback((tool, args) => this.promptPermission(tool, args));
+	}
+
+	getTools(): ToolRegistry {
+		return this.tools;
 	}
 
 	/** Submit a user message and start the agent loop. */
@@ -62,10 +69,19 @@ export class AgentRunner {
 		this.startSpinnerTimer();
 
 		try {
+			// Enrich system prompt with Chitragupta project memory when available.
+			// Memories are fetched once on startup and stored in state; this injects
+			// them before each submit so the LLM has persistent project context.
+			const memoryContext = this.state.chitraguptaMemory.value;
+			const basePrompt = this.config.systemPrompt || undefined;
+			const enrichedPrompt = memoryContext
+				? `${basePrompt ?? ""}\n\n## Project Memory (from Chitragupta)\n${memoryContext}`.trim()
+				: basePrompt;
+
 			const loop = agentLoop(text, this.history, {
 				sendMessage: this.sendMessageFn,
 				tools: this.tools,
-				systemPrompt: this.config.systemPrompt || undefined,
+				systemPrompt: enrichedPrompt,
 				maxTurns: this.config.maxTurns,
 				signal: this.abortController.signal,
 			});
@@ -151,6 +167,20 @@ export class AgentRunner {
 	/** Check if currently streaming. */
 	get isRunning(): boolean {
 		return this.state.isStreaming.value;
+	}
+
+	/**
+	 * Expose the underlying sendMessage function so {@link CodingAgent} can
+	 * forward it to the cluster orchestrator without unsafe bracket notation.
+	 */
+	getSendMessageFn(): (
+		messages: MessagePayload[],
+		system: string,
+		tools?: ToolDefinition[],
+		signal?: AbortSignal,
+		options?: { model?: string },
+	) => AsyncIterable<AgentEvent> {
+		return this.sendMessageFn;
 	}
 
 	/** Clear conversation history (for /clear). */

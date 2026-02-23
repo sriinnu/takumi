@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { parseSSEStream } from "../src/stream.js";
 import type { AgentEvent } from "@takumi/core";
+import { describe, expect, it } from "vitest";
+import { parseSSEStream } from "../src/stream.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { loadConfig, DEFAULT_CONFIG } from "@takumi/core";
+import { DEFAULT_CONFIG, loadConfig } from "@takumi/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 describe("loadConfig", () => {
 	const origEnv = { ...process.env };

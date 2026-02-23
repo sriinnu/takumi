@@ -7,7 +7,7 @@
  * usage_update, message_start/delta/stop, error, and ping.
  */
 
-import type { AgentEvent, Usage } from "@takumi/core";
+import type { AgentEvent } from "@takumi/core";
 import { AgentErrorClass, createLogger } from "@takumi/core";
 
 const log = createLogger("sse-parser");
@@ -60,9 +60,7 @@ interface PendingToolUse {
 /**
  * Parse a ReadableStream of SSE bytes into an async iterable of AgentEvents.
  */
-export async function* parseSSEStream(
-	stream: ReadableStream<Uint8Array>,
-): AsyncGenerator<AgentEvent> {
+export async function* parseSSEStream(stream: ReadableStream<Uint8Array>): AsyncGenerator<AgentEvent> {
 	const decoder = new TextDecoder();
 	const reader = stream.getReader();
 
@@ -122,11 +120,7 @@ export async function* parseSSEStream(
 	}
 }
 
-function processSSEEvent(
-	eventType: string,
-	data: string,
-	pendingTools: Map<number, PendingToolUse>,
-): AgentEvent[] {
+function processSSEEvent(eventType: string, data: string, pendingTools: Map<number, PendingToolUse>): AgentEvent[] {
 	const events: AgentEvent[] = [];
 
 	try {
@@ -240,10 +234,7 @@ function processSSEEvent(
 			}
 
 			case "error": {
-				const error = new AgentErrorClass(
-					parsed.error?.message ?? "Unknown stream error",
-					true,
-				);
+				const error = new AgentErrorClass(parsed.error?.message ?? "Unknown stream error", true);
 				events.push({ type: "error", error });
 				break;
 			}

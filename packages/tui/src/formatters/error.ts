@@ -3,9 +3,8 @@
  * with context and suggestions.
  */
 
-import { TakumiError, ConfigError, ToolError, PermissionError } from "@takumi/core";
-import { bold, dim, fg, reset } from "@takumi/render";
-import { wrapText } from "@takumi/render";
+import { ConfigError, PermissionError, TakumiError, ToolError } from "@takumi/core";
+import { bold, dim, fg, reset, wrapText } from "@takumi/render";
 
 /**
  * Format an error for display in the TUI.
@@ -29,10 +28,10 @@ export function formatError(error: Error, maxWidth = 80): string {
 
 	if (error.stack) {
 		lines.push("");
-		lines.push(`${dim(fg(8) + "Stack trace:" + reset())}`);
+		lines.push(`${dim(`${fg(8)}Stack trace:${reset()}`)}`);
 		const stackLines = error.stack.split("\n").slice(1, 5);
 		for (const line of stackLines) {
-			lines.push(`${dim(fg(8) + "  " + line.trim() + reset())}`);
+			lines.push(`${dim(`${fg(8)}  ${line.trim()}${reset()}`)}`);
 		}
 	}
 
@@ -81,7 +80,7 @@ function formatTakumiError(error: TakumiError, maxWidth: number): string {
 	// Cause chain
 	if (error.cause instanceof Error) {
 		lines.push("");
-		lines.push(`${dim("Caused by: " + error.cause.message)}`);
+		lines.push(`${dim(`Caused by: ${error.cause.message}`)}`);
 	}
 
 	return lines.join("\n");

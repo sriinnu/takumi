@@ -1,19 +1,8 @@
-import { describe, it, expect } from "vitest";
-import {
-	formatUserMessage,
-	formatAssistantMessage,
-	formatMessage,
-} from "../src/formatters/message.js";
-import {
-	formatToolCall,
-	formatToolResult,
-	formatToolSummary,
-} from "../src/formatters/tool-call.js";
-import {
-	formatThinkingBlock,
-	formatThinkingSummary,
-} from "../src/formatters/thinking.js";
-import type { Message, ToolUseBlock, ToolResultBlock } from "@takumi/core";
+import type { Message, ToolResultBlock, ToolUseBlock } from "@takumi/core";
+import { describe, expect, it } from "vitest";
+import { formatAssistantMessage, formatMessage, formatUserMessage } from "../src/formatters/message.js";
+import { formatThinkingBlock, formatThinkingSummary } from "../src/formatters/thinking.js";
+import { formatToolCall, formatToolResult, formatToolSummary } from "../src/formatters/tool-call.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 

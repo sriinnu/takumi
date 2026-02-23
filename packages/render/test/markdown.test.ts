@@ -2,10 +2,9 @@
  * Tests for the standalone markdown-to-ANSI renderer.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { renderMarkdown } from "../src/markdown.js";
 import { defaultTheme } from "../src/theme.js";
-import { visibleLength } from "../src/ansi.js";
 
 const theme = defaultTheme;
 
@@ -114,7 +113,7 @@ describe("Markdown code", () => {
 	});
 
 	it("renders code blocks with language hint", () => {
-		const input = '```typescript\nconst x = 1;\n```';
+		const input = "```typescript\nconst x = 1;\n```";
 		const result = renderMarkdown(input, theme);
 		const stripped = stripAnsi(result);
 		expect(stripped).toContain("const x = 1;");

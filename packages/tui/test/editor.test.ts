@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { Editor } from "../src/editor.js";
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
+import { beforeEach, describe, expect, it } from "vitest";
+import { Editor } from "../src/editor.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -876,18 +876,14 @@ describe("Editor", () => {
 
 		it("handles Shift+Enter (newline)", () => {
 			editor.insert("hello");
-			const handled = editor.handleKey(
-				rawKey(KEY_CODES.ENTER, { key: "return", shift: true }),
-			);
+			const handled = editor.handleKey(rawKey(KEY_CODES.ENTER, { key: "return", shift: true }));
 			expect(handled).toBe(true);
 			expect(editor.lineCount).toBe(2);
 		});
 
 		it("plain Enter returns false (not handled)", () => {
 			editor.insert("hello");
-			const handled = editor.handleKey(
-				rawKey(KEY_CODES.ENTER, { key: "return", shift: false }),
-			);
+			const handled = editor.handleKey(rawKey(KEY_CODES.ENTER, { key: "return", shift: false }));
 			expect(handled).toBe(false);
 		});
 

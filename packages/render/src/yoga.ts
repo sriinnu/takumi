@@ -6,7 +6,7 @@
 
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import type { YogaNode, ComponentStyle } from "./component.js";
+import type { ComponentStyle, YogaNode } from "./component.js";
 
 // ── Yoga constants (matching yoga-wasm-web enums) ─────────────────────────────
 
@@ -76,9 +76,7 @@ export function applyStyle(node: YogaNode, style: ComponentStyle): void {
 	}
 
 	if (style.flexDirection !== undefined) {
-		node.setFlexDirection(
-			style.flexDirection === "row" ? FLEX_DIRECTION_ROW : FLEX_DIRECTION_COLUMN,
-		);
+		node.setFlexDirection(style.flexDirection === "row" ? FLEX_DIRECTION_ROW : FLEX_DIRECTION_COLUMN);
 	}
 
 	if (style.padding !== undefined) {
@@ -124,23 +122,35 @@ function createFallbackYoga(): any {
 			create(): YogaNode {
 				let _width = 0;
 				let _height = 0;
-				let _left = 0;
-				let _top = 0;
+				const _left = 0;
+				const _top = 0;
 				const _children: YogaNode[] = [];
 
 				return {
-					setWidth(w: number) { _width = w; },
-					setHeight(h: number) { _height = h; },
+					setWidth(w: number) {
+						_width = w;
+					},
+					setHeight(h: number) {
+						_height = h;
+					},
 					setFlexDirection() {},
 					setFlexGrow() {},
 					setFlexShrink() {},
 					setPadding() {},
 					setMargin() {},
 					setPositionType() {},
-					getComputedLeft() { return _left; },
-					getComputedTop() { return _top; },
-					getComputedWidth() { return _width; },
-					getComputedHeight() { return _height; },
+					getComputedLeft() {
+						return _left;
+					},
+					getComputedTop() {
+						return _top;
+					},
+					getComputedWidth() {
+						return _width;
+					},
+					getComputedHeight() {
+						return _height;
+					},
 					insertChild(child: YogaNode, index: number) {
 						_children.splice(index, 0, child);
 					},
@@ -148,7 +158,9 @@ function createFallbackYoga(): any {
 						const idx = _children.indexOf(child);
 						if (idx >= 0) _children.splice(idx, 1);
 					},
-					getChildCount() { return _children.length; },
+					getChildCount() {
+						return _children.length;
+					},
 					calculateLayout(width: number, height: number) {
 						_width = width;
 						_height = height;

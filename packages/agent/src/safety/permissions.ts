@@ -5,20 +5,13 @@
  * Supports pattern matching for tool arguments (e.g., file paths).
  */
 
-import type {
-	PermissionEngine as IPermissionEngine,
-	PermissionDecision,
-	PermissionRule,
-} from "@takumi/core";
+import type { PermissionEngine as IPermissionEngine, PermissionDecision, PermissionRule } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 
 const log = createLogger("permissions");
 
 export class PermissionEngine implements IPermissionEngine {
 	private rules: PermissionRule[] = [];
-	private pendingPrompts = new Map<string, {
-		resolve: (decision: PermissionDecision) => void;
-	}>();
 
 	/** Callback for asking the user for permission. */
 	private promptUser: ((tool: string, args: Record<string, unknown>) => Promise<PermissionDecision>) | null = null;
@@ -30,9 +23,7 @@ export class PermissionEngine implements IPermissionEngine {
 	}
 
 	/** Set the user prompt callback (provided by the TUI layer). */
-	setPromptCallback(
-		fn: (tool: string, args: Record<string, unknown>) => Promise<PermissionDecision>,
-	): void {
+	setPromptCallback(fn: (tool: string, args: Record<string, unknown>) => Promise<PermissionDecision>): void {
 		this.promptUser = fn;
 	}
 

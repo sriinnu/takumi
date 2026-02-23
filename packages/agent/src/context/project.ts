@@ -4,9 +4,9 @@
  * working directory.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { join, basename } from "node:path";
 import { execSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { createLogger } from "@takumi/core";
 
 const log = createLogger("project-detect");
@@ -59,12 +59,7 @@ export interface ProjectContext {
 // ── Constants ────────────────────────────────────────────────────────────────
 
 /** Instruction file names, in priority order. */
-const INSTRUCTION_FILES = [
-	"TAKUMI.md",
-	"CLAUDE.md",
-	".takumi/instructions.md",
-	".claude/instructions.md",
-];
+const INSTRUCTION_FILES = ["TAKUMI.md", "CLAUDE.md", ".takumi/instructions.md", ".claude/instructions.md"];
 
 /** Project root marker files. */
 const ROOT_MARKERS = [
@@ -160,7 +155,7 @@ export async function detectProjectContext(cwd: string): Promise<ProjectContext>
 	const language = detectLanguage(root);
 	const framework = detectFramework(root, language);
 	const packageManager = detectPackageManager(root);
-	const gitBranch = existsSync(join(root, ".git")) ? getGitBranch(root) ?? undefined : undefined;
+	const gitBranch = existsSync(join(root, ".git")) ? (getGitBranch(root) ?? undefined) : undefined;
 	const recentFiles = getRecentFiles(root);
 	const conventions = detectConventions(root);
 
@@ -194,7 +189,9 @@ export function detectLanguage(root: string): string | null {
 			const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf-8"));
 			const deps = { ...pkg.dependencies, ...pkg.devDependencies };
 			if (deps.typescript) return "TypeScript";
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 		return "JavaScript";
 	}
 
@@ -248,12 +245,26 @@ export function detectFramework(root: string, language: string | null): string |
 
 			// Check in priority order (more specific frameworks first)
 			const priorityOrder = [
-				"next", "@remix-run/node", "remix", "nuxt",
-				"@sveltejs/kit", "astro", "gatsby",
-				"@nestjs/core", "nestjs",
-				"express", "fastify", "koa", "hono",
-				"react-native", "electron", "tauri",
-				"@angular/core", "vue", "svelte", "react",
+				"next",
+				"@remix-run/node",
+				"remix",
+				"nuxt",
+				"@sveltejs/kit",
+				"astro",
+				"gatsby",
+				"@nestjs/core",
+				"nestjs",
+				"express",
+				"fastify",
+				"koa",
+				"hono",
+				"react-native",
+				"electron",
+				"tauri",
+				"@angular/core",
+				"vue",
+				"svelte",
+				"react",
 			];
 
 			for (const dep of priorityOrder) {
@@ -261,7 +272,9 @@ export function detectFramework(root: string, language: string | null): string |
 					return FRAMEWORK_MAP[dep];
 				}
 			}
-		} catch { /* ignore parse errors */ }
+		} catch {
+			/* ignore parse errors */
+		}
 	}
 
 	// Python frameworks
@@ -286,7 +299,9 @@ function detectPythonFramework(root: string): string | null {
 					return framework;
 				}
 			}
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 	}
 
 	// Try requirements.txt
@@ -299,7 +314,9 @@ function detectPythonFramework(root: string): string | null {
 					return framework;
 				}
 			}
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 	}
 
 	return null;
@@ -328,7 +345,9 @@ export function detectPackageManager(root: string): string | null {
 					return pm;
 				}
 			}
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 
 		// Default for Node projects
 		return "npm";
@@ -407,8 +426,14 @@ function detectConventions(root: string): string | null {
 
 	// ESLint
 	const eslintFiles = [
-		".eslintrc", ".eslintrc.js", ".eslintrc.cjs", ".eslintrc.json",
-		".eslintrc.yml", ".eslintrc.yaml", "eslint.config.js", "eslint.config.mjs",
+		".eslintrc",
+		".eslintrc.js",
+		".eslintrc.cjs",
+		".eslintrc.json",
+		".eslintrc.yml",
+		".eslintrc.yaml",
+		"eslint.config.js",
+		"eslint.config.mjs",
 	];
 	if (eslintFiles.some((f) => existsSync(join(root, f)))) {
 		conventions.push("Uses ESLint for linting.");
@@ -416,8 +441,14 @@ function detectConventions(root: string): string | null {
 
 	// Prettier
 	const prettierFiles = [
-		".prettierrc", ".prettierrc.js", ".prettierrc.cjs", ".prettierrc.json",
-		".prettierrc.yml", ".prettierrc.yaml", "prettier.config.js", "prettier.config.mjs",
+		".prettierrc",
+		".prettierrc.js",
+		".prettierrc.cjs",
+		".prettierrc.json",
+		".prettierrc.yml",
+		".prettierrc.yaml",
+		"prettier.config.js",
+		"prettier.config.mjs",
 	];
 	if (prettierFiles.some((f) => existsSync(join(root, f)))) {
 		conventions.push("Uses Prettier for formatting.");
@@ -431,7 +462,9 @@ function detectConventions(root: string): string | null {
 			if (tsconfig.compilerOptions?.strict) {
 				conventions.push("TypeScript strict mode enabled.");
 			}
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 	}
 
 	// Monorepo detection
@@ -473,7 +506,9 @@ function getProjectName(root: string): string {
 		try {
 			const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
 			if (pkg.name) return pkg.name;
-		} catch { /* ignore parse errors */ }
+		} catch {
+			/* ignore parse errors */
+		}
 	}
 
 	// Try Cargo.toml
@@ -483,7 +518,9 @@ function getProjectName(root: string): string {
 			const content = readFileSync(cargoPath, "utf-8");
 			const match = content.match(/name\s*=\s*"([^"]+)"/);
 			if (match) return match[1];
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 	}
 
 	// Try go.mod
@@ -493,7 +530,9 @@ function getProjectName(root: string): string {
 			const content = readFileSync(goModPath, "utf-8");
 			const match = content.match(/module\s+(\S+)/);
 			if (match) return match[1];
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 	}
 
 	return basename(root);
@@ -510,7 +549,9 @@ function findInstructions(root: string): string | null {
 					log.info(`Found instructions: ${fullPath}`);
 					return content;
 				}
-			} catch { /* ignore read errors */ }
+			} catch {
+				/* ignore read errors */
+			}
 		}
 	}
 	return null;

@@ -1,16 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { join } from "node:path";
-import { mkdtemp, rm, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import {
-	generateSessionId,
-	saveSession,
-	loadSession,
-	listSessions,
-	deleteSession,
-	createAutoSaver,
-} from "@takumi/core";
+import { join } from "node:path";
 import type { SessionData } from "@takumi/core";
+import {
+	createAutoSaver,
+	deleteSession,
+	generateSessionId,
+	listSessions,
+	loadSession,
+	saveSession,
+} from "@takumi/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /** Create a minimal valid SessionData for testing. */
 function makeSession(overrides: Partial<SessionData> = {}): SessionData {
@@ -257,12 +257,7 @@ describe("createAutoSaver", () => {
 
 	it("saves immediately when save() is called", async () => {
 		const session = makeSession({ id: "session-auto" });
-		const saver = createAutoSaver(
-			session.id,
-			() => session,
-			30_000,
-			tmpDir,
-		);
+		const saver = createAutoSaver(session.id, () => session, 30_000, tmpDir);
 
 		await saver.save();
 		saver.stop();
@@ -320,12 +315,7 @@ describe("createAutoSaver", () => {
 
 	it("updates the updatedAt timestamp on each save", async () => {
 		const session = makeSession({ id: "session-ts", updatedAt: 1000 });
-		const saver = createAutoSaver(
-			session.id,
-			() => ({ ...session }),
-			30_000,
-			tmpDir,
-		);
+		const saver = createAutoSaver(session.id, () => ({ ...session }), 30_000, tmpDir);
 
 		const beforeSave = Date.now();
 		await saver.save();

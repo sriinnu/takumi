@@ -4,10 +4,10 @@
  */
 
 import type { Rect } from "@takumi/core";
+import { COLORS, type ColorName } from "../color.js";
 import { Component } from "../component.js";
 import type { Screen } from "../screen.js";
-import { wrapText, measureText } from "../text.js";
-import { COLORS, type ColorName } from "../color.js";
+import { measureText, wrapText } from "../text.js";
 
 export interface TextProps {
 	key?: string;
@@ -48,9 +48,8 @@ export class TextComponent extends Component {
 		const fg = resolveColor(this.props.color);
 		const bg = resolveColor(this.props.background);
 
-		const lines = wrap !== false
-			? wrapText(content, rect.width)
-			: content.split("\n").map((l) => l.slice(0, rect.width));
+		const lines =
+			wrap !== false ? wrapText(content, rect.width) : content.split("\n").map((l) => l.slice(0, rect.width));
 
 		for (let i = 0; i < lines.length && i < rect.height; i++) {
 			const line = lines[i];

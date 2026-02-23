@@ -8,14 +8,10 @@
  *   - Edge cases are handled (empty content, long code blocks, unknown languages)
  */
 
-import { describe, it, expect } from "vitest";
-import {
-	formatUserMessage,
-	formatAssistantMessage,
-	formatMessage,
-} from "../src/formatters/message.js";
-import { renderMarkdown, getTheme, setTheme, defaultTheme } from "@takumi/render";
 import type { Message } from "@takumi/core";
+import { getTheme, renderMarkdown } from "@takumi/render";
+import { describe, expect, it } from "vitest";
+import { formatAssistantMessage, formatMessage, formatUserMessage } from "../src/formatters/message.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -127,10 +123,12 @@ describe("markdown rendering in assistant messages", () => {
 	it("renders fenced code blocks with separator lines", () => {
 		const msg = makeMessage({
 			role: "assistant",
-			content: [{
-				type: "text",
-				text: "Here is code:\n```\nconst x = 1;\n```",
-			}],
+			content: [
+				{
+					type: "text",
+					text: "Here is code:\n```\nconst x = 1;\n```",
+				},
+			],
 		});
 		const stripped = stripAnsi(formatAssistantMessage(msg));
 		// Separator lines (horizontal rule characters)
@@ -141,10 +139,12 @@ describe("markdown rendering in assistant messages", () => {
 	it("renders code blocks with language-specific syntax highlighting", () => {
 		const msg = makeMessage({
 			role: "assistant",
-			content: [{
-				type: "text",
-				text: '```typescript\nconst x: string = "hello";\nfunction greet() {}\n```',
-			}],
+			content: [
+				{
+					type: "text",
+					text: '```typescript\nconst x: string = "hello";\nfunction greet() {}\n```',
+				},
+			],
 		});
 		const output = formatAssistantMessage(msg);
 		// Should contain ANSI color codes (syntax highlighting)
@@ -159,10 +159,12 @@ describe("markdown rendering in assistant messages", () => {
 	it("renders Python code with syntax highlighting", () => {
 		const msg = makeMessage({
 			role: "assistant",
-			content: [{
-				type: "text",
-				text: '```python\ndef hello():\n    return "world"\n```',
-			}],
+			content: [
+				{
+					type: "text",
+					text: '```python\ndef hello():\n    return "world"\n```',
+				},
+			],
 		});
 		const output = formatAssistantMessage(msg);
 		expect(hasAnsi(output)).toBe(true);
@@ -430,9 +432,7 @@ describe("markdown rendering edge cases", () => {
 	});
 
 	it("handles very long code blocks", () => {
-		const longCode = Array.from({ length: 200 }, (_, i) =>
-			`const line${i} = ${i};`,
-		).join("\n");
+		const longCode = Array.from({ length: 200 }, (_, i) => `const line${i} = ${i};`).join("\n");
 		const msg = makeMessage({
 			role: "assistant",
 			content: [{ type: "text", text: `\`\`\`typescript\n${longCode}\n\`\`\`` }],
@@ -448,10 +448,12 @@ describe("markdown rendering edge cases", () => {
 	it("handles unknown language in code blocks gracefully", () => {
 		const msg = makeMessage({
 			role: "assistant",
-			content: [{
-				type: "text",
-				text: "```brainfuck\n++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.\n```",
-			}],
+			content: [
+				{
+					type: "text",
+					text: "```brainfuck\n++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.\n```",
+				},
+			],
 		});
 		const output = formatAssistantMessage(msg);
 		// Should not crash
@@ -464,10 +466,12 @@ describe("markdown rendering edge cases", () => {
 	it("handles code block without language specifier", () => {
 		const msg = makeMessage({
 			role: "assistant",
-			content: [{
-				type: "text",
-				text: "```\nplain code here\n```",
-			}],
+			content: [
+				{
+					type: "text",
+					text: "```\nplain code here\n```",
+				},
+			],
 		});
 		const output = formatAssistantMessage(msg);
 		const stripped = stripAnsi(output);
@@ -478,10 +482,12 @@ describe("markdown rendering edge cases", () => {
 	it("handles unclosed code block (partial markdown)", () => {
 		const msg = makeMessage({
 			role: "assistant",
-			content: [{
-				type: "text",
-				text: "Before\n```typescript\nconst x = 1;\n// no closing fence",
-			}],
+			content: [
+				{
+					type: "text",
+					text: "Before\n```typescript\nconst x = 1;\n// no closing fence",
+				},
+			],
 		});
 		// Should not crash — the renderMarkdown function handles this
 		const output = formatAssistantMessage(msg);
@@ -492,10 +498,12 @@ describe("markdown rendering edge cases", () => {
 	it("handles nested markdown-like syntax in code blocks", () => {
 		const msg = makeMessage({
 			role: "assistant",
-			content: [{
-				type: "text",
-				text: '```markdown\n# This is a heading\n**bold** and *italic*\n```',
-			}],
+			content: [
+				{
+					type: "text",
+					text: "```markdown\n# This is a heading\n**bold** and *italic*\n```",
+				},
+			],
 		});
 		const output = formatAssistantMessage(msg);
 		const stripped = stripAnsi(output);
@@ -519,10 +527,12 @@ describe("markdown rendering edge cases", () => {
 	it("handles text with special characters that look like markdown", () => {
 		const msg = makeMessage({
 			role: "assistant",
-			content: [{
-				type: "text",
-				text: "Price is $100 * 2 = $200. Use array[0] for first item.",
-			}],
+			content: [
+				{
+					type: "text",
+					text: "Price is $100 * 2 = $200. Use array[0] for first item.",
+				},
+			],
 		});
 		const output = formatAssistantMessage(msg);
 		// Should not crash on incomplete markdown patterns
@@ -563,10 +573,7 @@ describe("renderMarkdown standalone", () => {
 
 	it("renders code blocks with language", () => {
 		const theme = getTheme();
-		const result = renderMarkdown(
-			'```ts\nconst x = "hello";\n```',
-			theme,
-		);
+		const result = renderMarkdown('```ts\nconst x = "hello";\n```', theme);
 		expect(hasAnsi(result)).toBe(true);
 		const stripped = stripAnsi(result);
 		expect(stripped).toContain("const");
