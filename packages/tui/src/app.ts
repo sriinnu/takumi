@@ -409,7 +409,18 @@ export class TakumiApp {
 				// Register Akasha tools if we have a tool registry
 				if (this.agentRunner) {
 					const tools = this.agentRunner.getTools();
-					const handlers = createAkashaHandlers(bridge);
+					const handlers = createAkashaHandlers(
+						bridge,
+						// onDeposit callback - increment deposits counter and update activity timestamp
+						() => {
+							this.state.akashaDeposits.value++;
+							this.state.akashaLastActivity.value = Date.now();
+						},
+						// onTraceQuery callback - just update activity timestamp
+						() => {
+							this.state.akashaLastActivity.value = Date.now();
+						},
+					);
 					tools.register(akashaDepositDefinition, handlers.deposit);
 					tools.register(akashaTracesDefinition, handlers.traces);
 					log.info("Registered Akasha tools");

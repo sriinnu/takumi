@@ -32,6 +32,7 @@ export type {
 	ClusterConfig,
 	ClusterError,
 	ClusterEvent,
+	ClusterMoAComplete,
 	ClusterPhaseChange,
 	ClusterState,
 	ClusterTopology,
