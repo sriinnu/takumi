@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { ConfigError } from "./errors.js";
-import type { TakumiConfig } from "./types.js";
+import type { OrchestrationConfig, TakumiConfig } from "./types.js";
 
 /** Default API endpoints per provider (OpenAI-compatible chat completions). */
 export const PROVIDER_ENDPOINTS: Record<string, string> = {
@@ -38,6 +38,37 @@ const DEFAULT_CONFIG: TakumiConfig = {
 		complexityThreshold: "STANDARD",
 		maxValidationRetries: 3,
 		isolationMode: "none",
+		ensemble: {
+			enabled: false,
+			workerCount: 3,
+			temperature: 0.9,
+			parallel: true,
+		},
+		weightedVoting: {
+			minConfidenceThreshold: 0.1,
+		},
+		reflexion: {
+			enabled: false,
+			maxHistorySize: 3,
+			useAkasha: true,
+		},
+		moA: {
+			enabled: false,
+			rounds: 2,
+			validatorCount: 3,
+			allowCrossTalk: true,
+			temperatures: [0.2, 0.1, 0.05],
+		},
+		progressiveRefinement: {
+			enabled: false,
+			maxIterations: 3,
+			minImprovement: 0.05,
+			useCriticModel: true,
+			targetScore: 9.0,
+		},
+		adaptiveTemperature: {
+			enabled: true,
+		},
 	},
 };
 
@@ -146,6 +177,50 @@ export function detectProviderFromModel(model: string): string | undefined {
 }
 
 /**
+ * Validate orchestration configuration for arXiv multi-agent strategies.
+ * Throws ConfigError if validation fails.
+ */
+function validateOrchestrationConfig(config: OrchestrationConfig): void {
+	// Ensemble validation
+	if (config.ensemble?.enabled) {
+		if (config.ensemble.workerCount < 2 || config.ensemble.workerCount > 7) {
+			throw new ConfigError("orchestration.ensemble.workerCount must be 2-7");
+		}
+		if (config.ensemble.temperature < 0 || config.ensemble.temperature > 1) {
+			throw new ConfigError("orchestration.ensemble.temperature must be 0.0-1.0");
+		}
+	}
+
+	// MoA validation
+	if (config.moA?.enabled) {
+		if (config.moA.rounds < 1 || config.moA.rounds > 3) {
+			throw new ConfigError("orchestration.moA.rounds must be 1-3");
+		}
+		if (config.moA.validatorCount < 2) {
+			throw new ConfigError("orchestration.moA.validatorCount must be >= 2");
+		}
+		if (config.moA.temperatures.length < config.moA.rounds) {
+			throw new ConfigError("orchestration.moA.temperatures must have >= rounds elements");
+		}
+	}
+
+	// Progressive validation
+	if (config.progressiveRefinement?.enabled) {
+		if (config.progressiveRefinement.maxIterations < 1 || config.progressiveRefinement.maxIterations > 5) {
+			throw new ConfigError("orchestration.progressiveRefinement.maxIterations must be 1-5");
+		}
+		if (config.progressiveRefinement.minImprovement < 0 || config.progressiveRefinement.minImprovement > 1) {
+			throw new ConfigError("orchestration.progressiveRefinement.minImprovement must be 0.0-1.0");
+		}
+	}
+
+	// Conflict detection
+	if (config.ensemble?.enabled && config.progressiveRefinement?.enabled) {
+			throw new ConfigError("orchestration.ensemble and progressiveRefinement cannot both be enabled");
+	}
+}
+
+/**
  * Load configuration by merging defaults < config-file < environment.
  * Accepts optional CLI overrides that take highest priority.
  */
@@ -182,6 +257,11 @@ export function loadConfig(cliOverrides?: Partial<TakumiConfig>): TakumiConfig {
 	// 6. Resolve default endpoint for the provider if none explicitly set
 	if (!config.endpoint && config.provider !== "anthropic") {
 		config.endpoint = PROVIDER_ENDPOINTS[config.provider] || "";
+	}
+
+	// 7. Validate orchestration config if present
+	if (config.orchestration) {
+		validateOrchestrationConfig(config.orchestration);
 	}
 
 	return config;

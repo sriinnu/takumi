@@ -89,6 +89,12 @@ export class AppState {
 	 * Injected into agent system prompts to give the LLM project-level memory.
 	 */
 	readonly chitraguptaMemory: Signal<string> = signal("");
+	/** Number of knowledge deposits made to Akasha mesh in this session. */
+	readonly akashaDeposits: Signal<number> = signal(0);
+	/** Number of active agents in the Akasha p2p mesh (local + remote). */
+	readonly akashaMeshSize: Signal<number> = signal(1);
+	/** Last activity timestamp for Akasha mesh updates. */
+	readonly akashaLastActivity: Signal<number> = signal(0);
 
 	// ── Computed values ───────────────────────────────────────────────────────
 

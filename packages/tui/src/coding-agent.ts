@@ -98,8 +98,9 @@ export class CodingAgent {
 				chitragupta: chitragupta ?? undefined,
 				enableCheckpoints: true,
 				chitraguptaMemory: this.state.chitraguptaMemory.value || undefined,
-				tools: this.runner.getTools(),
-			});
+				tools: this.runner.getTools(),			onMeshSizeChange: (size: number) => {
+				this.state.akashaMeshSize.value = size;
+			},			});
 		}
 	}
 

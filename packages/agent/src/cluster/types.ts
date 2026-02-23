@@ -112,6 +112,25 @@ export interface WorkProduct {
 		success: boolean;
 		output: string;
 	};
+	/** Heuristic score from evaluator (0-10) — used in ensemble mode */
+	heuristicScore?: number;
+	/** Ensemble or progressive refinement metadata */
+	metadata?: {
+		// Ensemble fields
+		ensembleCandidates?: number;
+		consensusScore?: number;
+		avgScore?: number;
+		// Progressive refinement fields
+		iterations?: number;
+		stopReason?: string;
+		initialScore?: number;
+		improvementRate?: number;
+		// MoA fields
+		moaRounds?: number;
+		moaConsensus?: number;
+		moaAverageConfidence?: number;
+		[key: string]: unknown;
+	};
 }
 
 // ── Validation ───────────────────────────────────────────────────────────────
@@ -196,8 +215,11 @@ export type ClusterEvent =
 	| ClusterPhaseChange
 	| ClusterAgentUpdate
 	| ClusterValidationComplete
+	| ClusterMoAComplete
 	| ClusterError
-	| ClusterComplete;
+	| ClusterComplete
+	| ClusterEnsembleComplete
+	| ClusterProgressiveComplete;
 
 export interface ClusterPhaseChange {
 	type: "phase_change";
@@ -239,5 +261,32 @@ export interface ClusterComplete {
 	clusterId: string;
 	success: boolean;
 	workProduct: WorkProduct | null;
+	timestamp: number;
+}
+
+export interface ClusterEnsembleComplete {
+	type: "ensemble_complete";
+	clusterId: string;
+	candidateCount: number;
+	winnerId: string;
+	timestamp: number;
+}
+
+export interface ClusterProgressiveComplete {
+	type: "progressive_complete";
+	clusterId: string;
+	iterationCount: number;
+	finalScore: number;
+	stopReason: "target_reached" | "max_iterations" | "plateau";
+	timestamp: number;
+}
+
+export interface ClusterMoAComplete {
+	type: "moa_validation_complete";
+	clusterId: string;
+	rounds: number;
+	finalDecision: ValidationDecision;
+	consensus: number;
+	averageConfidence: number;
 	timestamp: number;
 }
