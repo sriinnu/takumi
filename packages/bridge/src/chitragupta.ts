@@ -45,6 +45,51 @@ export interface AkashaTrace {
 	strength: number;
 }
 
+/**
+ * Vasana tendency — a crystallized behavioral pattern extracted by Chitragupta
+ * from repeated observations across sessions (BOCPD-detected stability).
+ * NOTE: mirrors @chitragupta/tantra VasanaTendencyResult; delete local def when
+ * chitragupta publishes the type as a standalone package export.
+ */
+export interface VasanaTendency {
+	/** Tendency category/name (e.g. "prefers-functional-style"). */
+	tendency: string;
+	/** Positive, negative, or neutral valence. */
+	valence: string;
+	/** Normalized strength 0.0–1.0 (Thompson-sampled confidence). */
+	strength: number;
+	/** BOCPD stability estimate 0.0–1.0. */
+	stability: number;
+	/** Cross-session predictive accuracy 0.0–1.0. */
+	predictiveAccuracy: number;
+	/** Number of times this tendency was reinforced. */
+	reinforcementCount: number;
+	/** Human-readable description of the behavioral pattern. */
+	description: string;
+}
+
+/**
+ * Chitragupta aggregate health snapshot — Triguna-based system state.
+ * NOTE: mirrors @chitragupta/tantra HealthStatusResult; delete local def when
+ * chitragupta publishes the type as a standalone package export.
+ */
+export interface ChitraguptaHealth {
+	/** Triguna state: Sattvic (clarity), Rajasic (energy), Tamasic (inertia). Each 0.0–1.0. */
+	state: { sattva: number; rajas: number; tamas: number };
+	/** Dominant Guna at current time ("sattva" | "rajas" | "tamas"). */
+	dominant: string;
+	/** Change direction per Guna ("rising" | "stable" | "falling"). */
+	trend: { sattva: string; rajas: string; tamas: string };
+	/** Active alerts or anomaly descriptions. */
+	alerts: string[];
+	/** Recent snapshots for trend rendering (newest-last). */
+	history: Array<{
+		timestamp: number;
+		state: { sattva: number; rajas: number; tamas: number };
+		dominant: string;
+	}>;
+}
+
 // ── MCP tool response wrappers ───────────────────────────────────────────────
 
 interface ToolCallResult {
@@ -161,6 +206,27 @@ export class ChitraguptaBridge {
 
 		const raw = await this.callTool("akasha_traces", params);
 		return this.parseResults<AkashaTrace[]>(raw) ?? [];
+	}
+
+	/**
+	 * Retrieve crystallized behavioral tendencies (Vasanas) from Chitragupta's
+	 * smriti layer. These represent stable patterns observed across sessions.
+	 */
+	async vasanaTendencies(limit?: number): Promise<VasanaTendency[]> {
+		const params: Record<string, unknown> = {};
+		if (limit !== undefined) params.limit = limit;
+		const raw = await this.callTool("vasana_tendencies", params);
+		return this.parseResults<VasanaTendency[]>(raw) ?? [];
+	}
+
+	/**
+	 * Fetch an aggregate health snapshot from Chitragupta (Pancha-Kosha scoring,
+	 * memory usage, active sessions, per-package grades).
+	 * Returns null if Chitragupta is unhealthy or the call fails.
+	 */
+	async healthStatus(): Promise<ChitraguptaHealth | null> {
+		const raw = await this.callTool("health_status", {});
+		return this.parseResults<ChitraguptaHealth>(raw);
 	}
 
 	/** Check connection status. */

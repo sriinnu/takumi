@@ -14,6 +14,19 @@
  *   takumi --resume <id>             Resume a previous session
  *   takumi --help                   Show help
  *   takumi --version                Show version
+ *
+ * Subcommands:
+ *   takumi list                     List saved sessions
+ *   takumi status <id>              Show session metadata
+ *   takumi logs <id>                Print full conversation log
+ *   takumi export <id>              Export session as Markdown (to stdout)
+ *   takumi delete <id>              Delete a saved session
+ *
+ * Workflow flags:
+ *   --pr                            Auto-create a GitHub PR on task completion
+ *   --ship                          Auto-create + merge PR on task completion
+ *   -d, --detach                    Run in background (detached process)
+ *   --issue <url|number>            Pre-fetch GitHub issue as context
  */
 
 import { loadConfig, PROVIDER_ENDPOINTS } from "@takumi/core";
@@ -38,6 +51,13 @@ interface CliArgs {
 	prompt: string[];  // positional args collected
 	print: boolean;    // --print flag for non-interactive output
 	resume?: string;   // --resume <id> to restore a previous session
+	// ── new in N-tasks ───────────────────────────────────────────────────────────
+	subcommand?: string;    // list | status | logs | export | delete
+	subcommandArg?: string; // first positional arg after subcommand
+	pr: boolean;            // --pr: auto-create GitHub PR on completion
+	ship: boolean;          // --ship: auto-create + merge PR on completion
+	detach: boolean;        // -d / --detach: fork to background process
+	issue?: string;         // --issue <url|#n>: fetch issue body as context
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -47,6 +67,9 @@ function parseArgs(argv: string[]): CliArgs {
 		thinking: false,
 		prompt: [],
 		print: false,
+		pr: false,
+		ship: false,
+		detach: false,
 	};
 
 	let i = 2; // skip node and script path
@@ -107,6 +130,21 @@ function parseArgs(argv: string[]): CliArgs {
 			case "--fallback":
 				args.fallback = argv[++i];
 				break;
+			case "--pr":
+				args.pr = true;
+				break;
+			case "--ship":
+				args.ship = true;
+				args.pr = true;
+				break;
+			case "-d":
+			case "--detach":
+				args.detach = true;
+				break;
+			case "--issue":
+			case "-i":
+				args.issue = argv[++i];
+				break;
 			default:
 				if (arg.startsWith("-")) {
 					console.error(`Unknown option: ${arg}`);
@@ -117,6 +155,13 @@ function parseArgs(argv: string[]): CliArgs {
 		}
 
 		i++;
+	}
+
+	// Detect subcommand from first positional arg
+	const SUBCOMMANDS = ["list", "status", "logs", "export", "delete"];
+	if (args.prompt.length > 0 && SUBCOMMANDS.includes(args.prompt[0])) {
+		args.subcommand = args.prompt.shift();
+		args.subcommandArg = args.prompt.shift();
 	}
 
 	return args;
@@ -131,6 +176,13 @@ Usage:
   takumi "analyze this file"          One-shot mode
   takumi --print "summarize code"     Non-interactive, stdout output
   cat file.ts | takumi "review this"  Piped input
+
+Subcommands:
+  takumi list                List saved sessions
+  takumi status <id>         Show session metadata and token usage
+  takumi logs <id>           Print full conversation log (colour-coded)
+  takumi export <id>         Export session as Markdown to stdout
+  takumi delete <id>         Delete a saved session
 
 Options:
   -h, --help                Show this help message
@@ -148,6 +200,10 @@ Options:
   -C, --cwd <dir>           Working directory
   -r, --resume <id>         Resume a previous session by ID
   --fallback <provider>     Fallback provider on primary failure
+  --pr                      Auto-create a GitHub PR when task completes
+  --ship                    Auto-create + auto-merge PR when task completes
+  -d, --detach              Run agent in background (detached process)
+  -i, --issue <url|#n>      Pre-fetch GitHub issue body as task context
 
 Providers:
   anthropic (default)    Direct Anthropic API
@@ -341,6 +397,177 @@ async function createProvider(config: TakumiConfig, fallbackName?: string): Prom
 	}
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Human-readable relative time (e.g. "3h ago"). */
+function formatAge(ts: number): string {
+	const diff = Date.now() - ts;
+	const mins = Math.floor(diff / 60_000);
+	if (mins < 60) return `${mins}m ago`;
+	const hrs = Math.floor(mins / 60);
+	if (hrs < 24) return `${hrs}h ago`;
+	return `${Math.floor(hrs / 24)}d ago`;
+}
+
+// ── Subcommand handlers ───────────────────────────────────────────────────────
+
+async function cmdList(): Promise<void> {
+	const { listSessions } = await import("@takumi/core");
+	const sessions = await listSessions(50);
+	if (sessions.length === 0) {
+		console.log("No sessions found.");
+		return;
+	}
+	console.log(`\nSessions (${sessions.length}):\n`);
+	for (const s of sessions) {
+		const date = new Date(s.updatedAt).toLocaleString();
+		console.log(`  \x1b[1;36m${s.id}\x1b[0m`);
+		console.log(`    Title:    ${s.title || "(untitled)"}`);
+		console.log(`    Model:    ${s.model}`);
+		console.log(`    Messages: ${s.messageCount}`);
+		console.log(`    Updated:  ${date} (${formatAge(s.updatedAt)})`);
+		console.log();
+	}
+}
+
+async function cmdStatus(id: string): Promise<void> {
+	const { loadSession } = await import("@takumi/core");
+	const session = await loadSession(id);
+	if (!session) {
+		console.error(`Session not found: ${id}`);
+		process.exit(1);
+	}
+	console.log(`\n\x1b[1mSession:\x1b[0m ${session.id}`);
+	console.log(`  Title:         ${session.title || "(untitled)"}`);
+	console.log(`  Model:         ${session.model}`);
+	console.log(`  Created:       ${new Date(session.createdAt).toLocaleString()}`);
+	console.log(`  Updated:       ${new Date(session.updatedAt).toLocaleString()}`);
+	console.log(`  Messages:      ${session.messages.length}`);
+	console.log(`  Input tokens:  ${session.tokenUsage.inputTokens.toLocaleString()}`);
+	console.log(`  Output tokens: ${session.tokenUsage.outputTokens.toLocaleString()}`);
+	console.log(`  Est. cost:     $${session.tokenUsage.totalCost.toFixed(4)}`);
+	console.log();
+}
+
+async function cmdLogs(id: string): Promise<void> {
+	const { loadSession } = await import("@takumi/core");
+	const session = await loadSession(id);
+	if (!session) {
+		console.error(`Session not found: ${id}`);
+		process.exit(1);
+	}
+	console.log(`\n── Session: \x1b[1m${session.id}\x1b[0m ──\n`);
+	for (const msg of session.messages) {
+		const roleLabel =
+			msg.role === "user"
+				? "\x1b[1;34m[user]\x1b[0m"
+				: msg.role === "assistant"
+					? "\x1b[1;32m[assistant]\x1b[0m"
+					: `\x1b[1;33m[${msg.role}]\x1b[0m`;
+		console.log(roleLabel);
+		const content = msg.content as any;
+		if (Array.isArray(content)) {
+			for (const block of content) {
+				if (block.type === "text") {
+					console.log(block.text);
+				} else if (block.type === "tool_use") {
+					console.log(`  \x1b[2m[tool: ${block.name}]\x1b[0m`);
+				} else if (block.type === "tool_result") {
+					const raw = Array.isArray(block.content) ? (block.content[0]?.text ?? "") : String(block.content ?? "");
+					console.log(`  \x1b[2m[result: ${raw.slice(0, 200)}]\x1b[0m`);
+				}
+			}
+		} else {
+			console.log(content);
+		}
+		console.log();
+	}
+}
+
+async function cmdExport(id: string): Promise<void> {
+	const { loadSession } = await import("@takumi/core");
+	const session = await loadSession(id);
+	if (!session) {
+		console.error(`Session not found: ${id}`);
+		process.exit(1);
+	}
+	const lines: string[] = [
+		`# ${session.title || "Takumi Session"}`,
+		``,
+		`**ID:** \`${session.id}\`  `,
+		`**Model:** \`${session.model}\`  `,
+		`**Created:** ${new Date(session.createdAt).toISOString()}  `,
+		`**Updated:** ${new Date(session.updatedAt).toISOString()}  `,
+		`**Messages:** ${session.messages.length}  `,
+		``,
+		`---`,
+		``,
+	];
+	for (const msg of session.messages) {
+		const role = msg.role.charAt(0).toUpperCase() + msg.role.slice(1);
+		lines.push(`## ${role}`);
+		lines.push(``);
+		const content = msg.content as any;
+		if (Array.isArray(content)) {
+			for (const block of content) {
+				if (block.type === "text") {
+					lines.push(block.text);
+				} else if (block.type === "tool_use") {
+					lines.push(`\`\`\`tool:${block.name}`);
+					lines.push(JSON.stringify(block.input, null, 2));
+					lines.push("```");
+				} else if (block.type === "tool_result") {
+					const raw = Array.isArray(block.content) ? (block.content[0]?.text ?? "") : String(block.content ?? "");
+					lines.push("```result");
+					lines.push(raw);
+					lines.push("```");
+				}
+			}
+		} else {
+			lines.push(String(content ?? ""));
+		}
+		lines.push(``);
+	}
+	process.stdout.write(lines.join("\n"));
+	process.stdout.write("\n");
+}
+
+async function cmdDelete(id: string): Promise<void> {
+	const { deleteSession } = await import("@takumi/core");
+	await deleteSession(id);
+	console.log(`Deleted session: ${id}`);
+}
+
+/**
+ * Fetch a GitHub issue's title + body via the `gh` CLI and return a
+ * formatted context string to prepend to the user's prompt.
+ */
+async function fetchIssueContext(issueRef: string): Promise<string> {
+	const { spawn } = await import("node:child_process");
+	return new Promise((resolve) => {
+		// Accept full URL or bare number / "#123"
+		const ref = issueRef.replace(/^#/, "");
+		const child = spawn("gh", ["issue", "view", ref, "--json", "title,body,url"], {
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		let out = "";
+		child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+		child.on("close", (code: number) => {
+			if (code !== 0) {
+				process.stderr.write(`[warning] Could not fetch issue "${issueRef}" — continuing without it.\n`);
+				resolve("");
+				return;
+			}
+			try {
+				const { title, body, url } = JSON.parse(out);
+				resolve(`GitHub Issue: ${title}\nURL: ${url}\n\n${body}\n\n---\n\n`);
+			} catch {
+				resolve("");
+			}
+		});
+	});
+}
+
 async function main(): Promise<void> {
 	const args = parseArgs(process.argv);
 
@@ -354,7 +581,30 @@ async function main(): Promise<void> {
 		process.exit(0);
 	}
 
-	// Build config overrides from CLI args
+	// ── Subcommand dispatch (no API key needed) ───────────────────────────────
+	if (args.subcommand) {
+		switch (args.subcommand) {
+			case "list":
+				await cmdList();
+				return;
+			case "status":
+				if (!args.subcommandArg) { console.error("Usage: takumi status <id>"); process.exit(1); }
+				await cmdStatus(args.subcommandArg);
+				return;
+			case "logs":
+				if (!args.subcommandArg) { console.error("Usage: takumi logs <id>"); process.exit(1); }
+				await cmdLogs(args.subcommandArg);
+				return;
+			case "export":
+				if (!args.subcommandArg) { console.error("Usage: takumi export <id>"); process.exit(1); }
+				await cmdExport(args.subcommandArg);
+				return;
+			case "delete":
+				if (!args.subcommandArg) { console.error("Usage: takumi delete <id>"); process.exit(1); }
+				await cmdDelete(args.subcommandArg);
+				return;
+		}
+	}
 	const overrides: Partial<TakumiConfig> = {};
 	if (args.model) overrides.model = args.model;
 	if (args.thinking) overrides.thinking = true;
@@ -391,6 +641,43 @@ async function main(): Promise<void> {
 		process.chdir(config.workingDirectory);
 	}
 
+	// ── Detach mode (N-4): fork to background when -d / --detach ─────────────
+	if (args.detach && !process.env["TAKUMI_DETACHED"]) {
+		const { mkdirSync, openSync, constants: fsConst } = await import("node:fs");
+		const { join: pathJoin } = await import("node:path");
+		const { homedir } = await import("node:os");
+		const { spawn: spawnProc } = await import("node:child_process");
+		const jobId = `job-${Date.now().toString(36)}`;
+		const logsDir = pathJoin(homedir(), ".takumi", "logs");
+		const jobsDir = pathJoin(homedir(), ".takumi", "jobs");
+		mkdirSync(logsDir, { recursive: true });
+		mkdirSync(jobsDir, { recursive: true });
+		const logFile = pathJoin(logsDir, `${jobId}.log`);
+		const logFd = openSync(logFile, fsConst.O_WRONLY | fsConst.O_CREAT | fsConst.O_TRUNC, 0o644);
+		const child = spawnProc(process.execPath, process.argv.slice(1), {
+			detached: true,
+			stdio: ["ignore", logFd, logFd],
+			env: { ...process.env, TAKUMI_DETACHED: "1" },
+		});
+		child.unref();
+		const fs = await import("node:fs/promises");
+		await fs.writeFile(pathJoin(jobsDir, `${jobId}.pid`), String(child.pid ?? ""), "utf-8");
+		console.log(`[detached] job ${jobId}  pid=${child.pid}  log=${logFile}`);
+		process.exit(0);
+	}
+
+	// ── Issue context pre-fetch (N-6) ─────────────────────────────────────────
+	// Detect GitHub issue URLs or #<n> patterns in the prompt or --issue flag
+	let issueContext = "";
+	const issueRef = args.issue ?? (args.prompt.length > 0 ? (() => {
+		const combined = args.prompt.join(" ");
+		const m = combined.match(/https?:\/\/github\.com\/[^/]+\/[^/]+\/issues\/(\d+)|#(\d+)/);
+		return m ? (m[1] ?? m[2] ?? "") : "";
+	})() : "");
+	if (issueRef) {
+		issueContext = await fetchIssueContext(issueRef);
+	}
+
 	// Determine one-shot mode: positional args, --print flag, or non-TTY stdin
 	const prompt = args.prompt.join(" ");
 	const isNonTTY = !process.stdin.isTTY;
@@ -406,7 +693,7 @@ async function main(): Promise<void> {
 			console.error("Error: No prompt provided. Pass a message as a positional argument or pipe to stdin.");
 			process.exit(1);
 		}
-		await runOneShot(config, finalPrompt, args.fallback);
+		await runOneShot(config, issueContext + finalPrompt, args.fallback);
 		return;
 	}
 
@@ -448,6 +735,8 @@ async function main(): Promise<void> {
 			provider.sendMessage(messages, system, toolDefs, signal, options),
 		tools,
 		resumeSessionId: args.resume,
+		autoPr: args.pr,
+		autoShip: args.ship,
 		providerFactory: async (providerName: string) => {
 			// Lazily import @takumi/agent so this works without touching createProvider()
 			const agentModule = await import("@takumi/agent");

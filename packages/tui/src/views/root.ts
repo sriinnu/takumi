@@ -29,7 +29,7 @@ export interface RootViewProps {
 export class RootView extends Component {
 	private state: AppState;
 	readonly chatView: ChatView;
-	private sidebar: SidebarPanel;
+	readonly sidebar: SidebarPanel;
 	readonly fileTree: FileTreePanel;
 	readonly filePreview: FilePreviewPanel;
 	private disposeEffects: (() => void)[] = [];

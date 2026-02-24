@@ -220,7 +220,7 @@ export class AgentRunner {
 	private promptPermission(tool: string, args: Record<string, unknown>): Promise<PermissionDecision> {
 		return new Promise<PermissionDecision>((resolve) => {
 			this.state.pendingPermission.value = { tool, args, resolve };
-			this.state.activeDialog.value = "permission";
+			this.state.pushDialog("permission");
 		});
 	}
 

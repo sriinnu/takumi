@@ -3,11 +3,24 @@
  * All UI components observe these signals and re-render when they change.
  */
 
-import type { ChitraguptaBridge } from "@takumi/bridge";
+import type { ChitraguptaBridge, ChitraguptaHealth, VasanaTendency } from "@takumi/bridge";
 import type { Message, PermissionDecision, Size, Usage } from "@takumi/core";
 import type { ReadonlySignal, Signal } from "@takumi/render";
 import { computed, signal } from "@takumi/render";
+import { ValidationResultsDialog } from "./dialogs/validation-results.js";
 import { ToolSpinner } from "./spinner.js";
+
+// ── Cluster command channel type ──────────────────────────────────────────────
+/**
+ * Commands dispatched from slash commands / dialogs to CodingAgent.
+ * CodingAgent observes `AppState.clusterCommand` via an effect and handles them.
+ */
+export type ClusterCommandEvent =
+	| { type: "retry"; maxAttempts?: number }
+	| { type: "validate" }
+	| { type: "checkpoint_save" }
+	| { type: "resume"; taskId: string }
+	| { type: "isolation_set"; mode: "none" | "worktree" | "docker" };
 
 export class AppState {
 	// ── Conversation ──────────────────────────────────────────────────────────
@@ -37,7 +50,19 @@ export class AppState {
 	readonly sidebarVisible: Signal<boolean> = signal(false);
 	readonly terminalSize: Signal<Size> = signal({ width: 80, height: 24 });
 	readonly showThinking: Signal<boolean> = signal(true);
-	readonly activeDialog: Signal<string | null> = signal(null);
+	/**
+	 * Dialog stack — each push opens a new modal on top of the previous;
+	 * Esc pops the top. Use `pushDialog()` / `popDialog()` helpers.
+	 */
+	readonly dialogStack: Signal<string[]> = signal<string[]>([]);
+	/**
+	 * Legacy computed accessor — returns the top dialog name or null.
+	 * Kept for backward-compat with existing render code; prefer `topDialog`.
+	 */
+	readonly activeDialog: ReadonlySignal<string | null> = computed(() => {
+		const stack = this.dialogStack.value;
+		return stack.length > 0 ? stack[stack.length - 1] : null;
+	});
 
 	// ── Tool execution ────────────────────────────────────────────────────────
 	readonly activeTool: Signal<string | null> = signal(null);
@@ -96,6 +121,24 @@ export class AppState {
 	readonly akashaMeshSize: Signal<number> = signal(1);
 	/** Last activity timestamp for Akasha mesh updates. */
 	readonly akashaLastActivity: Signal<number> = signal(0);
+	/** Crystallized behavioral tendencies from Chitragupta smriti (Vasana engine). */
+	readonly vasanaTendencies: Signal<VasanaTendency[]> = signal<VasanaTendency[]>([]);
+	/** Aggregate health snapshot from Chitragupta (Pancha-Kosha scoring). */
+	readonly chitraguptaHealth: Signal<ChitraguptaHealth | null> = signal<ChitraguptaHealth | null>(null);
+	/** Unix ms timestamp of the last vasana tendencies refresh. */
+	readonly vasanaLastRefresh: Signal<number> = signal(0);
+	/**
+	 * Cluster command channel — slash commands and dialogs write here;
+	 * CodingAgent observes via an effect and handles immediately.
+	 */
+	readonly clusterCommand: Signal<ClusterCommandEvent | null> = signal<ClusterCommandEvent | null>(null);
+
+	// ── Dialog instances ──────────────────────────────────────────────────────
+	/**
+	 * Validation results dialog — opened by CodingAgent when multi-agent
+	 * validation produces at least one REJECT. Callbacks are wired in CodingAgent.
+	 */
+	readonly validationResultsDialog: ValidationResultsDialog = new ValidationResultsDialog();
 
 	// ── Computed values ───────────────────────────────────────────────────────
 
@@ -130,6 +173,28 @@ export class AppState {
 	});
 
 	// ── Methods ───────────────────────────────────────────────────────────────
+
+	/** Push a dialog name onto the dialog stack (opens it on top of any current dialog). */
+	pushDialog(name: string): void {
+		this.dialogStack.value = [...this.dialogStack.value, name];
+	}
+
+	/** Pop the top dialog off the stack (closes it, revealing the one beneath). */
+	popDialog(): void {
+		const stack = this.dialogStack.value;
+		if (stack.length > 0) this.dialogStack.value = stack.slice(0, -1);
+	}
+
+	/** Returns the name of the currently active (top) dialog, or null. */
+	get topDialog(): string | null {
+		const stack = this.dialogStack.value;
+		return stack.length > 0 ? stack[stack.length - 1] : null;
+	}
+
+	/** Dismiss all open dialogs. */
+	clearDialogs(): void {
+		this.dialogStack.value = [];
+	}
 
 	/** Add a message to the conversation. */
 	addMessage(message: Message): void {
@@ -192,5 +257,13 @@ export class AppState {
 		this.chitraguptaConnected.value = false;
 		this.chitraguptaBridge.value = null;
 		this.chitraguptaMemory.value = "";
+		this.vasanaTendencies.value = [];
+		this.chitraguptaHealth.value = null;
+		this.vasanaLastRefresh.value = 0;
+		this.dialogStack.value = [];
+		this.clusterCommand.value = null;
+		this.akashaDeposits.value = 0;
+		this.akashaMeshSize.value = 1;
+		this.akashaLastActivity.value = 0;
 	}
 }

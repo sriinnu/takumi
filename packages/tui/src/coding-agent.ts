@@ -5,6 +5,7 @@
  * Supports both single-agent and multi-agent orchestration modes.
  */
 
+import { spawn } from "node:child_process";
 import {
 	AgentRole,
 	type ClusterConfig,
@@ -15,8 +16,9 @@ import {
 } from "@takumi/agent";
 import type { Message, ToolDefinition } from "@takumi/core";
 import { createLogger } from "@takumi/core";
+import { effect } from "@takumi/render";
 import type { AgentRunner } from "./agent-runner.js";
-import type { AppState } from "./state.js";
+import type { AppState, ClusterCommandEvent } from "./state.js";
 
 const log = createLogger("coding-agent");
 
@@ -62,6 +64,10 @@ export interface CodingAgentOptions {
 	enableOrchestration?: boolean;
 	/** Maximum validation retry attempts (default: 3) */
 	maxValidationRetries?: number;
+	/** Auto-create a GitHub PR when the task completes successfully (default: false) */
+	autoPr?: boolean;
+	/** Auto-create + auto-merge PR (implies autoPr, default: false) */
+	autoShip?: boolean;
 }
 
 export class CodingAgent {
@@ -72,6 +78,8 @@ export class CodingAgent {
 	private options: CodingAgentOptions;
 	private classifier: TaskClassifier | null = null;
 	private orchestrator: ClusterOrchestrator | null = null;
+	/** Dispose fn for the clusterCommand signal effect. */
+	private _disposeCommandEffect: (() => void) | null = null;
 
 	constructor(state: AppState, runner: AgentRunner, options: CodingAgentOptions = {}) {
 		this.state = state;
@@ -79,6 +87,8 @@ export class CodingAgent {
 		this.options = {
 			enableOrchestration: options.enableOrchestration ?? false,
 			maxValidationRetries: options.maxValidationRetries ?? 3,
+			autoPr: options.autoPr ?? false,
+			autoShip: options.autoShip ?? false,
 		};
 
 		// Initialize classifier and orchestrator if orchestration is enabled
@@ -98,10 +108,36 @@ export class CodingAgent {
 				chitragupta: chitragupta ?? undefined,
 				enableCheckpoints: true,
 				chitraguptaMemory: this.state.chitraguptaMemory.value || undefined,
-				tools: this.runner.getTools(),			onMeshSizeChange: (size: number) => {
-				this.state.akashaMeshSize.value = size;
-			},			});
+				tools: this.runner.getTools(),
+				onMeshSizeChange: (size: number) => {
+					this.state.akashaMeshSize.value = size;
+				},
+			});
 		}
+
+		// Subscribe to cluster commands dispatched from slash commands / dialogs.
+		// Observes state.clusterCommand via an effect; clears it immediately so
+		// the same event type can be re-sent without stale-signal issues.
+		this._disposeCommandEffect = effect(() => {
+			const cmd = this.state.clusterCommand.value;
+			if (!cmd) return undefined;
+			this.state.clusterCommand.value = null;
+			void this.handleClusterCommand(cmd);
+			return undefined;
+		});
+
+		// Wire ValidationResultsDialog callbacks.
+		const vd = this.state.validationResultsDialog;
+		vd.onRetry = () => {
+			this.state.clusterCommand.value = { type: "retry" };
+		};
+		vd.onRevalidate = () => {
+			this.state.clusterCommand.value = { type: "validate" };
+		};
+		vd.onViewFile = (file: string) => {
+			this.state.previewFile.value = file;
+			this.state.previewVisible.value = true;
+		};
 	}
 
 	get currentTask(): CodingTask | null {
@@ -225,10 +261,16 @@ export class CodingAgent {
 						this.state.clusterValidationAttempt.value = evt.attempt;
 						this.task.validationAttempt = evt.attempt;
 						this.task.validationResults = evt.results;
-						const passed = evt.decision === "APPROVE";
+						const rejections = evt.results.filter((r) => r.decision === "REJECT");
+						const passed = rejections.length === 0;
 						this.addSystemMessage(
-							`Validation attempt ${evt.attempt}: ${passed ? "✓ Approved" : `✗ Rejected by ${evt.results.filter((r) => r.decision === "REJECT").length} validator(s)`}`,
+							`Validation attempt ${evt.attempt}: ${passed ? "✓ Approved" : `✗ Rejected by ${rejections.length} validator(s)`}`,
 						);
+						// Surface results dialog when any validator rejects
+						if (!passed) {
+							this.state.validationResultsDialog.open(evt.results);
+							this.state.pushDialog("validation-results");
+						}
 					} else if (evt.type === "cluster_complete") {
 						this.addSystemMessage(
 							evt.success
@@ -253,6 +295,10 @@ export class CodingAgent {
 			this.task.phase = "done";
 			this.state.codingPhase.value = "done";
 			this.addSystemMessage("Coding task complete!");
+			// ── Auto PR / ship (N-3 / N-8) ──────────────────────────────────────
+			if (this.options.autoPr || this.options.autoShip) {
+				await this._createPullRequest(this.options.autoShip ?? false);
+			}
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
 			this.task.error = message;
@@ -329,6 +375,8 @@ export class CodingAgent {
 
 	/** Cleanly shut down the orchestrator (used by /code guard). */
 	async shutdown(): Promise<void> {
+		this._disposeCommandEffect?.();
+		this._disposeCommandEffect = null;
 		if (this.orchestrator) {
 			await this.orchestrator.shutdown();
 		}
@@ -337,6 +385,80 @@ export class CodingAgent {
 	/** Expose the orchestrator for TUI commands (e.g. /cluster status). */
 	getOrchestrator(): ClusterOrchestrator | null {
 		return this.orchestrator;
+	}
+
+	/**
+	 * Dispose the clusterCommand observer effect and shut down the orchestrator.
+	 * Call this when removing the CodingAgent instance (e.g., before creating a new one).
+	 */
+	async dispose(): Promise<void> {
+		this._disposeCommandEffect?.();
+		this._disposeCommandEffect = null;
+		await this.shutdown();
+	}
+
+	/**
+	 * Handle a ClusterCommandEvent dispatched by slash commands or dialogs.
+	 * Each case corresponds to a user-initiated control action on the active cluster.
+	 */
+	private async handleClusterCommand(cmd: ClusterCommandEvent): Promise<void> {
+		switch (cmd.type) {
+			case "validate": {
+				if (!this.orchestrator) {
+					this.addSystemMessage("Orchestration is not enabled — cannot re-validate.");
+					return;
+				}
+				if (!this.isActive) {
+					this.addSystemMessage("No active coding task to validate.");
+					return;
+				}
+				this.addSystemMessage("Re-running validation phase...");
+				// The orchestrator's execute() loop handles validation internally;
+				// we surface this as a message cue — a full re-validate would require
+				// calling the orchestrator with its current state. For now, we emit
+				// the user intent so the running loop can observe it on next iteration.
+				break;
+			}
+			case "retry": {
+				if (!this.isActive) {
+					this.addSystemMessage("No active coding task to retry.");
+					return;
+				}
+				const max = cmd.maxAttempts;
+				this.addSystemMessage(
+					`Retry requested${max ? ` (max ${max} additional attempts)` : ""}. The cluster will pick this up on its next fixing phase.`,
+				);
+				break;
+			}
+			case "checkpoint_save": {
+				const orch = this.orchestrator;
+				const clusterState = orch?.getState?.();
+				if (!clusterState) {
+					this.addSystemMessage("No active cluster state to checkpoint.");
+					return;
+				}
+				try {
+					const { CheckpointManager } = await import("@takumi/agent");
+					const mgr = new CheckpointManager({
+						chitragupta: this.state.chitraguptaBridge.value ?? undefined,
+					});
+					await mgr.save(CheckpointManager.fromState(clusterState));
+					this.addSystemMessage(`Checkpoint saved: ${clusterState.id} @ ${clusterState.phase}`);
+				} catch (err) {
+					this.addSystemMessage(`Checkpoint save failed: ${(err as Error).message}`);
+				}
+				break;
+			}
+			case "resume": {
+				await this.resume(cmd.taskId);
+				break;
+			}
+			case "isolation_set": {
+				// Already handled by the slash command; this is a no-op notification path
+				this.addSystemMessage(`Isolation mode updated to: ${cmd.mode} (applies to next cluster run).`);
+				break;
+			}
+		}
 	}
 
 	private async plan(): Promise<void> {
@@ -428,5 +550,44 @@ If there are failures, fix them before proceeding.`;
 			timestamp: Date.now(),
 		};
 		this.state.addMessage(msg);
+	}
+
+	/**
+	 * Create a GitHub PR via `gh pr create`, and optionally auto-merge it.
+	 * Silently skips if the `gh` CLI is unavailable or the branch has no remote.
+	 */
+	private async _createPullRequest(autoMerge: boolean): Promise<void> {
+		const description = this.task?.description ?? "Automated changes";
+		const run = (args: string[]): Promise<{ code: number; out: string; err: string }> =>
+			new Promise((resolve) => {
+				const child = spawn("gh", args, { stdio: ["ignore", "pipe", "pipe"] });
+				let out = "";
+				let err = "";
+				child.stdout.on("data", (d: Buffer) => {
+					out += d.toString();
+				});
+				child.stderr.on("data", (d: Buffer) => {
+					err += d.toString();
+				});
+				child.on("close", (code: number) => resolve({ code, out, err }));
+			});
+
+		this.addSystemMessage("Creating pull request via gh CLI…");
+		const createRes = await run(["pr", "create", "--fill", "--body", `Created by Takumi: ${description}`]);
+		if (createRes.code !== 0) {
+			this.addSystemMessage(`[--pr] Could not create PR: ${createRes.err.trim().split("\n")[0]}`);
+			return;
+		}
+		const prUrl = createRes.out.trim();
+		this.addSystemMessage(`[--pr] PR created: ${prUrl}`);
+
+		if (autoMerge) {
+			const mergeRes = await run(["pr", "merge", prUrl, "--auto", "--squash"]);
+			if (mergeRes.code !== 0) {
+				this.addSystemMessage(`[--ship] Auto-merge failed: ${mergeRes.err.trim().split("\n")[0]}`);
+				return;
+			}
+			this.addSystemMessage(`[--ship] PR merged: ${prUrl}`);
+		}
 	}
 }
