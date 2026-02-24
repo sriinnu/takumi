@@ -3,7 +3,7 @@
 import { loadConfig } from "@takumi/core";
 import type { TakumiConfig } from "@takumi/core";
 import { parseArgs } from "./cli/args.js";
-import { cmdAttach, cmdJobs, cmdStop, startDetachedJob } from "./cli/detached-jobs.js";
+import { cmdAttach, cmdJobs, cmdStop, cmdWatch, startDetachedJob } from "./cli/detached-jobs.js";
 import { printHelp } from "./cli/help.js";
 import { fetchIssueContext, readStdin, runOneShot } from "./cli/one-shot.js";
 import { buildSingleProvider, canSkipApiKey, createProvider } from "./cli/provider.js";
@@ -180,6 +180,9 @@ async function main(): Promise<void> {
 				return;
 			case "jobs":
 				await cmdJobs();
+				return;
+			case "watch":
+				await cmdWatch(args.subcommandArg);
 				return;
 			case "attach":
 				if (!args.subcommandArg) {

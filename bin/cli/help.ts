@@ -15,6 +15,7 @@ Subcommands:
   takumi export <id>         Export session as Markdown to stdout
   takumi delete <id>         Delete a saved session
   takumi jobs                List detached background jobs
+  takumi watch [job-id]      Live monitor detached jobs (or one specific job)
   takumi attach <job-id>     Attach to a detached job log stream
   takumi stop <job-id>       Stop a detached background job
 
@@ -55,6 +56,7 @@ Examples:
   OPENAI_API_KEY=... pnpm takumi --provider openai --model gpt-4.1
   pnpm takumi "Fix tests" -d                    # Run in background
   pnpm takumi jobs                               # Show detached jobs
+  pnpm takumi watch                              # Live monitor jobs
   pnpm takumi attach job-k3j4x1                 # Stream job logs
   pnpm takumi stop job-k3j4x1                   # Stop detached job
 `);

@@ -1,6 +1,6 @@
 import type { CliArgs } from "./types.js";
 
-const SUBCOMMANDS = ["list", "status", "logs", "export", "delete", "jobs", "attach", "stop"];
+const SUBCOMMANDS = ["list", "status", "logs", "export", "delete", "jobs", "watch", "attach", "stop"];
 
 export function parseArgs(argv: string[]): CliArgs {
 	const args: CliArgs = {
