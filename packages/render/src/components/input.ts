@@ -25,6 +25,8 @@ export class Input extends Component {
 	private scrollOffset = 0;
 	private history: string[] = [];
 	private historyIndex = -1;
+	private _graphemesCache: string[] | null = null;
+	private _graphemesCacheKey = "";
 
 	constructor(props: InputProps = {}) {
 		super();
@@ -174,7 +176,11 @@ export class Input extends Component {
 	}
 
 	private get graphemes(): string[] {
-		return segmentGraphemes(this.value);
+		if (this._graphemesCache === null || this._graphemesCacheKey !== this.value) {
+			this._graphemesCache = segmentGraphemes(this.value);
+			this._graphemesCacheKey = this.value;
+		}
+		return this._graphemesCache;
 	}
 
 	private killWordBackward(): void {

@@ -371,9 +371,13 @@ async function createProvider(config: TakumiConfig, fallbackName?: string): Prom
 	if (config.provider === "gemini") {
 		try {
 			const { GeminiProvider } = await import("@takumi/agent");
+			const raw = config as unknown as Record<string, unknown>;
 			return new GeminiProvider({
-				...config,
-				endpoint: config.endpoint || PROVIDER_ENDPOINTS[config.provider] || "",
+				apiKey: String(raw.apiKey ?? ""),
+				model: String(raw.model ?? "gemini-1.5-flash"),
+				maxTokens: Number(raw.maxTokens ?? 16384),
+				thinking: Boolean(raw.thinking ?? false),
+				thinkingBudget: Number(raw.thinkingBudget ?? 8000),
 			});
 		} catch {
 			throw new Error(

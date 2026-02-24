@@ -351,6 +351,8 @@ export interface GeminiProviderConfig {
 	maxTokens: number;
 	thinking: boolean;
 	thinkingBudget: number;
+	/** Optional base endpoint override (defaults to Gemini REST API). */
+	endpoint?: string;
 }
 
 export class GeminiProvider {
