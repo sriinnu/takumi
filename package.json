@@ -28,7 +28,8 @@
 		"nuke": "node -e \"const fs=require('fs');const p=require('path');['node_modules',...require('fs').readdirSync('packages').map(d=>p.join('packages',d,'node_modules'))].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true});console.log('removed',d)}catch{}})\"",
 		"fresh": "pnpm run nuke && pnpm install && pnpm build",
 		"dev": "pnpm -r --parallel run dev",
-		"check": "biome check --write --error-on-warnings .",
+		"check:loc": "node scripts/guard-loc.mjs",
+		"check": "pnpm run check:loc && biome check --write --error-on-warnings .",
 		"takumi": "tsx bin/takumi.ts",
 		"prepare": "husky"
 	},

@@ -1,8 +1,8 @@
 import type { DetachedJobRecord } from "./types.js";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 function getTakumiDirs(): { root: string; logs: string; jobs: string } {
-	const { homedir } = require("node:os") as typeof import("node:os");
-	const { join } = require("node:path") as typeof import("node:path");
 	const root = join(homedir(), ".takumi");
 	return { root, logs: join(root, "logs"), jobs: join(root, "jobs") };
 }
@@ -74,6 +74,74 @@ export async function cmdJobs(): Promise<void> {
 		console.log(`    Log:     ${j.logFile}`);
 		console.log();
 	}
+}
+
+function formatAge(startedAt: number): string {
+	const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+	const h = Math.floor(seconds / 3600);
+	const m = Math.floor((seconds % 3600) / 60);
+	const s = seconds % 60;
+	if (h > 0) return `${h}h ${m}m ${s}s`;
+	if (m > 0) return `${m}m ${s}s`;
+	return `${s}s`;
+}
+
+function truncateMiddle(text: string, max = 56): string {
+	if (text.length <= max) return text;
+	const keep = Math.max(6, Math.floor((max - 1) / 2));
+	return `${text.slice(0, keep)}…${text.slice(-keep)}`;
+}
+
+export async function cmdWatch(id?: string): Promise<void> {
+	const onStdoutError = (err: NodeJS.ErrnoException) => {
+		if (err.code === "EPIPE") {
+			process.exit(0);
+		}
+	};
+	process.stdout.on("error", onStdoutError);
+
+	const render = async () => {
+		const jobs = await loadDetachedJobs();
+		const filtered = id ? jobs.filter((j) => j.id === id) : jobs;
+
+		if (id && filtered.length === 0) {
+			console.error(`Detached job not found: ${id}`);
+			process.exit(1);
+		}
+
+		process.stdout.write("\x1b[2J\x1b[H");
+		const ts = new Date().toLocaleTimeString();
+		console.log(`Takumi detached jobs watcher — ${ts}`);
+		console.log("Press Ctrl+C to exit.\n");
+
+		if (filtered.length === 0) {
+			console.log("No detached jobs found.");
+			return;
+		}
+
+		console.log("ID                STATE     PID      AGE       CWD");
+		console.log("────────────────  ────────  ───────  ────────  ─────────────────────────────────────────────────────");
+
+		for (const j of filtered) {
+			const running = isProcessRunning(j.pid);
+			const state = (running ? "running" : (j.status ?? "exited")).padEnd(8);
+			const jobId = j.id.padEnd(16);
+			const pid = String(j.pid).padEnd(7);
+			const age = formatAge(j.startedAt).padEnd(8);
+			const cwd = truncateMiddle(j.cwd);
+			console.log(`${jobId}  ${state}  ${pid}  ${age}  ${cwd}`);
+		}
+	};
+
+	await render();
+	const interval = setInterval(render, 1000);
+
+	process.on("SIGINT", () => {
+		clearInterval(interval);
+		process.stdout.off("error", onStdoutError);
+		process.stdout.write("\n");
+		process.exit(0);
+	});
 }
 
 export async function cmdAttach(id: string): Promise<void> {

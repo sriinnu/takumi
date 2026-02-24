@@ -1,5 +1,6 @@
 import type { TakumiConfig } from "@takumi/core";
 import { createProvider } from "./provider.js";
+import { buildReflexionPrompt, loadRecentReflexions, saveReflexion } from "./reflexion-lite.js";
 
 export async function fetchIssueContext(issueRef: string): Promise<string> {
 	const { spawn } = await import("node:child_process");
@@ -35,14 +36,18 @@ export async function readStdin(): Promise<string> {
 export async function runOneShot(config: TakumiConfig, prompt: string, fallbackName?: string): Promise<void> {
 	const { ToolRegistry, registerBuiltinTools, agentLoop, buildContext } = await import("@takumi/agent");
 	const provider = await createProvider(config, fallbackName);
+	const failures: string[] = [];
 
 	const tools = new ToolRegistry();
 	registerBuiltinTools(tools);
+	const recentReflexions = await loadRecentReflexions(5);
+	const reflexionPrompt = buildReflexionPrompt(recentReflexions);
+	const combinedSystemPrompt = [config.systemPrompt || "", reflexionPrompt].filter(Boolean).join("\n\n");
 
 	const system = await buildContext({
 		cwd: process.cwd(),
 		tools: tools.getDefinitions(),
-		customPrompt: config.systemPrompt || undefined,
+		customPrompt: combinedSystemPrompt || undefined,
 	});
 
 	const loop = agentLoop(prompt, [], {
@@ -62,13 +67,23 @@ export async function runOneShot(config: TakumiConfig, prompt: string, fallbackN
 				process.stderr.write(`\n[${event.name}] `);
 				break;
 			case "tool_result":
-				if (event.isError) process.stderr.write(`error: ${event.output.slice(0, 200)}\n`);
-				else process.stderr.write("done\n");
+					if (event.isError) {
+						const finding = `${event.name}: ${event.output.slice(0, 280).replace(/\s+/g, " ")}`;
+						failures.push(finding);
+						process.stderr.write(`error: ${event.output.slice(0, 200)}\n`);
+					} else {
+						process.stderr.write("done\n");
+					}
 				break;
 			case "error":
+					failures.push(`agent_error: ${event.error.message.slice(0, 280)}`);
 				process.stderr.write(`\nError: ${event.error.message}\n`);
 				break;
 		}
 	}
 	process.stdout.write("\n");
+
+	if (failures.length > 0) {
+		await saveReflexion(prompt, failures).catch(() => undefined);
+	}
 }
