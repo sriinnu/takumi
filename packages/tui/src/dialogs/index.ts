@@ -6,3 +6,5 @@ export type { PermissionResponse } from "./permission.js";
 export { PermissionDialog } from "./permission.js";
 export type { SessionEntry } from "./session-list.js";
 export { SessionList } from "./session-list.js";
+export type { FormattedFinding, FormattedValidation } from "./validation-results.js";
+export { ValidationResultsDialog } from "./validation-results.js";

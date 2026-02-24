@@ -81,6 +81,10 @@ export interface TakumiAppOptions {
 		  ) => AsyncIterable<AgentEvent>)
 		| null
 	>;
+	/** Auto-create a GitHub PR after the coding task completes successfully. */
+	autoPr?: boolean;
+	/** Auto-create and auto-merge a GitHub PR after the coding task completes. */
+	autoShip?: boolean;
 }
 
 export class TakumiApp {
@@ -104,6 +108,12 @@ export class TakumiApp {
 	private resumeSessionId: string | undefined;
 	/** Persisted CodingAgent instance so slash commands share state with /code. */
 	private activeCoder: CodingAgent | null = null;
+	/** Interval handle for periodic vasana + health refresh from Chitragupta. */
+	private _vasanaRefreshInterval: ReturnType<typeof setInterval> | null = null;
+	/** Auto-create a GitHub PR when a coding task completes successfully. */
+	private autoPr: boolean;
+	/** Auto-create + auto-merge a GitHub PR when a coding task completes. */
+	private autoShip: boolean;
 	/** Optional factory for hot-swapping providers via /provider command. */
 	private providerFactory:
 		| ((
@@ -125,6 +135,8 @@ export class TakumiApp {
 		this.stdin = options.stdin ?? process.stdin;
 		this.stdout = options.stdout ?? process.stdout;
 		this.resumeSessionId = options.resumeSessionId;
+		this.autoPr = options.autoPr ?? false;
+		this.autoShip = options.autoShip ?? false;
 		this.providerFactory = options.providerFactory;
 
 		this.state = new AppState();
@@ -246,6 +258,12 @@ export class TakumiApp {
 			}
 			this.autoSaver.stop();
 			this.autoSaver = null;
+		}
+
+		// Stop vasana/health refresh interval
+		if (this._vasanaRefreshInterval) {
+			clearInterval(this._vasanaRefreshInterval);
+			this._vasanaRefreshInterval = null;
 		}
 
 		// Best-effort handover and disconnect from Chitragupta
@@ -479,6 +497,43 @@ export class TakumiApp {
 				} catch (err) {
 					log.debug(`Chitragupta memory preload failed: ${(err as Error).message}`);
 				}
+
+				// Load vasana tendencies (crystallised behavioral patterns)
+				try {
+					const tendencies = await bridge.vasanaTendencies(10);
+					this.state.vasanaTendencies.value = tendencies;
+					this.state.vasanaLastRefresh.value = Date.now();
+					if (tendencies.length > 0) {
+						log.info(`Loaded ${tendencies.length} vasana tendencies from Chitragupta`);
+					}
+				} catch (err) {
+					log.debug(`Chitragupta vasana preload failed: ${(err as Error).message}`);
+				}
+
+				// Load aggregate health
+				try {
+					const health = await bridge.healthStatus();
+					if (health) {
+						this.state.chitraguptaHealth.value = health;
+						log.info(`Chitragupta health: ${health.dominant} (sattva=${health.state.sattva.toFixed(2)})`);
+					}
+				} catch (err) {
+					log.debug(`Chitragupta health check failed: ${(err as Error).message}`);
+				}
+
+				// Refresh vasana + health every 60 s (non-blocking background task)
+				this._vasanaRefreshInterval = setInterval(async () => {
+					const b = this.state.chitraguptaBridge.value;
+					if (!b?.isConnected) return;
+					try {
+						const [t, h] = await Promise.all([b.vasanaTendencies(10), b.healthStatus()]);
+						this.state.vasanaTendencies.value = t;
+						if (h) this.state.chitraguptaHealth.value = h;
+						this.state.vasanaLastRefresh.value = Date.now();
+					} catch {
+						/* silent — best-effort refresh */
+					}
+				}, 60_000);
 			})
 			.catch((err) => {
 				log.debug(`Chitragupta bridge connection failed: ${(err as Error).message}`);
@@ -533,12 +588,23 @@ export class TakumiApp {
 			this.scheduler?.scheduleRender();
 		});
 
-		// Command palette
-		this.keybinds.register("ctrl+k", "Command palette", () => {
-			if (this.state.activeDialog.value === "command-palette") {
-				this.state.activeDialog.value = null;
+		// Command palette — Ctrl+P (primary) and Ctrl+K (alias)
+		const toggleCommandPalette = () => {
+			if (this.state.topDialog === "command-palette") {
+				this.state.popDialog();
 			} else {
-				this.state.activeDialog.value = "command-palette";
+				this.state.pushDialog("command-palette");
+			}
+		};
+		this.keybinds.register("ctrl+p", "Command palette", toggleCommandPalette);
+		this.keybinds.register("ctrl+k", "Command palette", toggleCommandPalette);
+
+		// Model picker
+		this.keybinds.register("ctrl+m", "Model picker", () => {
+			if (this.state.topDialog === "model-picker") {
+				this.state.popDialog();
+			} else {
+				this.state.pushDialog("model-picker");
 			}
 		});
 
@@ -547,9 +613,14 @@ export class TakumiApp {
 			this.state.sidebarVisible.value = !this.state.sidebarVisible.value;
 		});
 
+		// Toggle cluster status panel in sidebar
+		this.keybinds.register("ctrl+shift+c", "Toggle cluster status", () => {
+			this.rootView.sidebar.clusterPanel.toggle();
+		});
+
 		// Session list
 		this.keybinds.register("ctrl+o", "Session list", () => {
-			this.state.activeDialog.value = "session-list";
+			this.state.pushDialog("session-list");
 		});
 
 		// Exit on empty input (Ctrl+D)
@@ -597,9 +668,7 @@ export class TakumiApp {
 
 			const name = args.trim().toLowerCase();
 			if (!KNOWN_PROVIDERS.includes(name) && name !== "custom") {
-				this.addInfoMessage(
-					`Unknown provider: "${name}"\nAvailable: ${KNOWN_PROVIDERS.join(", ")}`,
-				);
+				this.addInfoMessage(`Unknown provider: "${name}"\nAvailable: ${KNOWN_PROVIDERS.join(", ")}`);
 				return;
 			}
 
@@ -611,7 +680,7 @@ export class TakumiApp {
 					if (!newSendFn) {
 						this.addInfoMessage(
 							`Cannot switch to "${name}": missing API key.\n` +
-							`Set the corresponding API key environment variable and restart.`,
+								`Set the corresponding API key environment variable and restart.`,
 						);
 						return;
 					}
@@ -635,7 +704,7 @@ export class TakumiApp {
 				if (defaultModel) this.state.model.value = defaultModel;
 				this.addInfoMessage(
 					`Provider set to: ${name}${defaultModel ? ` | model: ${defaultModel}` : ""}\n` +
-					`Note: restart with --provider ${name} to apply fully if the provider wasn't initialized at startup.`,
+						`Note: restart with --provider ${name} to apply fully if the provider wasn't initialized at startup.`,
 				);
 			}
 		});
@@ -890,6 +959,8 @@ export class TakumiApp {
 			this.activeCoder = new CodingAgent(this.state, this.agentRunner, {
 				enableOrchestration: orchCfg?.enabled ?? false,
 				maxValidationRetries: orchCfg?.maxValidationRetries ?? 3,
+				autoPr: this.autoPr,
+				autoShip: this.autoShip,
 			});
 			// Apply config isolation mode (can be overridden later via /isolation)
 			if (orchCfg?.isolationMode) {
@@ -1086,6 +1157,16 @@ export class TakumiApp {
 			);
 		});
 
+		// ── /validate — Re-run validation phase on current work product ──────────
+		this.commands.register("/validate", "Re-run cluster validation phase", () => {
+			if (!this.state.clusterId.value) {
+				this.addInfoMessage("No active cluster. Start one with /code <task>.");
+				return;
+			}
+			this.state.clusterCommand.value = { type: "validate" };
+			this.addInfoMessage("Validation requested — cluster will re-run the validation phase.");
+		});
+
 		// ── /checkpoint — List or manually save cluster checkpoints ───────────────
 		this.commands.register("/checkpoint", "List or save cluster checkpoints", async (args) => {
 			// Default action: list saved checkpoints
@@ -1145,6 +1226,8 @@ export class TakumiApp {
 				this.activeCoder = new CodingAgent(this.state, this.agentRunner, {
 					enableOrchestration: orchCfg?.enabled ?? true,
 					maxValidationRetries: orchCfg?.maxValidationRetries ?? 3,
+					autoPr: this.autoPr,
+					autoShip: this.autoShip,
 				});
 			}
 			await this.activeCoder.resume(args.trim());

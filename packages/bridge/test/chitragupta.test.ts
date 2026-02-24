@@ -432,4 +432,140 @@ describe("ChitraguptaBridge", () => {
 			expect(bridge.mcpClient.isConnected).toBe(false);
 		});
 	});
+
+	// ── vasanaTendencies ─────────────────────────────────────────────────
+
+	describe("vasanaTendencies()", () => {
+		it("calls vasana_tendencies and returns parsed tendencies", async () => {
+			await connectBridge(bridge);
+
+			const expected = [
+				{
+					tendency: "prefers-small-commits",
+					valence: "positive",
+					strength: 0.9,
+					stability: 0.85,
+					predictiveAccuracy: 0.78,
+					reinforcementCount: 14,
+					description: "Commits frequently with small focused diffs",
+				},
+			];
+
+			const promise = bridge.vasanaTendencies();
+			await vi.advanceTimersByTimeAsync(0);
+
+			sendResponse(2, toolResult(expected));
+			const result = await promise;
+			expect(result).toEqual(expected);
+		});
+
+		it("passes limit parameter when provided", async () => {
+			await connectBridge(bridge);
+			const writeSpy = vi.spyOn(mockProc.stdin, "write");
+
+			const promise = bridge.vasanaTendencies(5);
+			await vi.advanceTimersByTimeAsync(0);
+
+			const callData = writeSpy.mock.calls[writeSpy.mock.calls.length - 1]![0] as string;
+			const parsed = JSON.parse(callData.toString().trim());
+			expect(parsed.params.name).toBe("vasana_tendencies");
+			expect(parsed.params.arguments).toEqual({ limit: 5 });
+
+			sendResponse(2, toolResult([]));
+			await promise;
+		});
+
+		it("omits limit when not provided", async () => {
+			await connectBridge(bridge);
+			const writeSpy = vi.spyOn(mockProc.stdin, "write");
+
+			const promise = bridge.vasanaTendencies();
+			await vi.advanceTimersByTimeAsync(0);
+
+			const callData = writeSpy.mock.calls[writeSpy.mock.calls.length - 1]![0] as string;
+			const parsed = JSON.parse(callData.toString().trim());
+			expect(parsed.params.arguments).not.toHaveProperty("limit");
+
+			sendResponse(2, toolResult([]));
+			await promise;
+		});
+
+		it("returns empty array when response content is malformed", async () => {
+			await connectBridge(bridge);
+
+			const promise = bridge.vasanaTendencies();
+			await vi.advanceTimersByTimeAsync(0);
+
+			sendResponse(2, { content: [{ type: "text", text: "NOT_JSON" }] });
+			const result = await promise;
+			expect(result).toEqual([]);
+		});
+	});
+
+	// ── healthStatus ─────────────────────────────────────────────────────
+
+	describe("healthStatus()", () => {
+		it("calls health_status and returns parsed health snapshot", async () => {
+			await connectBridge(bridge);
+
+			const expected = {
+				state: { sattva: 0.7, rajas: 0.2, tamas: 0.1 },
+				dominant: "sattva",
+				trend: { sattva: "rising", rajas: "stable", tamas: "falling" },
+				alerts: [],
+				history: [
+					{
+						timestamp: 1_700_000_000,
+						state: { sattva: 0.65, rajas: 0.25, tamas: 0.1 },
+						dominant: "sattva",
+					},
+				],
+			};
+
+			const promise = bridge.healthStatus();
+			await vi.advanceTimersByTimeAsync(0);
+
+			sendResponse(2, toolResult(expected));
+			const result = await promise;
+			expect(result).toEqual(expected);
+		});
+
+		it("sends no arguments to health_status tool", async () => {
+			await connectBridge(bridge);
+			const writeSpy = vi.spyOn(mockProc.stdin, "write");
+
+			const promise = bridge.healthStatus();
+			await vi.advanceTimersByTimeAsync(0);
+
+			const callData = writeSpy.mock.calls[writeSpy.mock.calls.length - 1]![0] as string;
+			const parsed = JSON.parse(callData.toString().trim());
+			expect(parsed.params.name).toBe("health_status");
+			expect(parsed.params.arguments).toEqual({});
+
+			sendResponse(2, toolResult(null));
+			await promise;
+		});
+
+		it("returns null when response content is malformed", async () => {
+			await connectBridge(bridge);
+
+			const promise = bridge.healthStatus();
+			await vi.advanceTimersByTimeAsync(0);
+
+			sendResponse(2, { content: [{ type: "text", text: "BAD" }] });
+			const result = await promise;
+			expect(result).toBeNull();
+		});
+
+		it("returns null when result is null", async () => {
+			await connectBridge(bridge);
+
+			const promise = bridge.healthStatus();
+			await vi.advanceTimersByTimeAsync(0);
+
+			sendResponse(2, toolResult(null));
+			const result = await promise;
+			expect(result).toBeNull();
+		});
+	});
 });
