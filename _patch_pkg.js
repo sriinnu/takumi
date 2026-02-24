@@ -1,0 +1,11 @@
+const fs = require('fs');
+const raw = fs.readFileSync('package.json', 'utf8');
+const pkg = JSON.parse(raw);
+pkg.scripts.prepare = 'husky';
+pkg['lint-staged'] = { '*.{ts,tsx}': ['biome check --write --no-errors-on-unmatched'] };
+if (!pkg.devDependencies) pkg.devDependencies = {};
+pkg.devDependencies['husky'] = '^9.0.0';
+pkg.devDependencies['lint-staged'] = '^15.0.0';
+const out = JSON.stringify(pkg, null, '\t').replace(/\n/g, '\r\n') + '\r\n';
+fs.writeFileSync('package.json', out, 'utf8');
+console.log('done – scripts.prepare:', pkg.scripts.prepare);

@@ -1,10 +1,12 @@
 export type {
 	AkashaTrace,
 	ChitraguptaBridgeOptions,
+	ChitraguptaHealth,
 	ChitraguptaSessionInfo,
 	HandoverSummary,
 	MemoryResult,
 	SessionDetail,
+	VasanaTendency,
 } from "./chitragupta.js";
 export { ChitraguptaBridge } from "./chitragupta.js";
 export type { DarpanaConfig } from "./darpana.js";

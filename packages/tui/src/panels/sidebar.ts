@@ -7,6 +7,7 @@ import type { Rect } from "@takumi/core";
 import type { ListItem, Screen } from "@takumi/render";
 import { Border, Component, effect, List } from "@takumi/render";
 import type { AppState } from "../state.js";
+import { ClusterStatusPanel } from "./cluster-status.js";
 
 export interface SidebarPanelProps {
 	state: AppState;
@@ -28,6 +29,8 @@ export class SidebarPanel extends Component {
 	private border: Border;
 	private fileList: List;
 	private disposeEffects: (() => void)[] = [];
+	/** Cluster status widget — toggle with Ctrl+Shift+C. */
+	readonly clusterPanel: ClusterStatusPanel;
 
 	constructor(props: SidebarPanelProps) {
 		super();
@@ -74,6 +77,8 @@ export class SidebarPanel extends Component {
 				return undefined;
 			}),
 		);
+
+		this.clusterPanel = new ClusterStatusPanel({ state: props.state });
 	}
 
 	onUnmount(): void {
@@ -81,6 +86,7 @@ export class SidebarPanel extends Component {
 			dispose();
 		}
 		this.disposeEffects = [];
+		this.clusterPanel.onUnmount();
 		super.onUnmount();
 	}
 
@@ -189,6 +195,20 @@ export class SidebarPanel extends Component {
 			const text = this.truncField(`${keyStr} ${desc}`, innerW);
 			screen.writeText(cursorY, innerX, text, { fg: 8 });
 			cursorY++;
+		}
+
+		// ── Section: Cluster Status ────────────────────────────────────
+		const clusterHeight = this.clusterPanel.height;
+		if (clusterHeight > 0 && cursorY + clusterHeight <= maxY) {
+			cursorY += SECTION_GAP;
+			if (cursorY < maxY) {
+				this.clusterPanel.render(screen, {
+					x: innerX,
+					y: cursorY,
+					width: innerW,
+					height: clusterHeight,
+				});
+			}
 		}
 	}
 
