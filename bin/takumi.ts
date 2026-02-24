@@ -624,20 +624,101 @@ async function main(): Promise<void> {
 	// Load merged config
 	const config = loadConfig(overrides);
 
+	// Determine one-shot mode: positional args, --print flag, or non-TTY stdin
+	const prompt = args.prompt.join(" ");
+	const isNonTTY = !process.stdin.isTTY;
+	const isOneShot = prompt.length > 0 || args.print || isNonTTY;
+
+	// ── Interactive Startup Prompt ───────────────────────────────────────────
+	if (!isOneShot && !args.provider && !args.model && !args.resume) {
+		const p = await import("@clack/prompts");
+		const { PROVIDER_MODELS } = await import("@takumi/tui");
+
+		p.intro("\x1b[1;36mTakumi AI Coding Agent\x1b[0m");
+
+		const providerChoice = await p.select({
+			message: "Select AI Provider",
+			options: [
+				{ value: "anthropic", label: "Claude (Anthropic)" },
+				{ value: "openai", label: "OpenAI (GPT / Codex / o-series)" },
+				{ value: "gemini", label: "Google Gemini" },
+				{ value: "groq", label: "Groq (Fast Llama/Mixtral)" },
+				{ value: "deepseek", label: "DeepSeek" },
+				{ value: "mistral", label: "Mistral AI" },
+				{ value: "together", label: "Together AI" },
+				{ value: "openrouter", label: "OpenRouter" },
+				{ value: "ollama", label: "Ollama (Local)" },
+			],
+			initialValue: config.provider || "anthropic",
+		});
+
+		if (p.isCancel(providerChoice)) {
+			p.outro("Cancelled.");
+			process.exit(0);
+		}
+
+		const selectedProvider = providerChoice as string;
+		const models = PROVIDER_MODELS[selectedProvider] || [];
+		
+		let selectedModel = config.model;
+		if (models.length > 0) {
+			const modelChoice = await p.select({
+				message: "Select Model",
+				options: models.map((m: string) => ({ value: m, label: m })),
+				initialValue: models.includes(config.model) ? config.model : models[0],
+			});
+
+			if (p.isCancel(modelChoice)) {
+				p.outro("Cancelled.");
+				process.exit(0);
+			}
+			selectedModel = modelChoice as string;
+		} else {
+			const modelInput = await p.text({
+				message: "Enter Model Name",
+				initialValue: config.model,
+			});
+			if (p.isCancel(modelInput)) {
+				p.outro("Cancelled.");
+				process.exit(0);
+			}
+			selectedModel = modelInput as string;
+		}
+
+		config.provider = selectedProvider;
+		config.model = selectedModel;
+		p.outro(`Starting with \x1b[32m${selectedProvider}\x1b[0m / \x1b[32m${selectedModel}\x1b[0m...`);
+	}
+
 	// Check for API key (skip for ollama / local endpoints)
 	if (!config.apiKey && !config.proxyUrl && !canSkipApiKey(config)) {
-		console.error(
-			"Error: No API key configured.\n\n" +
-			"Set an API key environment variable for your provider:\n" +
-			"  ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, etc.\n\n" +
-			"Or pass --api-key <key> on the command line.\n" +
-			"Or configure apiKey in:\n" +
-			"  .takumi/config.json\n" +
-			"  ~/.takumi/config.json\n\n" +
-			"Or use --proxy to connect through Darpana.\n" +
-			"Or use --provider ollama for local models (no key needed).",
-		);
-		process.exit(1);
+		// Check environment variables for the selected provider
+		const env = process.env;
+		const hasEnvKey = 
+			(config.provider === "anthropic" && env.ANTHROPIC_API_KEY) ||
+			(config.provider === "openai" && env.OPENAI_API_KEY) ||
+			(config.provider === "gemini" && (env.GEMINI_API_KEY || env.GOOGLE_API_KEY)) ||
+			(config.provider === "groq" && env.GROQ_API_KEY) ||
+			(config.provider === "deepseek" && env.DEEPSEEK_API_KEY) ||
+			(config.provider === "mistral" && env.MISTRAL_API_KEY) ||
+			(config.provider === "together" && env.TOGETHER_API_KEY) ||
+			(config.provider === "openrouter" && env.OPENROUTER_API_KEY) ||
+			env.TAKUMI_API_KEY;
+
+		if (!hasEnvKey) {
+			console.error(
+				`\nError: No API key configured for provider '${config.provider}'.\n\n` +
+				"Set an API key environment variable for your provider:\n" +
+				"  ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, etc.\n\n" +
+				"Or pass --api-key <key> on the command line.\n" +
+				"Or configure apiKey in:\n" +
+				"  .takumi/config.json\n" +
+				"  ~/.takumi/config.json\n\n" +
+				"Or use --proxy to connect through Darpana.\n" +
+				"Or use --provider ollama for local models (no key needed).\n"
+			);
+			process.exit(1);
+		}
 	}
 
 	// Change working directory if specified
@@ -681,11 +762,6 @@ async function main(): Promise<void> {
 	if (issueRef) {
 		issueContext = await fetchIssueContext(issueRef);
 	}
-
-	// Determine one-shot mode: positional args, --print flag, or non-TTY stdin
-	const prompt = args.prompt.join(" ");
-	const isNonTTY = !process.stdin.isTTY;
-	const isOneShot = prompt.length > 0 || args.print || isNonTTY;
 
 	if (isOneShot) {
 		// In non-TTY mode with no prompt, read stdin as the prompt

@@ -33,18 +33,19 @@
 		"prepare": "husky"
 	},
 	"dependencies": {
-		"@takumi/core": "workspace:*",
+		"@clack/prompts": "^1.0.1",
 		"@takumi/agent": "workspace:*",
+		"@takumi/core": "workspace:*",
 		"@takumi/tui": "workspace:*"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.3.14",
 		"@types/node": "^22.0.0",
+		"husky": "^9.0.0",
+		"lint-staged": "^15.0.0",
 		"tsx": "^4.21.0",
 		"typescript": "^5.7.0",
-		"vitest": "^4.0.18",
-		"husky": "^9.0.0",
-		"lint-staged": "^15.0.0"
+		"vitest": "^4.0.18"
 	},
 	"engines": {
 		"node": ">=22"
