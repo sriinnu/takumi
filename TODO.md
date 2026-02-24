@@ -1,5 +1,15 @@
 # Takumi (匠) — Implementation TODO
 
+## 🔒 Persistent Product Direction (Sriinnu)
+
+- Assume these priorities by default; do not require repeated reminders.
+- Focus on rich end-to-end capability (orchestration, runtime controls, resilience, observability), not only provider/model switching.
+- Keep parity pressure against benchmark systems referenced in this workspace; continuously identify and close feature gaps.
+- Preserve hard engineering constraints at all times:
+  - no source file > 450 LOC
+  - strict TypeScript, no `any`
+  - evidence-backed completion claims (build/tests/diffs)
+
 ---
 
 ## 🎯 PRIORITY: ArXiv Research Enhancements (Phase 8)

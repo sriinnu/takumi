@@ -1,47 +1,15 @@
-/**
- * TakumiApp — the root application class.
- *
- * Manages the lifecycle of the TUI: terminal setup, render loop,
- * input handling, and agent interaction.
- */
-
-import { existsSync, readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import type { MessagePayload } from "@takumi/agent";
-import {
-	akashaDepositDefinition,
-	akashaTracesDefinition,
-	compactHistory,
-	createAkashaHandlers,
-	type ToolRegistry,
-} from "@takumi/agent";
-import { ChitraguptaBridge, gitDiff } from "@takumi/bridge";
-import type {
-	AgentEvent,
-	AutoSaver,
-	KeyEvent,
-	Message,
-	MouseEvent,
-	SessionData,
-	TakumiConfig,
-	ToolDefinition,
-} from "@takumi/core";
-import {
-	ANSI,
-	createAutoSaver,
-	createLogger,
-	generateSessionId,
-	LIMITS,
-	listSessions,
-	loadSession,
-	saveSession,
-} from "@takumi/core";
+import type { MessagePayload, ToolRegistry } from "@takumi/agent";
+import type { AgentEvent, AutoSaver, Message, SessionData, TakumiConfig, ToolDefinition } from "@takumi/core";
+import { ANSI, createAutoSaver, createLogger, generateSessionId, LIMITS, loadSession } from "@takumi/core";
 import { effect, initYoga, RenderScheduler } from "@takumi/render";
 import { AgentRunner } from "./agent-runner.js";
+import { connectChitragupta, disconnectChitragupta } from "./app-chitragupta.js";
+import type { AppCommandContext, ProviderFactory } from "./app-command-context.js";
+import { registerAppCommands } from "./app-commands.js";
+import { formatMessagesAsMarkdown } from "./app-export.js";
+import { parseKeyEvent, parseMouseEvent } from "./app-input.js";
 import type { CodingAgent } from "./coding-agent.js";
 import { SlashCommandRegistry } from "./commands.js";
-import { KNOWN_PROVIDERS, PROVIDER_MODELS } from "./completion.js";
 import { KeyBindingRegistry } from "./keybinds.js";
 import { AppState } from "./state.js";
 import type { ChatView } from "./views/chat.js";
@@ -53,7 +21,6 @@ export interface TakumiAppOptions {
 	config: TakumiConfig;
 	stdin?: NodeJS.ReadableStream;
 	stdout?: NodeJS.WritableStream;
-	/** Optional: provide a sendMessage function and tool registry to enable the agent loop. */
 	sendMessage?: (
 		messages: MessagePayload[],
 		system: string,
@@ -62,28 +29,9 @@ export interface TakumiAppOptions {
 		options?: { model?: string },
 	) => AsyncIterable<AgentEvent>;
 	tools?: ToolRegistry;
-	/** Optional: resume a previous session by ID (loads messages from disk). */
 	resumeSessionId?: string;
-	/**
-	 * Optional factory for the /provider command.
-	 * Called with the new provider name; should return a new sendMessage function
-	 * (or null if the provider is unavailable / missing API key).
-	 */
-	providerFactory?: (
-		providerName: string,
-	) => Promise<
-		| ((
-				messages: MessagePayload[],
-				system: string,
-				tools?: ToolDefinition[],
-				signal?: AbortSignal,
-				options?: { model?: string },
-		  ) => AsyncIterable<AgentEvent>)
-		| null
-	>;
-	/** Auto-create a GitHub PR after the coding task completes successfully. */
+	providerFactory?: ProviderFactory;
 	autoPr?: boolean;
-	/** Auto-create and auto-merge a GitHub PR after the coding task completes. */
 	autoShip?: boolean;
 }
 
@@ -95,7 +43,6 @@ export class TakumiApp {
 	readonly rootView: RootView;
 	readonly agentRunner: AgentRunner | null;
 
-	/** Convenience accessor — delegates to rootView.chatView. */
 	get chatView(): ChatView {
 		return this.rootView.chatView;
 	}
@@ -106,29 +53,11 @@ export class TakumiApp {
 	private running = false;
 	private autoSaver: AutoSaver | null = null;
 	private resumeSessionId: string | undefined;
-	/** Persisted CodingAgent instance so slash commands share state with /code. */
 	private activeCoder: CodingAgent | null = null;
-	/** Interval handle for periodic vasana + health refresh from Chitragupta. */
-	private _vasanaRefreshInterval: ReturnType<typeof setInterval> | null = null;
-	/** Auto-create a GitHub PR when a coding task completes successfully. */
+	private vasanaRefreshInterval: ReturnType<typeof setInterval> | null = null;
 	private autoPr: boolean;
-	/** Auto-create + auto-merge a GitHub PR when a coding task completes. */
 	private autoShip: boolean;
-	/** Optional factory for hot-swapping providers via /provider command. */
-	private providerFactory:
-		| ((
-				providerName: string,
-		  ) => Promise<
-				| ((
-						messages: MessagePayload[],
-						system: string,
-						tools?: ToolDefinition[],
-						signal?: AbortSignal,
-						options?: { model?: string },
-				  ) => AsyncIterable<AgentEvent>)
-				| null
-		  >)
-		| undefined;
+	private providerFactory?: ProviderFactory;
 
 	constructor(options: TakumiAppOptions) {
 		this.config = options.config;
@@ -138,31 +67,22 @@ export class TakumiApp {
 		this.autoPr = options.autoPr ?? false;
 		this.autoShip = options.autoShip ?? false;
 		this.providerFactory = options.providerFactory;
-
 		this.state = new AppState();
 		this.keybinds = new KeyBindingRegistry();
 		this.commands = new SlashCommandRegistry();
-
-		// Create the root view (which owns ChatView + SidebarPanel)
 		this.rootView = new RootView({ state: this.state, commands: this.commands });
-
-		// Wire up the agent runner if sendMessage + tools are provided
 		if (options.sendMessage && options.tools) {
 			this.agentRunner = new AgentRunner(this.state, this.config, options.sendMessage, options.tools);
 			this.rootView.chatView.agentRunner = this.agentRunner;
 		} else {
 			this.agentRunner = null;
 		}
-
 		this.registerDefaultKeybinds();
 		this.registerDefaultCommands();
 	}
 
-	/** Initialize and start the TUI. */
 	async start(): Promise<void> {
 		log.info("Starting Takumi TUI");
-
-		// Resume a previous session from disk, or generate a new session ID
 		if (this.resumeSessionId) {
 			const loaded = await loadSession(this.resumeSessionId);
 			if (loaded) {
@@ -174,79 +94,45 @@ export class TakumiApp {
 				this.state.totalCost.value = loaded.tokenUsage.totalCost;
 				log.info(`Resumed session: ${loaded.id} (${loaded.messages.length} messages)`);
 			} else {
-				log.info(`Session ${this.resumeSessionId} not found, starting new session`);
 				this.state.sessionId.value = generateSessionId();
 			}
 		} else if (!this.state.sessionId.value) {
 			this.state.sessionId.value = generateSessionId();
 		}
 
-		// Start the auto-saver for session persistence
 		this.startAutoSaver();
-
-		// Initialize Yoga for layout
 		await initYoga();
-
-		// Get terminal size
 		const { columns, rows } = this.getTerminalSize();
-
 		if (columns < LIMITS.MIN_TERMINAL_WIDTH || rows < LIMITS.MIN_TERMINAL_HEIGHT) {
 			throw new Error(
 				`Terminal too small (${columns}x${rows}). Minimum: ${LIMITS.MIN_TERMINAL_WIDTH}x${LIMITS.MIN_TERMINAL_HEIGHT}`,
 			);
 		}
 
-		// Create render scheduler
 		this.scheduler = new RenderScheduler(columns, rows, {
 			write: (data) => (this.stdout as any).write(data),
 		});
-
-		// Enter alternate screen, hide cursor
 		this.write(ANSI.ALT_SCREEN_ON);
 		this.write(ANSI.CURSOR_HIDE);
 		this.write(ANSI.MOUSE_ON);
 		this.write(ANSI.BRACKETED_PASTE_ON);
-
-		// Set up raw mode for input
-		if ((this.stdin as any).setRawMode) {
-			(this.stdin as any).setRawMode(true);
-		}
+		if ((this.stdin as any).setRawMode) (this.stdin as any).setRawMode(true);
 		(this.stdin as any).resume?.();
-
-		// Listen for input
-		this.stdin.on("data", (data: Buffer) => {
-			this.handleInput(data);
-		});
-
-		// Listen for resize
+		this.stdin.on("data", (data: Buffer) => this.handleInput(data));
 		process.on("SIGWINCH", () => {
 			const { columns, rows } = this.getTerminalSize();
 			this.scheduler?.resize(columns, rows);
 			this.state.terminalSize.value = { width: columns, height: rows };
 		});
-
-		// Listen for exit signals
 		process.on("SIGINT", () => this.quit());
 		process.on("SIGTERM", () => this.quit());
-
-		// Connect the root component to the scheduler's render tree
 		this.scheduler.setRoot(this.rootView);
-
 		this.running = true;
 		this.scheduler.start();
-
 		this.state.terminalSize.value = { width: columns, height: rows };
-		log.info(`TUI started: ${columns}x${rows}`);
 
-		// ── Signal-driven rendering ───────────────────────────────────────────
-		// Schedule a frame whenever reactive state changes (streaming output,
-		// messages arriving, tool calls, coding phase transitions, dialogs).
-		// This is the engine that drives rendering during LLM streaming without
-		// requiring keystrokes to update the display.
-		const _sched = this.scheduler;
+		const scheduler = this.scheduler;
 		effect(() => {
-			// Track all high-frequency signals that change during agent activity.
-			// Reading them here establishes a reactive dependency.
 			void this.state.messages.value;
 			void this.state.streamingText.value;
 			void this.state.thinkingText.value;
@@ -255,119 +141,77 @@ export class TakumiApp {
 			void this.state.activeTool.value;
 			void this.state.toolOutput.value;
 			void this.state.dialogStack.value;
-			_sched?.scheduleRender();
+			scheduler?.scheduleRender();
 			return undefined;
 		});
 
-		// Connect to Chitragupta in the background (non-blocking, best-effort)
-		this.connectChitragupta();
+		connectChitragupta(this.state, this.agentRunner, (timer) => {
+			this.vasanaRefreshInterval = timer;
+		});
 	}
 
-	/** Stop the TUI and restore terminal. */
 	async quit(): Promise<void> {
 		if (!this.running) return;
 		this.running = false;
-
-		log.info("Shutting down Takumi TUI");
-
-		// Final session save before exit
 		if (this.autoSaver) {
 			try {
 				await this.autoSaver.save();
 			} catch {
-				// Non-fatal — best effort
+				/* best effort */
 			}
 			this.autoSaver.stop();
 			this.autoSaver = null;
 		}
-
-		// Stop vasana/health refresh interval
-		if (this._vasanaRefreshInterval) {
-			clearInterval(this._vasanaRefreshInterval);
-			this._vasanaRefreshInterval = null;
+		if (this.vasanaRefreshInterval) {
+			clearInterval(this.vasanaRefreshInterval);
+			this.vasanaRefreshInterval = null;
 		}
-
-		// Best-effort handover and disconnect from Chitragupta
-		await this.disconnectChitragupta();
-
+		await disconnectChitragupta(this.state);
 		this.scheduler?.stop();
-
-		// Restore terminal
 		this.write(ANSI.BRACKETED_PASTE_OFF);
 		this.write(ANSI.MOUSE_OFF);
 		this.write(ANSI.CURSOR_SHOW);
 		this.write(ANSI.ALT_SCREEN_OFF);
-
-		if ((this.stdin as any).setRawMode) {
-			(this.stdin as any).setRawMode(false);
-		}
-
+		if ((this.stdin as any).setRawMode) (this.stdin as any).setRawMode(false);
 		process.exit(0);
 	}
 
-	/**
-	 * Force an immediate render frame outside the scheduler's timing loop.
-	 * Useful after input handling or state changes that need instant visual feedback.
-	 */
 	renderFrame(): void {
 		this.scheduler?.forceRender();
 	}
 
-	/** Handle raw input bytes from stdin. */
 	private handleInput(data: Buffer): void {
 		const raw = data.toString("utf-8");
-
-		// Try mouse event first
 		const mouseEvent = parseMouseEvent(raw);
 		if (mouseEvent) {
 			this.handleMouse(mouseEvent);
 			this.scheduler?.forceRender();
 			return;
 		}
-
 		const event = parseKeyEvent(raw);
-
-		// Ctrl+C: cancel streaming or quit
 		if (event.ctrl && event.key === "c") {
 			if (this.agentRunner?.isRunning) {
 				this.agentRunner.cancel();
 				return;
 			}
-			this.quit();
+			void this.quit();
 			return;
 		}
-
-		// Try keybindings first
 		if (this.keybinds.handle(event)) return;
-
-		// Route input through the root view (which delegates to chat/sidebar)
 		this.rootView.handleKey(event);
-
-		// Immediately render after every keystroke so the user sees instant
-		// feedback.  forceRender() is synchronous and typically <1 ms for
-		// a terminal-sized screen, so this doesn't block stdin processing.
 		this.scheduler?.forceRender();
 	}
 
-	/** Handle parsed mouse events. */
-	private handleMouse(event: MouseEvent): void {
-		// Wheel: scroll message list
+	private handleMouse(event: { type: string; x: number; wheelDelta: number }): void {
 		if (event.type === "wheel") {
 			this.rootView.chatView.scrollMessages(event.wheelDelta > 0 ? -3 : 3);
 			return;
 		}
-
-		// Click: focus panel based on position
-		if (event.type === "mousedown") {
-			const { width } = this.state.terminalSize.value;
-			const sidebarWidth = this.state.sidebarVisible.value ? Math.min(30, Math.floor(width * 0.25)) : 0;
-
-			if (event.x >= width - sidebarWidth && this.state.sidebarVisible.value) {
-				this.state.focusedPanel.value = "sidebar";
-			} else {
-				this.state.focusedPanel.value = "input";
-			}
-		}
+		if (event.type !== "mousedown") return;
+		const { width } = this.state.terminalSize.value;
+		const sidebarWidth = this.state.sidebarVisible.value ? Math.min(30, Math.floor(width * 0.25)) : 0;
+		this.state.focusedPanel.value =
+			event.x >= width - sidebarWidth && this.state.sidebarVisible.value ? "sidebar" : "input";
 	}
 
 	private write(data: string): void {
@@ -375,13 +219,9 @@ export class TakumiApp {
 	}
 
 	private getTerminalSize(): { columns: number; rows: number } {
-		return {
-			columns: (process.stdout as any).columns ?? 80,
-			rows: (process.stdout as any).rows ?? 24,
-		};
+		return { columns: (process.stdout as any).columns ?? 80, rows: (process.stdout as any).rows ?? 24 };
 	}
 
-	/** Add an informational message to the conversation display. */
 	private addInfoMessage(text: string): void {
 		const msg: Message = {
 			id: `info-${Date.now()}`,
@@ -392,18 +232,15 @@ export class TakumiApp {
 		this.state.addMessage(msg);
 	}
 
-	/** Build a SessionData snapshot from the current state. */
 	private buildSessionData(): SessionData {
 		const messages = this.state.messages.value;
-		// Derive a title from the first user message, or default
 		let title = "Untitled session";
 		for (const m of messages) {
-			if (m.role === "user" && m.content.length > 0) {
-				const first = m.content[0];
-				if (first.type === "text") {
-					title = first.text.slice(0, 80).replace(/\n/g, " ");
-					break;
-				}
+			if (m.role !== "user" || m.content.length === 0) continue;
+			const first = m.content[0];
+			if (first.type === "text") {
+				title = first.text.slice(0, 80).replace(/\n/g, " ");
+				break;
 			}
 		}
 		return {
@@ -421,191 +258,10 @@ export class TakumiApp {
 		};
 	}
 
-	/** Start the periodic auto-saver for session persistence. */
 	private startAutoSaver(): void {
-		if (this.autoSaver) return;
-		this.autoSaver = createAutoSaver(this.state.sessionId.value, () => this.buildSessionData());
-	}
-
-	/**
-	 * Load MCP server configuration from .vscode/mcp.json.
-	 * Returns the chitragupta server config if found, null otherwise.
-	 */
-	private loadMcpConfig(): { command: string; args: string[] } | null {
-		try {
-			const mcpPath = join(process.cwd(), ".vscode", "mcp.json");
-			if (!existsSync(mcpPath)) {
-				log.debug("No .vscode/mcp.json found");
-				return null;
-			}
-
-			const raw = readFileSync(mcpPath, "utf-8");
-			const parsed = JSON.parse(raw);
-
-			// Look for chitragupta server config
-			const chitraguptaConfig = parsed?.mcpServers?.chitragupta;
-			if (chitraguptaConfig?.command) {
-				log.info("Loaded MCP config from .vscode/mcp.json");
-				return {
-					command: chitraguptaConfig.command,
-					args: chitraguptaConfig.args || [],
-				};
-			}
-
-			return null;
-		} catch (err) {
-			log.debug(`Failed to load MCP config: ${(err as Error).message}`);
-			return null;
+		if (!this.autoSaver) {
+			this.autoSaver = createAutoSaver(this.state.sessionId.value, () => this.buildSessionData());
 		}
-	}
-
-	/**
-	 * Attempt to connect to Chitragupta MCP memory server in the background.
-	 * This is fully non-blocking — if the binary is not found or connection
-	 * fails, we silently set chitraguptaConnected=false. The TUI continues
-	 * to work without Chitragupta features.
-	 */
-	private connectChitragupta(): void {
-		// Try to load MCP config from .vscode/mcp.json
-		const mcpConfig = this.loadMcpConfig();
-
-		const bridge = new ChitraguptaBridge({
-			command: mcpConfig?.command,
-			args: mcpConfig?.args,
-			projectPath: process.cwd(),
-			startupTimeoutMs: 8_000,
-		});
-
-		// Store the bridge instance immediately so commands can reference it
-		this.state.chitraguptaBridge.value = bridge;
-
-		bridge
-			.connect()
-			.then(async () => {
-				this.state.chitraguptaConnected.value = true;
-				log.info("Chitragupta bridge connected");
-
-				// Register Akasha tools if we have a tool registry
-				if (this.agentRunner) {
-					const tools = this.agentRunner.getTools();
-					const handlers = createAkashaHandlers(
-						bridge,
-						// onDeposit callback - increment deposits counter and update activity timestamp
-						() => {
-							this.state.akashaDeposits.value++;
-							this.state.akashaLastActivity.value = Date.now();
-						},
-						// onTraceQuery callback - just update activity timestamp
-						() => {
-							this.state.akashaLastActivity.value = Date.now();
-						},
-					);
-					tools.register(akashaDepositDefinition, handlers.deposit);
-					tools.register(akashaTracesDefinition, handlers.traces);
-					log.info("Registered Akasha tools");
-				}
-
-				// Load relevant memory for the current project and inject into state
-				// so AgentRunner can prepend it to every system prompt as context.
-				try {
-					const cwd = process.cwd();
-					const projectName = cwd.split("/").pop() ?? cwd;
-					const results = await bridge.memorySearch(projectName, 5);
-					if (results.length > 0) {
-						// Format as a numbered list of memory snippets with relevance scores
-						this.state.chitraguptaMemory.value = results
-							.map(
-								(r, i) =>
-									`${i + 1}. [relevance ${r.relevance.toFixed(2)}${r.source ? ` | ${r.source}` : ""}]\n${r.content}`,
-							)
-							.join("\n\n");
-						log.info(`Loaded ${results.length} memory entries from Chitragupta`);
-					}
-				} catch (err) {
-					log.debug(`Chitragupta memory preload failed: ${(err as Error).message}`);
-				}
-
-				// Load vasana tendencies (crystallised behavioral patterns)
-				try {
-					const tendencies = await bridge.vasanaTendencies(10);
-					this.state.vasanaTendencies.value = tendencies;
-					this.state.vasanaLastRefresh.value = Date.now();
-					if (tendencies.length > 0) {
-						log.info(`Loaded ${tendencies.length} vasana tendencies from Chitragupta`);
-					}
-				} catch (err) {
-					log.debug(`Chitragupta vasana preload failed: ${(err as Error).message}`);
-				}
-
-				// Load aggregate health
-				try {
-					const health = await bridge.healthStatus();
-					if (health) {
-						this.state.chitraguptaHealth.value = health;
-						log.info(`Chitragupta health: ${health.dominant} (sattva=${health.state.sattva.toFixed(2)})`);
-					}
-				} catch (err) {
-					log.debug(`Chitragupta health check failed: ${(err as Error).message}`);
-				}
-
-				// Refresh vasana + health every 60 s (non-blocking background task)
-				this._vasanaRefreshInterval = setInterval(async () => {
-					const b = this.state.chitraguptaBridge.value;
-					if (!b?.isConnected) return;
-					try {
-						const [t, h] = await Promise.all([b.vasanaTendencies(10), b.healthStatus()]);
-						this.state.vasanaTendencies.value = t;
-						if (h) this.state.chitraguptaHealth.value = h;
-						this.state.vasanaLastRefresh.value = Date.now();
-					} catch {
-						/* silent — best-effort refresh */
-					}
-				}, 60_000);
-			})
-			.catch((err) => {
-				log.debug(`Chitragupta bridge connection failed: ${(err as Error).message}`);
-				this.state.chitraguptaConnected.value = false;
-				this.state.chitraguptaBridge.value = null;
-			});
-
-		// Listen for disconnection events
-		bridge.mcpClient.on("disconnected", () => {
-			this.state.chitraguptaConnected.value = false;
-			log.info("Chitragupta bridge disconnected");
-		});
-
-		bridge.mcpClient.on("error", (err) => {
-			log.debug(`Chitragupta bridge error: ${(err as Error).message}`);
-			this.state.chitraguptaConnected.value = false;
-		});
-	}
-
-	/**
-	 * Best-effort handover and disconnect from Chitragupta on shutdown.
-	 * Errors are silently logged — we never block TUI exit.
-	 */
-	private async disconnectChitragupta(): Promise<void> {
-		const bridge = this.state.chitraguptaBridge.value;
-		if (!bridge || !bridge.isConnected) return;
-
-		try {
-			await Promise.race([
-				bridge.handover(),
-				new Promise((_, reject) => setTimeout(() => reject(new Error("handover timeout")), 3_000)),
-			]);
-			log.debug("Chitragupta handover completed");
-		} catch (err) {
-			log.debug(`Chitragupta handover failed: ${(err as Error).message}`);
-		}
-
-		try {
-			await bridge.disconnect();
-		} catch (err) {
-			log.debug(`Chitragupta disconnect failed: ${(err as Error).message}`);
-		}
-
-		this.state.chitraguptaConnected.value = false;
-		this.state.chitraguptaBridge.value = null;
 	}
 
 	private registerDefaultKeybinds(): void {
@@ -614,806 +270,51 @@ export class TakumiApp {
 			this.scheduler?.getScreen().invalidate();
 			this.scheduler?.scheduleRender();
 		});
-
-		// Command palette — Ctrl+P (primary) and Ctrl+K (alias)
 		const toggleCommandPalette = () => {
-			if (this.state.topDialog === "command-palette") {
-				this.state.popDialog();
-			} else {
-				this.state.pushDialog("command-palette");
-			}
+			if (this.state.topDialog === "command-palette") this.state.popDialog();
+			else this.state.pushDialog("command-palette");
 		};
 		this.keybinds.register("ctrl+p", "Command palette", toggleCommandPalette);
 		this.keybinds.register("ctrl+k", "Command palette", toggleCommandPalette);
-
-		// Model picker
 		this.keybinds.register("ctrl+m", "Model picker", () => {
-			if (this.state.topDialog === "model-picker") {
-				this.state.popDialog();
-			} else {
-				this.state.pushDialog("model-picker");
-			}
+			if (this.state.topDialog === "model-picker") this.state.popDialog();
+			else this.state.pushDialog("model-picker");
 		});
-
-		// Toggle sidebar
 		this.keybinds.register("ctrl+b", "Toggle sidebar", () => {
 			this.state.sidebarVisible.value = !this.state.sidebarVisible.value;
 		});
-
-		// Toggle cluster status panel in sidebar
 		this.keybinds.register("ctrl+shift+c", "Toggle cluster status", () => {
 			this.rootView.sidebar.clusterPanel.toggle();
 		});
-
-		// Session list
-		this.keybinds.register("ctrl+o", "Session list", () => {
-			this.state.pushDialog("session-list");
-		});
-
-		// Exit on empty input (Ctrl+D)
+		this.keybinds.register("ctrl+o", "Session list", () => this.state.pushDialog("session-list"));
 		this.keybinds.register("ctrl+d", "Exit", () => {
-			const value = this.chatView.getEditorValue();
-			if (!value) this.quit();
+			if (!this.chatView.getEditorValue()) void this.quit();
 		});
 	}
 
 	private registerDefaultCommands(): void {
-		this.commands.register("/quit", "Exit Takumi", () => this.quit(), ["/exit"]);
-		this.commands.register("/clear", "Clear conversation", () => {
-			this.state.messages.value = [];
-			this.agentRunner?.clearHistory();
-		});
-		this.commands.register("/model", "Change model (tab for autocomplete)", (args) => {
-			if (!args) {
-				// Show current model and available models for the current provider
-				const prov = this.state.provider.value;
-				const models = PROVIDER_MODELS[prov] ?? [];
-				const lines = [
-					`Current model: ${this.state.model.value}  (provider: ${prov})`,
-					models.length > 0
-						? `Available for ${prov}:\n${models.map((m) => `  ${m}`).join("\n")}`
-						: `Use /model <name> to set a model (any model ID is accepted).`,
-				];
-				this.addInfoMessage(lines.join("\n"));
-				return;
-			}
-			this.state.model.value = args.trim();
-			this.addInfoMessage(`Model set to: ${args.trim()}`);
-		});
-		this.commands.register("/provider", "Switch AI provider (tab for autocomplete)", async (args) => {
-			if (!args) {
-				// List available providers with current highlighted
-				const current = this.state.provider.value;
-				const lines = KNOWN_PROVIDERS.map((p) => {
-					const marker = p === current ? "▶ " : "  ";
-					const count = PROVIDER_MODELS[p]?.length ?? 0;
-					return `${marker}${p.padEnd(12)} (${count} models)`;
-				});
-				this.addInfoMessage(`Available providers:\n${lines.join("\n")}\n\nUse /provider <name> to switch.`);
-				return;
-			}
-
-			const name = args.trim().toLowerCase();
-			if (!KNOWN_PROVIDERS.includes(name) && name !== "custom") {
-				this.addInfoMessage(`Unknown provider: "${name}"\nAvailable: ${KNOWN_PROVIDERS.join(", ")}`);
-				return;
-			}
-
-			// Try hot-swap via factory if available
-			if (this.providerFactory && this.agentRunner) {
-				this.addInfoMessage(`Switching provider to ${name}...`);
-				try {
-					const newSendFn = await this.providerFactory(name);
-					if (!newSendFn) {
-						this.addInfoMessage(
-							`Cannot switch to "${name}": missing API key.\n` +
-								`Set the corresponding API key environment variable and restart.`,
-						);
-						return;
-					}
-					this.agentRunner.setSendMessageFn(newSendFn);
-					this.state.provider.value = name;
-					// Auto-set a default model for this provider
-					const defaultModel = PROVIDER_MODELS[name]?.[1] ?? PROVIDER_MODELS[name]?.[0] ?? "";
-					if (defaultModel) {
-						this.state.model.value = defaultModel;
-						this.addInfoMessage(`Switched to provider: ${name}\nDefault model: ${defaultModel}`);
-					} else {
-						this.addInfoMessage(`Switched to provider: ${name}`);
-					}
-				} catch (err) {
-					this.addInfoMessage(`Failed to switch provider: ${(err as Error).message}`);
-				}
-			} else {
-				// No factory — just update state and inform
-				this.state.provider.value = name;
-				const defaultModel = PROVIDER_MODELS[name]?.[1] ?? PROVIDER_MODELS[name]?.[0] ?? "";
-				if (defaultModel) this.state.model.value = defaultModel;
-				this.addInfoMessage(
-					`Provider set to: ${name}${defaultModel ? ` | model: ${defaultModel}` : ""}\n` +
-						`Note: restart with --provider ${name} to apply fully if the provider wasn't initialized at startup.`,
-				);
-			}
-		});
-		this.commands.register("/theme", "Change theme", (args) => {
-			if (args) {
-				this.state.theme.value = args;
-			}
-		});
-		this.commands.register("/help", "Show help", () => {
-			const commands = this.commands.list();
-			const helpText = commands.map((cmd) => `  ${cmd.name.padEnd(16)} ${cmd.description}`).join("\n");
-			log.info(`Available commands:\n${helpText}`);
-		});
-		this.commands.register("/status", "Show session statistics", () => {
-			log.info(
-				`Session: ${this.state.sessionId.value || "(none)"}\n` +
-					`Turns: ${this.state.turnCount.value}\n` +
-					`Tokens: ${this.state.totalTokens.value} (in: ${this.state.totalInputTokens.value}, out: ${this.state.totalOutputTokens.value})\n` +
-					`Cost: ${this.state.formattedCost.value}\n` +
-					`Messages: ${this.state.messageCount.value}\n` +
-					`Model: ${this.state.model.value}`,
-			);
-		});
-		this.commands.register("/compact", "Trigger conversation compaction", () => {
-			const messages = this.state.messages.value;
-			if (messages.length === 0) {
-				log.info("Nothing to compact");
-				return;
-			}
-			const result = compactHistory(messages, { keepRecent: 10 });
-			if (result.compactedTurns === 0) {
-				log.info("No compaction needed");
-				return;
-			}
-			this.state.messages.value = result.messages;
-			this.agentRunner?.clearHistory();
-			log.info(`Compacted ${result.compactedTurns} turns`);
-		});
-		this.commands.register("/session", "Session management", async (args) => {
-			if (!args || args === "info") {
-				// Show current session info
-				const info = [
-					`Session: ${this.state.sessionId.value || "(none)"}`,
-					`Model: ${this.state.model.value}`,
-					`Turns: ${this.state.turnCount.value}`,
-					`Tokens: ${this.state.totalTokens.value}`,
-					`Cost: ${this.state.formattedCost.value}`,
-				];
-				this.addInfoMessage(info.join("\n"));
-				return;
-			}
-
-			if (args === "list") {
-				// Show saved sessions from disk
-				try {
-					const sessions = await listSessions(20);
-					if (sessions.length === 0) {
-						this.addInfoMessage("No saved sessions found.");
-					} else {
-						const lines = sessions.map((s) => {
-							const date = new Date(s.updatedAt).toLocaleString();
-							return `  ${s.id}  ${date}  (${s.messageCount} msgs)  ${s.title}`;
-						});
-						this.addInfoMessage(`Saved sessions:\n${lines.join("\n")}`);
-					}
-				} catch (err) {
-					this.addInfoMessage(`Failed to list sessions: ${(err as Error).message}`);
-				}
-				return;
-			}
-
-			if (args.startsWith("resume ")) {
-				const sessionId = args.slice(7).trim();
-				if (sessionId) {
-					const loaded = await loadSession(sessionId);
-					if (loaded) {
-						// Stop current auto-saver before switching sessions
-						if (this.autoSaver) {
-							this.autoSaver.stop();
-							this.autoSaver = null;
-						}
-						this.state.sessionId.value = loaded.id;
-						this.state.model.value = loaded.model;
-						this.state.messages.value = loaded.messages;
-						this.state.totalInputTokens.value = loaded.tokenUsage.inputTokens;
-						this.state.totalOutputTokens.value = loaded.tokenUsage.outputTokens;
-						this.state.totalCost.value = loaded.tokenUsage.totalCost;
-						this.agentRunner?.clearHistory();
-						this.startAutoSaver();
-						this.addInfoMessage(`Resumed session: ${sessionId} (${loaded.messages.length} messages)`);
-					} else {
-						this.addInfoMessage(`Session not found: ${sessionId}`);
-					}
-				}
-				return;
-			}
-
-			if (args === "save") {
-				try {
-					const data = this.buildSessionData();
-					await saveSession(data);
-					this.addInfoMessage(`Session saved: ${data.id}`);
-				} catch (err) {
-					this.addInfoMessage(`Failed to save session: ${(err as Error).message}`);
-				}
-				return;
-			}
-
-			this.addInfoMessage("Usage: /session [info|list|resume <id>|save]");
-		});
-		this.commands.register("/diff", "Show git diff", () => {
-			const diff = gitDiff(process.cwd());
-			if (!diff) {
-				log.info("No changes");
-				return;
-			}
-			const diffMessage: Message = {
-				id: `diff-${Date.now()}`,
-				role: "assistant",
-				content: [{ type: "text", text: `\`\`\`diff\n${diff}\n\`\`\`` }],
-				timestamp: Date.now(),
-			};
-			this.state.addMessage(diffMessage);
-		});
-		this.commands.register("/cost", "Show token costs breakdown", () => {
-			const inCost = (this.state.totalInputTokens.value * 3) / 1_000_000;
-			const outCost = (this.state.totalOutputTokens.value * 15) / 1_000_000;
-			log.info(
-				`Cost breakdown:\n` +
-					`  Input:  ${this.state.totalInputTokens.value} tokens  ($${inCost.toFixed(4)})\n` +
-					`  Output: ${this.state.totalOutputTokens.value} tokens  ($${outCost.toFixed(4)})\n` +
-					`  Total:  ${this.state.formattedCost.value}`,
-			);
-		});
-		this.commands.register("/sidebar", "Toggle sidebar", () => {
-			this.state.sidebarVisible.value = !this.state.sidebarVisible.value;
-		});
-		this.commands.register("/memory", "Search project memory", async (args) => {
-			if (!args) {
-				this.addInfoMessage("Usage: /memory <search query>");
-				return;
-			}
-
-			const bridge = this.state.chitraguptaBridge.value;
-			if (!bridge || !this.state.chitraguptaConnected.value) {
-				this.addInfoMessage("Memory search requires Chitragupta connection (not connected)");
-				return;
-			}
-
-			this.addInfoMessage(`Searching memory for: ${args}...`);
-			try {
-				const results = await bridge.memorySearch(args, 10);
-				if (results.length === 0) {
-					this.addInfoMessage("No memory results found.");
-				} else {
-					const formatted = results
-						.map((r, i) => {
-							const src = r.source ? ` (${r.source})` : "";
-							return `  ${i + 1}. [${(r.relevance * 100).toFixed(0)}%]${src}\n     ${r.content.slice(0, 200)}`;
-						})
-						.join("\n");
-					this.addInfoMessage(`Memory results:\n${formatted}`);
-				}
-			} catch (err) {
-				this.addInfoMessage(`Memory search failed: ${(err as Error).message}`);
-			}
-		});
-		this.commands.register("/sessions", "List Chitragupta sessions", async (args) => {
-			const bridge = this.state.chitraguptaBridge.value;
-			if (!bridge || !this.state.chitraguptaConnected.value) {
-				this.addInfoMessage("Session listing requires Chitragupta connection (not connected)");
-				return;
-			}
-
-			try {
-				const limit = args ? parseInt(args, 10) || 10 : 10;
-				const sessions = await bridge.sessionList(limit);
-				if (sessions.length === 0) {
-					this.addInfoMessage("No Chitragupta sessions found.");
-				} else {
-					const formatted = sessions
-						.map((s) => {
-							const date = new Date(s.timestamp).toLocaleDateString();
-							return `  ${s.id}  ${date}  (${s.turns} turns)  ${s.title}`;
-						})
-						.join("\n");
-					this.addInfoMessage(`Chitragupta sessions:\n${formatted}`);
-				}
-			} catch (err) {
-				this.addInfoMessage(`Session listing failed: ${(err as Error).message}`);
-			}
-		});
-		this.commands.register("/undo", "Undo last file change", async () => {
-			this.addInfoMessage("Running: git checkout -- .");
-			try {
-				const { execSync } = await import("node:child_process");
-				const result = execSync("git diff --name-only", { encoding: "utf-8", cwd: process.cwd() }).trim();
-				if (!result) {
-					this.addInfoMessage("No changes to undo");
-					return;
-				}
-				execSync("git checkout -- .", { cwd: process.cwd() });
-				this.addInfoMessage(`Reverted changes in:\n${result}`);
-			} catch (err) {
-				this.addInfoMessage(`Undo failed: ${(err as Error).message}`);
-			}
-		});
-		this.commands.register("/permission", "Manage tool permissions", (args) => {
-			if (!args) {
-				// Show current rules
-				if (this.agentRunner) {
-					const rules = this.agentRunner.permissions.getRules();
-					if (rules.length === 0) {
-						this.addInfoMessage("No permission rules configured");
-					} else {
-						const lines = rules.map((r) => `  ${r.allow ? "allow" : "deny"} ${r.tool} ${r.pattern} (${r.scope})`);
-						this.addInfoMessage(`Permission rules:\n${lines.join("\n")}`);
-					}
-				} else {
-					this.addInfoMessage("No agent runner configured");
-				}
-				return;
-			}
-
-			if (args === "reset") {
-				this.agentRunner?.permissions.reset();
-				this.addInfoMessage("Session permissions reset");
-				return;
-			}
-
-			this.addInfoMessage("Usage: /permission [reset]");
-		});
-		this.commands.register("/code", "Start coding agent", async (args) => {
-			if (!args) {
-				this.addInfoMessage("Usage: /code <task description>");
-				return;
-			}
-			if (!this.agentRunner) {
-				this.addInfoMessage("No agent runner configured");
-				return;
-			}
-			if (this.activeCoder?.isActive) {
-				this.addInfoMessage("A coding task is already running. Cancel with Ctrl+C or wait for it to finish.");
-				return;
-			}
-			if (this.activeCoder) {
-				await this.activeCoder.shutdown();
-			}
-			const { CodingAgent } = await import("./coding-agent.js");
-			const orchCfg = this.config.orchestration;
-			// Persist instance so /cluster, /checkpoint, /resume can share state
-			this.activeCoder = new CodingAgent(this.state, this.agentRunner, {
-				enableOrchestration: orchCfg?.enabled ?? false,
-				maxValidationRetries: orchCfg?.maxValidationRetries ?? 3,
-				autoPr: this.autoPr,
-				autoShip: this.autoShip,
-			});
-			// Apply config isolation mode (can be overridden later via /isolation)
-			if (orchCfg?.isolationMode) {
-				this.state.isolationMode.value = orchCfg.isolationMode;
-			}
-			await this.activeCoder.start(args);
-		});
-
-		// ── /think — Toggle extended thinking ────────────────────────────────────
-		this.commands.register("/think", "Toggle extended thinking", (args) => {
-			if (!args) {
-				// Toggle
-				this.state.thinking.value = !this.state.thinking.value;
-				const status = this.state.thinking.value ? "enabled" : "disabled";
-				const budgetInfo = this.state.thinking.value ? ` (budget: ${this.state.thinkingBudget.value} tokens)` : "";
-				this.addInfoMessage(`Extended thinking ${status}${budgetInfo}`);
-				return;
-			}
-
-			if (args === "on") {
-				this.state.thinking.value = true;
-				this.addInfoMessage(`Extended thinking enabled (budget: ${this.state.thinkingBudget.value} tokens)`);
-				return;
-			}
-
-			if (args === "off") {
-				this.state.thinking.value = false;
-				this.addInfoMessage("Extended thinking disabled");
-				return;
-			}
-
-			if (args.startsWith("budget ")) {
-				const budgetStr = args.slice(7).trim();
-				const budget = parseInt(budgetStr, 10);
-				if (Number.isNaN(budget) || budget <= 0) {
-					this.addInfoMessage(`Invalid budget: "${budgetStr}" — must be a positive number`);
-					return;
-				}
-				this.state.thinkingBudget.value = budget;
-				this.addInfoMessage(`Thinking budget set to ${budget} tokens`);
-				return;
-			}
-
-			this.addInfoMessage("Usage: /think [on|off|budget <tokens>]");
-		});
-
-		// ── /export — Export conversation to file ─────────────────────────────────
-		this.commands.register("/export", "Export conversation to file", async (args) => {
-			const messages = this.state.messages.value;
-			if (messages.length === 0) {
-				this.addInfoMessage("No messages to export");
-				return;
-			}
-
-			// Parse arguments: format and/or path
-			let format: "md" | "json" = "md";
-			let outputPath = "";
-
-			if (args) {
-				const parts = args.trim().split(/\s+/);
-				for (const part of parts) {
-					if (part === "json") {
-						format = "json";
-					} else if (part === "md" || part === "markdown") {
-						format = "md";
-					} else {
-						// Treat as output path
-						outputPath = part;
-					}
-				}
-			}
-
-			// Determine output path if not specified
-			if (!outputPath) {
-				const date = new Date().toISOString().slice(0, 10);
-				outputPath = `./takumi-export-${date}.${format === "json" ? "json" : "md"}`;
-			}
-
-			try {
-				let content: string;
-				if (format === "json") {
-					content = JSON.stringify(messages, null, 2);
-				} else {
-					content = formatMessagesAsMarkdown(messages, this.state.sessionId.value, this.state.model.value);
-				}
-
-				await writeFile(outputPath, content, "utf-8");
-				this.addInfoMessage(`Session exported to ${outputPath}`);
-			} catch (err) {
-				this.addInfoMessage(`Export failed: ${(err as Error).message}`);
-			}
-		});
-
-		// ── /retry — Retry last assistant response ────────────────────────────────
-		this.commands.register("/retry", "Retry last response", async (args) => {
-			const messages = this.state.messages.value;
-			if (messages.length === 0) {
-				this.addInfoMessage("No messages to retry");
-				return;
-			}
-
-			if (!this.agentRunner) {
-				this.addInfoMessage("No agent runner configured");
-				return;
-			}
-
-			if (this.agentRunner.isRunning) {
-				this.addInfoMessage("Cannot retry while agent is running");
-				return;
-			}
-
-			let turnIndex: number | undefined;
-			if (args) {
-				turnIndex = parseInt(args.trim(), 10);
-				if (Number.isNaN(turnIndex) || turnIndex < 0) {
-					this.addInfoMessage(`Invalid turn number: "${args.trim()}"`);
-					return;
-				}
-			}
-
-			// Find the last user message text for re-submission
-			let lastUserText = "";
-			let cutIndex: number;
-
-			if (turnIndex !== undefined) {
-				// Rewind to turn N: keep messages 0..turnIndex-1
-				cutIndex = turnIndex;
-				if (cutIndex > messages.length) {
-					cutIndex = messages.length;
-				}
-				// Find the last user message before the cut point
-				for (let i = cutIndex - 1; i >= 0; i--) {
-					if (messages[i].role === "user") {
-						for (const block of messages[i].content) {
-							if (block.type === "text") {
-								lastUserText = block.text;
-								break;
-							}
-						}
-						if (lastUserText) break;
-					}
-				}
-				this.addInfoMessage(`Retrying from turn ${turnIndex}...`);
-			} else {
-				// Remove last assistant message(s) and associated tool results
-				cutIndex = messages.length;
-				// Walk backwards to find and remove last assistant turn
-				// (which may include tool_use + tool_result blocks)
-				while (cutIndex > 0 && messages[cutIndex - 1].role === "assistant") {
-					cutIndex--;
-				}
-				// Find the last user message text
-				for (let i = cutIndex - 1; i >= 0; i--) {
-					if (messages[i].role === "user") {
-						for (const block of messages[i].content) {
-							if (block.type === "text") {
-								lastUserText = block.text;
-								break;
-							}
-						}
-						if (lastUserText) break;
-					}
-				}
-				this.addInfoMessage("Retrying last response...");
-			}
-
-			if (!lastUserText) {
-				this.addInfoMessage("No user message found to retry");
-				return;
-			}
-
-			// Truncate messages
-			this.state.messages.value = messages.slice(0, cutIndex);
-			// Clear agent history so it rebuilds from messages
-			this.agentRunner.clearHistory();
-			// Re-submit the last user message
-			await this.agentRunner.submit(lastUserText);
-		});
-
-		// ── /cluster — Show active cluster status ─────────────────────────────────
-		this.commands.register("/cluster", "Show cluster status", () => {
-			const phase = this.state.clusterPhase.value;
-			const id = this.state.clusterId.value;
-			const agents = this.state.clusterAgentCount.value;
-			const attempts = this.state.clusterValidationAttempt.value;
-			const isolation = this.state.isolationMode.value;
-			if (!id || phase === "idle") {
-				this.addInfoMessage("No active cluster. Run /code <task> with orchestration enabled.");
-				return;
-			}
-			this.addInfoMessage(
-				`Cluster: ${id}\n  Phase:    ${phase}\n  Agents:   ${agents}\n` +
-					`  Attempts: ${attempts}\n  Isolation: ${isolation}`,
-			);
-		});
-
-		// ── /validate — Re-run validation phase on current work product ──────────
-		this.commands.register("/validate", "Re-run cluster validation phase", () => {
-			if (!this.state.clusterId.value) {
-				this.addInfoMessage("No active cluster. Start one with /code <task>.");
-				return;
-			}
-			this.state.clusterCommand.value = { type: "validate" };
-			this.addInfoMessage("Validation requested — cluster will re-run the validation phase.");
-		});
-
-		// ── /checkpoint — List or manually save cluster checkpoints ───────────────
-		this.commands.register("/checkpoint", "List or save cluster checkpoints", async (args) => {
-			// Default action: list saved checkpoints
-			if (!args || args === "list") {
-				const { CheckpointManager } = await import("@takumi/agent");
-				const mgr = new CheckpointManager({
-					chitragupta: this.state.chitraguptaBridge.value ?? undefined,
-				});
-				const checkpoints = await mgr.list();
-				if (checkpoints.length === 0) {
-					this.addInfoMessage("No saved checkpoints found.");
-					return;
-				}
-				const lines = checkpoints.map((cp) => {
-					const date = new Date(cp.savedAt).toLocaleString();
-					const task = cp.taskDescription.slice(0, 60);
-					return `  ${cp.clusterId.slice(0, 24)}  ${date}  phase=${cp.phase}  "${task}"`;
-				});
-				this.addInfoMessage(`Checkpoints (${checkpoints.length}):\n${lines.join("\n")}`);
-				return;
-			}
-
-			// Save a manual checkpoint for the running cluster
-			if (args === "save") {
-				const orch = this.activeCoder?.getOrchestrator();
-				const clusterState = orch?.getState();
-				if (!clusterState) {
-					this.addInfoMessage("No active cluster to checkpoint. Start one with /code <task>.");
-					return;
-				}
-				const { CheckpointManager } = await import("@takumi/agent");
-				const mgr = new CheckpointManager({
-					chitragupta: this.state.chitraguptaBridge.value ?? undefined,
-				});
-				await mgr.save(CheckpointManager.fromState(clusterState));
-				this.addInfoMessage(`Checkpoint saved: ${clusterState.id} @ ${clusterState.phase}`);
-				return;
-			}
-
-			this.addInfoMessage("Usage: /checkpoint [list|save]");
-		});
-
-		// ── /resume — Resume a cluster from checkpoint ────────────────────────────
-		this.commands.register("/resume", "Resume cluster from checkpoint", async (args) => {
-			if (!args) {
-				this.addInfoMessage("Usage: /resume <clusterId>");
-				return;
-			}
-			if (!this.agentRunner) {
-				this.addInfoMessage("No agent runner configured.");
-				return;
-			}
-			// Lazily create a CodingAgent with orchestration if one isn't active
-			if (!this.activeCoder) {
-				const { CodingAgent } = await import("./coding-agent.js");
-				const orchCfg = this.config.orchestration;
-				this.activeCoder = new CodingAgent(this.state, this.agentRunner, {
-					enableOrchestration: orchCfg?.enabled ?? true,
-					maxValidationRetries: orchCfg?.maxValidationRetries ?? 3,
-					autoPr: this.autoPr,
-					autoShip: this.autoShip,
-				});
-			}
-			await this.activeCoder.resume(args.trim());
-		});
-
-		// ── /isolation — Get or set cluster isolation mode ────────────────────────
-		this.commands.register("/isolation", "Get/set cluster isolation mode", (args) => {
-			const validModes = ["none", "worktree", "docker"] as const;
-			if (!args) {
-				// Show current mode
-				this.addInfoMessage(
-					`Isolation mode: ${this.state.isolationMode.value}\n` + `Usage: /isolation [${validModes.join("|")}]`,
-				);
-				return;
-			}
-			if (!(validModes as readonly string[]).includes(args)) {
-				this.addInfoMessage(`Unknown mode "${args}". Valid modes: ${validModes.join(", ")}`);
-				return;
-			}
-			this.state.isolationMode.value = args as "none" | "worktree" | "docker";
-			this.addInfoMessage(`Isolation mode set to: ${args}`);
-		});
+		registerAppCommands(this.createCommandContext());
 	}
-}
 
-/**
- * Parse SGR-encoded mouse escape sequences into a MouseEvent.
- *
- * SGR mouse format: \x1b[<button;x;y[Mm]
- *   M = press/move, m = release
- *   button encoding: 0=left, 1=middle, 2=right, 32+button=move, 64=wheel up, 65=wheel down
- *   Modifiers: +4=shift, +8=alt, +16=ctrl
- */
-export function parseMouseEvent(raw: string): MouseEvent | null {
-	const match = raw.match(/\x1b\[<(\d+);(\d+);(\d+)([Mm])/);
-	if (!match) return null;
-
-	const code = parseInt(match[1], 10);
-	const x = parseInt(match[2], 10) - 1; // 1-based to 0-based
-	const y = parseInt(match[3], 10) - 1;
-	const isRelease = match[4] === "m";
-
-	const shift = (code & 4) !== 0;
-	const alt = (code & 8) !== 0;
-	const ctrl = (code & 16) !== 0;
-	const baseCode = code & ~(4 | 8 | 16);
-
-	// Wheel events
-	if (baseCode === 64 || baseCode === 65) {
+	private createCommandContext(): AppCommandContext {
 		return {
-			type: "wheel",
-			x,
-			y,
-			button: 0,
-			shift,
-			alt,
-			ctrl,
-			wheelDelta: baseCode === 64 ? 1 : -1,
+			commands: this.commands,
+			state: this.state,
+			agentRunner: this.agentRunner,
+			config: this.config,
+			autoPr: this.autoPr,
+			autoShip: this.autoShip,
+			providerFactory: this.providerFactory,
+			addInfoMessage: (text) => this.addInfoMessage(text),
+			buildSessionData: () => this.buildSessionData(),
+			startAutoSaver: () => this.startAutoSaver(),
+			quit: () => this.quit(),
+			getActiveCoder: () => this.activeCoder,
+			setActiveCoder: (coder) => {
+				this.activeCoder = coder;
+			},
 		};
 	}
-
-	// Move events (button + 32)
-	if (baseCode >= 32 && baseCode < 64) {
-		return {
-			type: "mousemove",
-			x,
-			y,
-			button: baseCode - 32,
-			shift,
-			alt,
-			ctrl,
-			wheelDelta: 0,
-		};
-	}
-
-	// Click events
-	return {
-		type: isRelease ? "mouseup" : "mousedown",
-		x,
-		y,
-		button: baseCode,
-		shift,
-		alt,
-		ctrl,
-		wheelDelta: 0,
-	};
 }
 
-/** Parse raw terminal input into a KeyEvent. */
-function parseKeyEvent(raw: string): KeyEvent {
-	const ctrl = raw.length === 1 && raw.charCodeAt(0) < 32;
-	const alt = raw.startsWith("\x1b") && raw.length === 2;
-	const shift = false; // Detected from specific sequences
-
-	let key = raw;
-	if (ctrl) {
-		// Convert control character to letter
-		key = String.fromCharCode(raw.charCodeAt(0) + 96);
-	} else if (alt) {
-		key = raw[1];
-	}
-
-	return { key, ctrl, alt, shift, meta: false, raw };
-}
-
-// ── Export helpers ────────────────────────────────────────────────────────────
-
-/**
- * Format messages as a Markdown document suitable for /export.
- */
-export function formatMessagesAsMarkdown(messages: Message[], sessionId: string, model: string): string {
-	const date = new Date().toISOString().slice(0, 10);
-	const lines: string[] = [`# Takumi Session: ${sessionId}`, `Date: ${date}`, `Model: ${model}`, "", "---", ""];
-
-	for (const msg of messages) {
-		const role = msg.role === "user" ? "User" : "Assistant";
-		lines.push(`## ${role}`);
-		lines.push("");
-
-		for (const block of msg.content) {
-			switch (block.type) {
-				case "text":
-					lines.push(block.text);
-					lines.push("");
-					break;
-				case "thinking":
-					lines.push("<details><summary>Thinking</summary>");
-					lines.push("");
-					lines.push(block.thinking);
-					lines.push("");
-					lines.push("</details>");
-					lines.push("");
-					break;
-				case "tool_use":
-					lines.push(`### Tool: ${block.name} (${block.id})`);
-					lines.push("");
-					lines.push("```json");
-					lines.push(JSON.stringify(block.input, null, 2));
-					lines.push("```");
-					lines.push("");
-					break;
-				case "tool_result":
-					lines.push(`### Tool Result (${block.toolUseId})`);
-					lines.push("");
-					lines.push("```");
-					lines.push(block.content);
-					lines.push("```");
-					lines.push("");
-					break;
-				case "image":
-					lines.push(`[Image: ${block.mediaType}]`);
-					lines.push("");
-					break;
-			}
-		}
-
-		lines.push("---");
-		lines.push("");
-	}
-
-	return lines.join("\n");
-}
+export { formatMessagesAsMarkdown, parseMouseEvent };

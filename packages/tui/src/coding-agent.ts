@@ -5,7 +5,6 @@
  * Supports both single-agent and multi-agent orchestration modes.
  */
 
-import { spawn } from "node:child_process";
 import {
 	AgentRole,
 	type ClusterConfig,
@@ -18,6 +17,9 @@ import type { Message, ToolDefinition } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import { effect } from "@takumi/render";
 import type { AgentRunner } from "./agent-runner.js";
+import { handleClusterCommand } from "./coding-agent-cluster-command.js";
+import { createPullRequestViaGh } from "./coding-agent-gh.js";
+import { PHASE_LABELS, runSingleAgentFlow } from "./coding-agent-single-flow.js";
 import type { AppState, ClusterCommandEvent } from "./state.js";
 
 const log = createLogger("coding-agent");
@@ -47,17 +49,6 @@ export interface CodingTask {
 	validationResults?: ValidationResult[];
 	clusterId?: string;
 }
-
-const PHASE_LABELS: Record<CodingPhase, string> = {
-	idle: "Idle",
-	planning: "Phase 1/6: Planning...",
-	branching: "Phase 2/6: Creating branch...",
-	executing: "Phase 3/6: Executing changes...",
-	validating: "Phase 4/6: Validating...",
-	reviewing: "Phase 5/6: Self-review...",
-	committing: "Phase 6/6: Committing...",
-	done: "Done",
-};
 
 export interface CodingAgentOptions {
 	/** Enable multi-agent orchestration (default: false) */
@@ -282,14 +273,13 @@ export class CodingAgent {
 					}
 				}
 			} else {
-				// ── Single-agent path ────────────────────────────────────────────
 				this.addSystemMessage(PHASE_LABELS.planning);
-				await this.plan();
-				await this.branch();
-				await this.execute();
-				await this.validate();
-				await this.review();
-				await this.commit();
+				await runSingleAgentFlow({
+					task: this.task,
+					state: this.state,
+					runner: this.runner,
+					addSystemMessage: (text) => this.addSystemMessage(text),
+				});
 			}
 
 			this.task.phase = "done";
@@ -297,7 +287,11 @@ export class CodingAgent {
 			this.addSystemMessage("Coding task complete!");
 			// ── Auto PR / ship (N-3 / N-8) ──────────────────────────────────────
 			if (this.options.autoPr || this.options.autoShip) {
-				await this._createPullRequest(this.options.autoShip ?? false);
+				await createPullRequestViaGh(
+					this.task?.description ?? "Automated changes",
+					this.options.autoShip ?? false,
+					(t) => this.addSystemMessage(t),
+				);
 			}
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
@@ -402,144 +396,16 @@ export class CodingAgent {
 	 * Each case corresponds to a user-initiated control action on the active cluster.
 	 */
 	private async handleClusterCommand(cmd: ClusterCommandEvent): Promise<void> {
-		switch (cmd.type) {
-			case "validate": {
-				if (!this.orchestrator) {
-					this.addSystemMessage("Orchestration is not enabled — cannot re-validate.");
-					return;
-				}
-				if (!this.isActive) {
-					this.addSystemMessage("No active coding task to validate.");
-					return;
-				}
-				this.addSystemMessage("Re-running validation phase...");
-				// The orchestrator's execute() loop handles validation internally;
-				// we surface this as a message cue — a full re-validate would require
-				// calling the orchestrator with its current state. For now, we emit
-				// the user intent so the running loop can observe it on next iteration.
-				break;
-			}
-			case "retry": {
-				if (!this.isActive) {
-					this.addSystemMessage("No active coding task to retry.");
-					return;
-				}
-				const max = cmd.maxAttempts;
-				this.addSystemMessage(
-					`Retry requested${max ? ` (max ${max} additional attempts)` : ""}. The cluster will pick this up on its next fixing phase.`,
-				);
-				break;
-			}
-			case "checkpoint_save": {
-				const orch = this.orchestrator;
-				const clusterState = orch?.getState?.();
-				if (!clusterState) {
-					this.addSystemMessage("No active cluster state to checkpoint.");
-					return;
-				}
-				try {
-					const { CheckpointManager } = await import("@takumi/agent");
-					const mgr = new CheckpointManager({
-						chitragupta: this.state.chitraguptaBridge.value ?? undefined,
-					});
-					await mgr.save(CheckpointManager.fromState(clusterState));
-					this.addSystemMessage(`Checkpoint saved: ${clusterState.id} @ ${clusterState.phase}`);
-				} catch (err) {
-					this.addSystemMessage(`Checkpoint save failed: ${(err as Error).message}`);
-				}
-				break;
-			}
-			case "resume": {
-				await this.resume(cmd.taskId);
-				break;
-			}
-			case "isolation_set": {
-				// Already handled by the slash command; this is a no-op notification path
-				this.addSystemMessage(`Isolation mode updated to: ${cmd.mode} (applies to next cluster run).`);
-				break;
-			}
-		}
-	}
-
-	private async plan(): Promise<void> {
-		this.task!.phase = "planning";
-		this.state.codingPhase.value = "planning";
-
-		const prompt = `I need you to create a detailed implementation plan for the following task.
-Do NOT make any changes yet -- just analyze the codebase and produce a step-by-step plan.
-
-Task: ${this.task!.description}
-
-Output your plan as a numbered list of specific changes to make, including file paths.`;
-
-		await this.runner.submit(prompt);
-		this.addSystemMessage(PHASE_LABELS.branching);
-	}
-
-	private async branch(): Promise<void> {
-		this.task!.phase = "branching";
-		this.state.codingPhase.value = "branching";
-
-		// Generate a branch name from the description
-		const slug = this.task!.description.toLowerCase()
-			.replace(/[^a-z0-9]+/g, "-")
-			.replace(/^-|-$/g, "")
-			.slice(0, 40);
-		this.task!.branchName = `feat/${slug}`;
-
-		const prompt = `Create a new git branch named "${this.task!.branchName}" from the current HEAD. Use the bash tool to run: git checkout -b ${this.task!.branchName}`;
-		await this.runner.submit(prompt);
-		this.addSystemMessage(PHASE_LABELS.executing);
-	}
-
-	private async execute(): Promise<void> {
-		this.task!.phase = "executing";
-		this.state.codingPhase.value = "executing";
-
-		const prompt =
-			"Now implement the plan. Make all the necessary code changes using the edit and write tools. Be thorough and precise.";
-		await this.runner.submit(prompt);
-		this.addSystemMessage(PHASE_LABELS.validating);
-	}
-
-	private async validate(): Promise<void> {
-		this.task!.phase = "validating";
-		this.state.codingPhase.value = "validating";
-
-		const prompt = `Validate the changes you just made:
-1. Run the build command to check for type errors
-2. Run the test suite to check for regressions
-3. Report the results
-
-If there are failures, fix them before proceeding.`;
-
-		await this.runner.submit(prompt);
-		this.addSystemMessage(PHASE_LABELS.reviewing);
-	}
-
-	private async review(): Promise<void> {
-		this.task!.phase = "reviewing";
-		this.state.codingPhase.value = "reviewing";
-
-		const prompt = `Review all the changes you've made:
-1. Run git diff to see all changes
-2. Check for any issues: missing error handling, security concerns, style problems
-3. Fix any issues you find
-4. List all files that were modified`;
-
-		await this.runner.submit(prompt);
-		this.addSystemMessage(PHASE_LABELS.committing);
-	}
-
-	private async commit(): Promise<void> {
-		this.task!.phase = "committing";
-		this.state.codingPhase.value = "committing";
-
-		const prompt = `Commit all changes with a descriptive commit message that summarizes what was done. Use the bash tool to:
-1. git add the modified files
-2. git commit with a good message`;
-
-		await this.runner.submit(prompt);
+		await handleClusterCommand(
+			{
+				orchestrator: this.orchestrator,
+				state: this.state,
+				isActive: () => this.isActive,
+				resume: async (taskId) => this.resume(taskId),
+				addSystemMessage: (text) => this.addSystemMessage(text),
+			},
+			cmd,
+		);
 	}
 
 	private addSystemMessage(text: string): void {
@@ -550,44 +416,5 @@ If there are failures, fix them before proceeding.`;
 			timestamp: Date.now(),
 		};
 		this.state.addMessage(msg);
-	}
-
-	/**
-	 * Create a GitHub PR via `gh pr create`, and optionally auto-merge it.
-	 * Silently skips if the `gh` CLI is unavailable or the branch has no remote.
-	 */
-	private async _createPullRequest(autoMerge: boolean): Promise<void> {
-		const description = this.task?.description ?? "Automated changes";
-		const run = (args: string[]): Promise<{ code: number; out: string; err: string }> =>
-			new Promise((resolve) => {
-				const child = spawn("gh", args, { stdio: ["ignore", "pipe", "pipe"] });
-				let out = "";
-				let err = "";
-				child.stdout.on("data", (d: Buffer) => {
-					out += d.toString();
-				});
-				child.stderr.on("data", (d: Buffer) => {
-					err += d.toString();
-				});
-				child.on("close", (code: number) => resolve({ code, out, err }));
-			});
-
-		this.addSystemMessage("Creating pull request via gh CLI…");
-		const createRes = await run(["pr", "create", "--fill", "--body", `Created by Takumi: ${description}`]);
-		if (createRes.code !== 0) {
-			this.addSystemMessage(`[--pr] Could not create PR: ${createRes.err.trim().split("\n")[0]}`);
-			return;
-		}
-		const prUrl = createRes.out.trim();
-		this.addSystemMessage(`[--pr] PR created: ${prUrl}`);
-
-		if (autoMerge) {
-			const mergeRes = await run(["pr", "merge", prUrl, "--auto", "--squash"]);
-			if (mergeRes.code !== 0) {
-				this.addSystemMessage(`[--ship] Auto-merge failed: ${mergeRes.err.trim().split("\n")[0]}`);
-				return;
-			}
-			this.addSystemMessage(`[--ship] PR merged: ${prUrl}`);
-		}
 	}
 }

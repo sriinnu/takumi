@@ -8,6 +8,10 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { createLogger } from "@takumi/core";
+import { detectConventions } from "./project-conventions.js";
+import { detectFramework } from "./project-framework.js";
+
+export { detectFramework };
 
 const log = createLogger("project-detect");
 
@@ -74,45 +78,6 @@ const ROOT_MARKERS = [
 	"CMakeLists.txt",
 	"Makefile",
 ];
-
-// ── Framework detection maps ─────────────────────────────────────────────────
-
-/** npm dependency name -> framework name. */
-const FRAMEWORK_MAP: Record<string, string> = {
-	next: "Next.js",
-	nuxt: "Nuxt",
-	"@angular/core": "Angular",
-	vue: "Vue",
-	svelte: "Svelte",
-	"@sveltejs/kit": "SvelteKit",
-	react: "React",
-	"react-native": "React Native",
-	express: "Express",
-	fastify: "Fastify",
-	koa: "Koa",
-	hono: "Hono",
-	nestjs: "NestJS",
-	"@nestjs/core": "NestJS",
-	gatsby: "Gatsby",
-	remix: "Remix",
-	"@remix-run/node": "Remix",
-	astro: "Astro",
-	electron: "Electron",
-	tauri: "Tauri",
-	vite: "Vite",
-};
-
-/** Python dependency name -> framework name. */
-const PYTHON_FRAMEWORK_MAP: Record<string, string> = {
-	fastapi: "FastAPI",
-	django: "Django",
-	flask: "Flask",
-	starlette: "Starlette",
-	tornado: "Tornado",
-	pyramid: "Pyramid",
-	sanic: "Sanic",
-	aiohttp: "aiohttp",
-};
 
 // ── detectProject (original API) ─────────────────────────────────────────────
 
@@ -228,100 +193,6 @@ export function detectLanguage(root: string): string | null {
 	return null;
 }
 
-// ── Framework detection ──────────────────────────────────────────────────────
-
-/**
- * Detect the framework from project dependency files.
- */
-export function detectFramework(root: string, language: string | null): string | null {
-	// Node-based frameworks
-	if (existsSync(join(root, "package.json"))) {
-		try {
-			const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf-8"));
-			const deps = {
-				...pkg.dependencies,
-				...pkg.devDependencies,
-			};
-
-			// Check in priority order (more specific frameworks first)
-			const priorityOrder = [
-				"next",
-				"@remix-run/node",
-				"remix",
-				"nuxt",
-				"@sveltejs/kit",
-				"astro",
-				"gatsby",
-				"@nestjs/core",
-				"nestjs",
-				"express",
-				"fastify",
-				"koa",
-				"hono",
-				"react-native",
-				"electron",
-				"tauri",
-				"@angular/core",
-				"vue",
-				"svelte",
-				"react",
-			];
-
-			for (const dep of priorityOrder) {
-				if (dep in deps && dep in FRAMEWORK_MAP) {
-					return FRAMEWORK_MAP[dep];
-				}
-			}
-		} catch {
-			/* ignore parse errors */
-		}
-	}
-
-	// Python frameworks
-	if (language === "Python") {
-		return detectPythonFramework(root);
-	}
-
-	return null;
-}
-
-/**
- * Detect Python framework from pyproject.toml or requirements.txt.
- */
-function detectPythonFramework(root: string): string | null {
-	// Try pyproject.toml
-	const pyprojectPath = join(root, "pyproject.toml");
-	if (existsSync(pyprojectPath)) {
-		try {
-			const content = readFileSync(pyprojectPath, "utf-8");
-			for (const [dep, framework] of Object.entries(PYTHON_FRAMEWORK_MAP)) {
-				if (content.includes(dep)) {
-					return framework;
-				}
-			}
-		} catch {
-			/* ignore */
-		}
-	}
-
-	// Try requirements.txt
-	const reqPath = join(root, "requirements.txt");
-	if (existsSync(reqPath)) {
-		try {
-			const content = readFileSync(reqPath, "utf-8").toLowerCase();
-			for (const [dep, framework] of Object.entries(PYTHON_FRAMEWORK_MAP)) {
-				if (content.includes(dep)) {
-					return framework;
-				}
-			}
-		} catch {
-			/* ignore */
-		}
-	}
-
-	return null;
-}
-
 // ── Package manager detection ────────────────────────────────────────────────
 
 /**
@@ -404,79 +275,6 @@ function getRecentFiles(root: string): string[] {
 	} catch {
 		return [];
 	}
-}
-
-// ── Convention detection ─────────────────────────────────────────────────────
-
-/**
- * Detect coding conventions from config files.
- */
-function detectConventions(root: string): string | null {
-	const conventions: string[] = [];
-
-	// EditorConfig
-	if (existsSync(join(root, ".editorconfig"))) {
-		conventions.push("Uses EditorConfig for formatting.");
-	}
-
-	// Biome
-	if (existsSync(join(root, "biome.json")) || existsSync(join(root, "biome.jsonc"))) {
-		conventions.push("Uses Biome for linting and formatting.");
-	}
-
-	// ESLint
-	const eslintFiles = [
-		".eslintrc",
-		".eslintrc.js",
-		".eslintrc.cjs",
-		".eslintrc.json",
-		".eslintrc.yml",
-		".eslintrc.yaml",
-		"eslint.config.js",
-		"eslint.config.mjs",
-	];
-	if (eslintFiles.some((f) => existsSync(join(root, f)))) {
-		conventions.push("Uses ESLint for linting.");
-	}
-
-	// Prettier
-	const prettierFiles = [
-		".prettierrc",
-		".prettierrc.js",
-		".prettierrc.cjs",
-		".prettierrc.json",
-		".prettierrc.yml",
-		".prettierrc.yaml",
-		"prettier.config.js",
-		"prettier.config.mjs",
-	];
-	if (prettierFiles.some((f) => existsSync(join(root, f)))) {
-		conventions.push("Uses Prettier for formatting.");
-	}
-
-	// TypeScript strict mode
-	const tsconfigPath = join(root, "tsconfig.json");
-	if (existsSync(tsconfigPath)) {
-		try {
-			const tsconfig = JSON.parse(readFileSync(tsconfigPath, "utf-8"));
-			if (tsconfig.compilerOptions?.strict) {
-				conventions.push("TypeScript strict mode enabled.");
-			}
-		} catch {
-			/* ignore */
-		}
-	}
-
-	// Monorepo detection
-	if (
-		existsSync(join(root, "pnpm-workspace.yaml")) ||
-		existsSync(join(root, "lerna.json")) ||
-		existsSync(join(root, "nx.json"))
-	) {
-		conventions.push("Monorepo project structure.");
-	}
-
-	return conventions.length > 0 ? conventions.join("\n") : null;
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
