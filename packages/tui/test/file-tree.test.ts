@@ -103,9 +103,7 @@ function createState(): AppState {
 	return new AppState();
 }
 
-function createPanel(
-	overrides: Partial<Parameters<typeof FileTreePanel.prototype.constructor>[0]> = {},
-): FileTreePanel {
+function createPanel(overrides: Partial<ConstructorParameters<typeof FileTreePanel>[0]> = {}): FileTreePanel {
 	const state = createState();
 	state.sidebarVisible.value = true;
 	return new FileTreePanel({

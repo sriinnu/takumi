@@ -32,7 +32,7 @@ export class RenderScheduler {
 
 	constructor(width: number, height: number, options?: RenderSchedulerOptions) {
 		this.screen = new Screen(width, height);
-		this.frameInterval = 1000 / (options?.fps ?? 30);
+		this.frameInterval = 1000 / (options?.fps ?? 60);
 		this.writeFn = options?.write ?? ((data: string) => process.stdout.write(data));
 	}
 
@@ -51,11 +51,19 @@ export class RenderScheduler {
 		const elapsed = now - this.lastFrameTime;
 		const delay = Math.max(0, this.frameInterval - elapsed);
 
-		this.timer = setTimeout(() => {
-			this.scheduled = false;
-			this.lastFrameTime = Date.now();
-			this.renderFrame();
-		}, delay);
+		if (delay === 0) {
+			setImmediate(() => {
+				this.scheduled = false;
+				this.lastFrameTime = Date.now();
+				this.renderFrame();
+			});
+		} else {
+			this.timer = setTimeout(() => {
+				this.scheduled = false;
+				this.lastFrameTime = Date.now();
+				this.renderFrame();
+			}, delay);
+		}
 	}
 
 	/** Perform a single render frame. */

@@ -164,7 +164,7 @@ function createTestSetup() {
 				content = formatMessagesAsMarkdown(messages, state.sessionId.value, state.model.value);
 			}
 
-			await (writeFile as ReturnType<typeof vi.fn>)(outputPath, content, "utf-8");
+			await (writeFile as unknown as (...args: unknown[]) => Promise<void>)(outputPath, content, "utf-8");
 			addInfoMessage(`Session exported to ${outputPath}`);
 		} catch (err) {
 			addInfoMessage(`Export failed: ${(err as Error).message}`);

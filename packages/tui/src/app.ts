@@ -37,7 +37,7 @@ import {
 	loadSession,
 	saveSession,
 } from "@takumi/core";
-import { initYoga, RenderScheduler } from "@takumi/render";
+import { effect, initYoga, RenderScheduler } from "@takumi/render";
 import { AgentRunner } from "./agent-runner.js";
 import type { CodingAgent } from "./coding-agent.js";
 import { SlashCommandRegistry } from "./commands.js";
@@ -238,6 +238,27 @@ export class TakumiApp {
 		this.state.terminalSize.value = { width: columns, height: rows };
 		log.info(`TUI started: ${columns}x${rows}`);
 
+		// ── Signal-driven rendering ───────────────────────────────────────────
+		// Schedule a frame whenever reactive state changes (streaming output,
+		// messages arriving, tool calls, coding phase transitions, dialogs).
+		// This is the engine that drives rendering during LLM streaming without
+		// requiring keystrokes to update the display.
+		const _sched = this.scheduler;
+		effect(() => {
+			// Track all high-frequency signals that change during agent activity.
+			// Reading them here establishes a reactive dependency.
+			void this.state.messages.value;
+			void this.state.streamingText.value;
+			void this.state.thinkingText.value;
+			void this.state.isStreaming.value;
+			void this.state.codingPhase.value;
+			void this.state.activeTool.value;
+			void this.state.toolOutput.value;
+			void this.state.dialogStack.value;
+			_sched?.scheduleRender();
+			return undefined;
+		});
+
 		// Connect to Chitragupta in the background (non-blocking, best-effort)
 		this.connectChitragupta();
 	}
@@ -300,6 +321,7 @@ export class TakumiApp {
 		const mouseEvent = parseMouseEvent(raw);
 		if (mouseEvent) {
 			this.handleMouse(mouseEvent);
+			this.scheduler?.forceRender();
 			return;
 		}
 
@@ -320,6 +342,11 @@ export class TakumiApp {
 
 		// Route input through the root view (which delegates to chat/sidebar)
 		this.rootView.handleKey(event);
+
+		// Immediately render after every keystroke so the user sees instant
+		// feedback.  forceRender() is synchronous and typically <1 ms for
+		// a terminal-sized screen, so this doesn't block stdin processing.
+		this.scheduler?.forceRender();
 	}
 
 	/** Handle parsed mouse events. */
