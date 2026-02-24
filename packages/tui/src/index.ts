@@ -12,7 +12,7 @@ export type { SlashCommand } from "./commands.js";
 export { SlashCommandRegistry } from "./commands.js";
 export type { CompletionItem, CompletionKind } from "./completion.js";
 // Completion
-export { CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "./completion.js";
+export { CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS, PROVIDER_MODELS } from "./completion.js";
 export type { CommandPaletteItem } from "./dialogs/command-palette.js";
 // Dialogs
 export { CommandPalette } from "./dialogs/command-palette.js";
