@@ -62,7 +62,15 @@ export class Screen {
 	set(row: number, col: number, cell: Cell): void {
 		if (row < 0 || row >= this.height || col < 0 || col >= this.width) return;
 		const idx = row * this.width + col;
-		this.back[idx] = cell;
+		const c = this.back[idx];
+		c.char = cell.char;
+		c.fg = cell.fg;
+		c.bg = cell.bg;
+		c.bold = cell.bold;
+		c.dim = cell.dim;
+		c.italic = cell.italic;
+		c.underline = cell.underline;
+		c.strikethrough = cell.strikethrough;
 	}
 
 	/** Read a cell from the back buffer. */
@@ -75,27 +83,46 @@ export class Screen {
 
 	/** Write a string to the back buffer at the given position. */
 	writeText(row: number, col: number, text: string, style?: Partial<Cell>): void {
+		if (row < 0 || row >= this.height) return;
+		const fgVal = style?.fg ?? -1;
+		const bgVal = style?.bg ?? -1;
+		const bold = style?.bold ?? false;
+		const dim = style?.dim ?? false;
+		const italic = style?.italic ?? false;
+		const underline = style?.underline ?? false;
+		const strikethrough = style?.strikethrough ?? false;
 		let c = col;
 		for (const ch of text) {
 			if (c >= this.width) break;
-			this.set(row, c, {
-				char: ch,
-				fg: style?.fg ?? -1,
-				bg: style?.bg ?? -1,
-				bold: style?.bold ?? false,
-				dim: style?.dim ?? false,
-				italic: style?.italic ?? false,
-				underline: style?.underline ?? false,
-				strikethrough: style?.strikethrough ?? false,
-			});
+			if (c < 0) {
+				c++;
+				continue;
+			}
+			const cell = this.back[row * this.width + c];
+			cell.char = ch;
+			cell.fg = fgVal;
+			cell.bg = bgVal;
+			cell.bold = bold;
+			cell.dim = dim;
+			cell.italic = italic;
+			cell.underline = underline;
+			cell.strikethrough = strikethrough;
 			c++;
 		}
 	}
 
-	/** Clear the back buffer to empty cells. */
+	/** Clear the back buffer to empty cells (in-place, zero allocation). */
 	clear(): void {
 		for (let i = 0; i < this.back.length; i++) {
-			this.back[i] = { ...EMPTY_CELL };
+			const c = this.back[i];
+			c.char = " ";
+			c.fg = -1;
+			c.bg = -1;
+			c.bold = false;
+			c.dim = false;
+			c.italic = false;
+			c.underline = false;
+			c.strikethrough = false;
 		}
 	}
 
@@ -104,7 +131,7 @@ export class Screen {
 	 * to bring the terminal in sync, then swaps buffers.
 	 */
 	diff(): ScreenPatch {
-		let output = "";
+		const parts: string[] = [];
 		let changedCells = 0;
 		let lastRow = -1;
 		let lastCol = -1;
@@ -121,31 +148,40 @@ export class Screen {
 
 				// Move cursor if not adjacent to last write
 				if (row !== lastRow || col !== lastCol) {
-					output += cursorTo(row + 1, col + 1);
+					parts.push(cursorTo(row + 1, col + 1));
 				}
 
 				// Apply styles
-				output += cellStyle(backCell);
-				output += backCell.char;
-				output += reset();
+				parts.push(cellStyle(backCell));
+				parts.push(backCell.char);
+				parts.push(reset());
 
 				lastRow = row;
 				lastCol = col + 1;
 			}
 		}
 
-		// Swap buffers
+		// Copy back → front in-place (zero new object allocations)
 		for (let i = 0; i < this.back.length; i++) {
-			this.front[i] = { ...this.back[i] };
+			const f = this.front[i];
+			const b = this.back[i];
+			f.char = b.char;
+			f.fg = b.fg;
+			f.bg = b.bg;
+			f.bold = b.bold;
+			f.dim = b.dim;
+			f.italic = b.italic;
+			f.underline = b.underline;
+			f.strikethrough = b.strikethrough;
 		}
 
-		return { output, changedCells };
+		return { output: parts.join(""), changedCells };
 	}
 
 	/** Force full redraw by clearing front buffer. */
 	invalidate(): void {
 		for (let i = 0; i < this.front.length; i++) {
-			this.front[i] = { ...EMPTY_CELL, char: "\0" };
+			this.front[i].char = "\0";
 		}
 	}
 

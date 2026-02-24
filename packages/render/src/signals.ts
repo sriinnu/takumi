@@ -172,7 +172,7 @@ export function computed<T>(fn: () => T): ReadonlySignal<T> {
 // ── Effect ────────────────────────────────────────────────────────────────────
 
 interface EffectNode extends Computation {
-	_fn: () => undefined | (() => void);
+	_fn: () => unknown;
 	_cleanup: (() => void) | undefined;
 	_disposed: boolean;
 }
@@ -181,7 +181,7 @@ interface EffectNode extends Computation {
  * Create a side effect that re-runs whenever its dependencies change.
  * Returns a dispose function.
  */
-export function effect(fn: () => undefined | (() => void)): () => void {
+export function effect(fn: () => unknown): () => void {
 	const node: EffectNode = {
 		_fn: fn,
 		_cleanup: undefined,
@@ -226,7 +226,8 @@ function runEffect(node: EffectNode): void {
 	const prevObserver = currentObserver;
 	currentObserver = node;
 	try {
-		node._cleanup = node._fn();
+		const result = node._fn();
+		node._cleanup = typeof result === "function" ? (result as () => void) : undefined;
 	} finally {
 		currentObserver = prevObserver;
 	}
