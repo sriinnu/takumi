@@ -56,50 +56,15 @@ export const MAX_VISIBLE_ITEMS = 8;
 
 /** Models grouped by provider — used for /model and /provider completions. */
 export const PROVIDER_MODELS: Record<string, string[]> = {
-	anthropic: [
-		"claude-opus-4-20250514",
-		"claude-sonnet-4-20250514",
-		"claude-haiku-3-20250307",
-	],
-	openai: [
-		"gpt-4.1",
-		"gpt-4.1-mini",
-		"gpt-4.1-nano",
-		"o3",
-		"o4-mini",
-	],
-	gemini: [
-		"gemini-2.5-pro",
-		"gemini-2.5-flash",
-	],
-	groq: [
-		"llama-3.3-70b-versatile",
-		"llama-3.1-8b-instant",
-		"mixtral-8x7b-32768",
-	],
-	deepseek: [
-		"deepseek-chat",
-		"deepseek-reasoner",
-	],
-	mistral: [
-		"mistral-large-latest",
-		"mistral-small-latest",
-	],
-	together: [
-		"meta-llama/Llama-3-70b-chat-hf",
-		"mistralai/Mixtral-8x7B-v0.1",
-	],
-	openrouter: [
-		"anthropic/claude-3-5-sonnet",
-		"openai/gpt-4o",
-		"google/gemini-pro-1.5",
-	],
-	ollama: [
-		"llama3",
-		"codellama",
-		"mistral",
-		"phi3",
-	],
+	anthropic: ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "claude-haiku-3-20250307"],
+	openai: ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3", "o4-mini"],
+	gemini: ["gemini-2.5-pro", "gemini-2.5-flash"],
+	groq: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+	deepseek: ["deepseek-chat", "deepseek-reasoner"],
+	mistral: ["mistral-large-latest", "mistral-small-latest"],
+	together: ["meta-llama/Llama-3-70b-chat-hf", "mistralai/Mixtral-8x7B-v0.1"],
+	openrouter: ["anthropic/claude-3-5-sonnet", "openai/gpt-4o", "google/gemini-pro-1.5"],
+	ollama: ["llama3", "codellama", "mistral", "phi3"],
 };
 
 /** Flat list of all known model IDs across providers. */

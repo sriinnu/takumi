@@ -73,9 +73,7 @@ export class StatusBarPanel extends Component {
 		const deposits = this.state.akashaDeposits.value;
 		const meshSize = this.state.akashaMeshSize.value;
 		// Format: " ʓ 3↑ 12⦿ " (ʓ symbol, mesh size with up arrow, deposits with circle)
-		const meshIndicator = chiConnected
-			? ` \u0293 ${meshSize}\u2191 ${deposits}\u29BF `
-			: " \u0293 ";
+		const meshIndicator = chiConnected ? ` \u0293 ${meshSize}\u2191 ${deposits}\u29BF ` : " \u0293 ";
 		const chiCol = rect.x + leftText.length;
 		screen.writeText(rect.y, chiCol, meshIndicator, {
 			fg: chiConnected ? 2 : 8, // green when connected, gray when disconnected

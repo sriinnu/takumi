@@ -300,7 +300,7 @@ function extractActionItems(reflection: string): string[] {
 	for (const line of lines) {
 		// Match patterns like "1. ", "- ", "• ", etc.
 		const match = line.match(/^\s*(?:\d+\.|[-•*])\s+(.+)$/);
-		if (match && match[1]) {
+		if (match?.[1]) {
 			actionItems.push(match[1].trim());
 		}
 	}
