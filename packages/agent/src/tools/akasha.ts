@@ -50,11 +50,7 @@ export const akashaTracesDefinition: ToolDefinition = {
 	category: "read",
 };
 
-export function createAkashaHandlers(
-	bridge: ChitraguptaBridge,
-	onDeposit?: () => void,
-	onTraceQuery?: () => void,
-) {
+export function createAkashaHandlers(bridge: ChitraguptaBridge, onDeposit?: () => void, onTraceQuery?: () => void) {
 	return {
 		deposit: async (input: Record<string, unknown>): Promise<ToolResult> => {
 			try {
@@ -63,10 +59,10 @@ export function createAkashaHandlers(
 				const topics = Array.isArray(input.topics) ? input.topics.map(String) : [];
 
 				await bridge.akashaDeposit(content, type, topics);
-				
+
 				// Notify state of deposit
 				onDeposit?.();
-				
+
 				return {
 					output: "Successfully deposited trace into Akasha.",
 					isError: false,
@@ -84,10 +80,10 @@ export function createAkashaHandlers(
 				const limit = typeof input.limit === "number" ? input.limit : 5;
 
 				const traces = await bridge.akashaTraces(query, limit);
-				
+
 				// Notify state of trace query activity
 				onTraceQuery?.();
-				
+
 				if (traces.length === 0) {
 					return {
 						output: "No relevant traces found in Akasha.",

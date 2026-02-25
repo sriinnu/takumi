@@ -216,7 +216,7 @@ function validateOrchestrationConfig(config: OrchestrationConfig): void {
 
 	// Conflict detection
 	if (config.ensemble?.enabled && config.progressiveRefinement?.enabled) {
-			throw new ConfigError("orchestration.ensemble and progressiveRefinement cannot both be enabled");
+		throw new ConfigError("orchestration.ensemble and progressiveRefinement cannot both be enabled");
 	}
 }
 
