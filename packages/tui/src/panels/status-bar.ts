@@ -2,22 +2,25 @@
  * StatusBarPanel — bottom status bar showing model, tokens, cost, etc.
  */
 
-import type { Rect } from "@takumi/core";
+import type { Rect, TakumiConfig } from "@takumi/core";
 import type { Screen } from "@takumi/render";
 import { Component, effect } from "@takumi/render";
 import type { AppState } from "../state.js";
 
 export interface StatusBarPanelProps {
 	state: AppState;
+	config: TakumiConfig;
 }
 
 export class StatusBarPanel extends Component {
 	private state: AppState;
+	private config: TakumiConfig;
 	private disposeEffect: (() => void) | null = null;
 
 	constructor(props: StatusBarPanelProps) {
 		super();
 		this.state = props.state;
+		this.config = props.config;
 
 		this.disposeEffect = effect(() => {
 			const _status = this.state.statusText.value;
@@ -64,53 +67,90 @@ export class StatusBarPanel extends Component {
 			});
 		}
 
-		// Left side: model name
-		const leftText = ` ${model} `;
-		screen.writeText(rect.y, rect.x, leftText, { fg: 15, bg: 236, bold: true });
+		const renderWidget = (widget: string): { text: string; fg: number; bg: number; bold?: boolean; dim?: boolean } => {
+			switch (widget) {
+				case "model":
+					return { text: ` ${model} `, fg: 15, bg: 236, bold: true };
+				case "mesh": {
+					const chiConnected = this.state.chitraguptaConnected.value;
+					const deposits = this.state.akashaDeposits.value;
+					const meshSize = this.state.akashaMeshSize.value;
+					const meshIndicator = chiConnected ? ` \u0293 ${meshSize}\u2191 ${deposits}\u29BF ` : " \u0293 ";
+					return { text: meshIndicator, fg: chiConnected ? 2 : 8, bg: 236, bold: chiConnected, dim: !chiConnected };
+				}
+				case "cluster": {
+					if (clusterId) {
+						const clusterText = ` \u2B21 ${clusterPhase} ${agentCount}\u2191 `;
+						return {
+							text: clusterText,
+							fg: clusterPhase === "DONE" ? 2 : clusterPhase === "FAILED" ? 1 : 3,
+							bg: 236,
+							bold: true,
+						};
+					}
+					return { text: "", fg: 7, bg: 236 };
+				}
+				case "status":
+					return { text: ` ${status} `, fg: isStreaming ? 3 : 7, bg: 236 };
+				case "metrics": {
+					const tokens = this.state.totalTokens.value;
+					const cost = this.state.totalCost.value;
+					const metricsText = tokens > 0 ? ` ${tokens.toLocaleString()}t | $${cost.toFixed(3)} ` : "";
+					return { text: metricsText, fg: 8, bg: 236, dim: true };
+				}
+				case "keybinds":
+					return { text: " Ctrl+C quit  Ctrl+K cmd  Ctrl+L clear ", fg: 8, bg: 236, dim: true };
+				default:
+					return { text: ` [${widget}] `, fg: 7, bg: 236 };
+			}
+		};
 
-		// Akasha p2p mesh indicator — ʓ (U+0293, like OM)
-		const chiConnected = this.state.chitraguptaConnected.value;
-		const deposits = this.state.akashaDeposits.value;
-		const meshSize = this.state.akashaMeshSize.value;
-		// Format: " ʓ 3↑ 12⦿ " (ʓ symbol, mesh size with up arrow, deposits with circle)
-		const meshIndicator = chiConnected ? ` \u0293 ${meshSize}\u2191 ${deposits}\u29BF ` : " \u0293 ";
-		const chiCol = rect.x + leftText.length;
-		screen.writeText(rect.y, chiCol, meshIndicator, {
-			fg: chiConnected ? 2 : 8, // green when connected, gray when disconnected
-			bg: 236,
-			bold: chiConnected,
-			dim: !chiConnected,
-		});
+		const statusBarConfig = this.config.statusBar || {
+			left: ["model", "mesh", "cluster"],
+			center: ["status"],
+			right: ["metrics", "keybinds"],
+		};
 
-		// Cluster state indicator — shown when a cluster is actively running
-		let afterChiCol = chiCol + meshIndicator.length;
-		if (clusterId) {
-			// Show phase + agent count badge: e.g. " ⬡ VALIDATING 4↑ "
-			const clusterText = ` \u2B21 ${clusterPhase} ${agentCount}\u2191 `;
-			screen.writeText(rect.y, afterChiCol, clusterText, {
-				fg: clusterPhase === "DONE" ? 2 : clusterPhase === "FAILED" ? 1 : 3,
-				bg: 236,
-				bold: true,
-			});
-			afterChiCol += clusterText.length;
+		// Left side
+		let currentLeftCol = rect.x;
+		for (const widget of statusBarConfig.left || []) {
+			const rendered = renderWidget(widget);
+			if (rendered.text) {
+				screen.writeText(rect.y, currentLeftCol, rendered.text, rendered);
+				currentLeftCol += rendered.text.length;
+			}
 		}
 
-		// Center: status
-		const centerText = ` ${status} `;
+		// Center
+		let centerText = "";
+		const centerWidgets = (statusBarConfig.center || []).map(renderWidget);
+		for (const rendered of centerWidgets) {
+			centerText += rendered.text;
+		}
 		const centerCol = rect.x + Math.floor((rect.width - centerText.length) / 2);
-		screen.writeText(rect.y, centerCol, centerText, {
-			fg: isStreaming ? 3 : 7,
-			bg: 236,
-		});
+		let currentCenterCol = centerCol;
+		for (const rendered of centerWidgets) {
+			if (rendered.text) {
+				screen.writeText(rect.y, currentCenterCol, rendered.text, rendered);
+				currentCenterCol += rendered.text.length;
+			}
+		}
 
-		// Right side: tokens, cost, keybind hints
-		const tokens = this.state.totalTokens.value;
-		const cost = this.state.totalCost.value;
-		const metricsText = tokens > 0 ? ` ${tokens.toLocaleString()}t | $${cost.toFixed(3)} ` : "";
-		const rightText = `${metricsText} Ctrl+C quit  Ctrl+K cmd  Ctrl+L clear `;
+		// Right side
+		let rightText = "";
+		const rightWidgets = (statusBarConfig.right || []).map(renderWidget);
+		for (const rendered of rightWidgets) {
+			rightText += rendered.text;
+		}
 		const rightCol = rect.x + rect.width - rightText.length;
 		if (rightCol > centerCol + centerText.length) {
-			screen.writeText(rect.y, rightCol, rightText, { fg: 8, bg: 236, dim: true });
+			let currentRightCol = rightCol;
+			for (const rendered of rightWidgets) {
+				if (rendered.text) {
+					screen.writeText(rect.y, currentRightCol, rendered.text, rendered);
+					currentRightCol += rendered.text.length;
+				}
+			}
 		}
 	}
 }

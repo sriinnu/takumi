@@ -336,6 +336,17 @@ export interface OrchestrationConfig {
 	};
 }
 
+export interface StatusBarConfig {
+	left?: string[];
+	center?: string[];
+	right?: string[];
+}
+
+export interface PluginConfig {
+	name: string;
+	options?: Record<string, any>;
+}
+
 export interface TakumiConfig {
 	/** API key (provider-specific or generic) */
 	apiKey: string;
@@ -384,4 +395,10 @@ export interface TakumiConfig {
 
 	/** Multi-agent orchestration settings (optional; uses sensible defaults if absent). */
 	orchestration?: OrchestrationConfig;
+
+	/** Status bar configuration */
+	statusBar?: StatusBarConfig;
+
+	/** Plugins configuration */
+	plugins?: PluginConfig[];
 }
