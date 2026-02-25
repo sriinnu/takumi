@@ -219,7 +219,9 @@ export function resolveTheme(theme: string | ThemeConfig | undefined): ResolvedT
 	}
 	// Inline theme: merge with default for missing ANSI tokens
 	const base = BUILT_IN_THEMES.default as ResolvedTheme;
-	return { ...base, ...theme, ansi: base.ansi } as ResolvedTheme;
+	const themeAnsi = (theme as ResolvedTheme).ansi ?? {};
+	const mergedAnsi = { ...base.ansi, ...themeAnsi };
+	return { ...base, ...theme, ansi: mergedAnsi } as ResolvedTheme;
 }
 
 export const THEME_NAMES = Object.keys(BUILT_IN_THEMES);
