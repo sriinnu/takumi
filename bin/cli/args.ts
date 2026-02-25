@@ -12,6 +12,7 @@ export function parseArgs(argv: string[]): CliArgs {
 		pr: false,
 		ship: false,
 		detach: false,
+		yes: false,
 	};
 
 	let i = 2;
@@ -21,6 +22,10 @@ export function parseArgs(argv: string[]): CliArgs {
 			case "--help":
 			case "-h":
 				args.help = true;
+				break;
+			case "--yes":
+			case "-y":
+				args.yes = true;
 				break;
 			case "--version":
 			case "-v":
