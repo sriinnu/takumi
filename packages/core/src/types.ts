@@ -347,6 +347,22 @@ export interface PluginConfig {
 	options?: Record<string, any>;
 }
 
+export interface ThemeConfig {
+	name: string;
+	colors: {
+		primary: string;
+		secondary: string;
+		background: string;
+		foreground: string;
+		success: string;
+		warning: string;
+		error: string;
+		muted: string;
+	};
+	/** Optional ANSI-256 token map used by the Kagami renderer. */
+	ansi?: Record<string, number>;
+}
+
 export interface TakumiConfig {
 	/** API key (provider-specific or generic) */
 	apiKey: string;
@@ -381,8 +397,8 @@ export interface TakumiConfig {
 	/** Permission rules */
 	permissions: PermissionRule[];
 
-	/** Theme name */
-	theme: string;
+	/** Theme name or custom theme config */
+	theme: string | ThemeConfig;
 
 	/** Log level */
 	logLevel: "debug" | "info" | "warn" | "error" | "silent";

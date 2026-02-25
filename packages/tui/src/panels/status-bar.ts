@@ -111,8 +111,16 @@ export class StatusBarPanel extends Component {
 			right: ["metrics", "keybinds"],
 		};
 
+		// ── Branded anchor: 匠 always pinned at position 0 ──────────────────────
+		const BRAND = " 匠 ";
+		screen.writeText(rect.y, rect.x, BRAND, { fg: 141, bg: 55, bold: true });
+		const brandWidth = BRAND.length;
+		// Separator pip after brand
+		screen.writeText(rect.y, rect.x + brandWidth, "│", { fg: 99, bg: 236, bold: false });
+		const anchorWidth = brandWidth + 1; // brand + separator
+
 		// Left side
-		let currentLeftCol = rect.x;
+		let currentLeftCol = rect.x + anchorWidth;
 		for (const widget of statusBarConfig.left || []) {
 			const rendered = renderWidget(widget);
 			if (rendered.text) {

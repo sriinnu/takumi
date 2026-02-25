@@ -9,6 +9,7 @@ import { fetchIssueContext, readStdin, runOneShot } from "./cli/one-shot.js";
 import { buildSingleProvider, canSkipApiKey, createProvider } from "./cli/provider.js";
 import { tryResolveCliToken } from "./cli/cli-auth.js";
 import { cmdDelete, cmdExport, cmdList, cmdLogs, cmdStatus } from "./cli/session-commands.js";
+import { printSplash } from "./cli/splash.js";
 
 const VERSION = "0.1.0";
 
@@ -106,6 +107,13 @@ function installFatalHandlers(): void {
 
 async function runInteractiveApp(config: TakumiConfig, args: ReturnType<typeof parseArgs>): Promise<void> {
 	installFatalHandlers();
+
+	// Show the colourful splash banner before entering the alternate screen
+	printSplash(VERSION);
+	if (!args.yes) {
+		// Brief pause so the splash is visible before alt-screen takes over
+		await new Promise((r) => setTimeout(r, 600));
+	}
 
 	const { TakumiApp } = await import("@takumi/tui");
 	const { ToolRegistry, registerBuiltinTools } = await import("@takumi/agent");
