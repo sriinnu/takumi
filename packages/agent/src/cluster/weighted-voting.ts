@@ -25,7 +25,7 @@
  * Validator A: APPROVE, confidence=0.9 → +0.9
  * Validator B: REJECT,  confidence=0.3 → -0.3
  * Validator C: APPROVE, confidence=0.7 → +0.7
- * 
+ *
  * Weighted sum: (0.9 - 0.3 + 0.7) / (0.9 + 0.3 + 0.7) = 1.3 / 1.9 = 0.68 → APPROVE
  * ```
  *
@@ -169,10 +169,12 @@ function buildExplanation(votes: ValidatorVote[], score: number, decision: Valid
 	const approveWeight = approveVotes.reduce((sum, v) => sum + v.confidence, 0);
 	const rejectWeight = rejectVotes.reduce((sum, v) => sum + v.confidence, 0);
 
-	return `Weighted decision: ${decision} (score=${(score * 100).toFixed(0)}%) | ` +
+	return (
+		`Weighted decision: ${decision} (score=${(score * 100).toFixed(0)}%) | ` +
 		`Approve: ${approveVotes.length} (weight=${approveWeight.toFixed(2)}), ` +
 		`Reject: ${rejectVotes.length} (weight=${rejectWeight.toFixed(2)}), ` +
-		`Revision: ${revisionVotes.length}`;
+		`Revision: ${revisionVotes.length}`
+	);
 }
 
 /**
@@ -189,7 +191,7 @@ function buildExplanation(votes: ValidatorVote[], score: number, decision: Valid
 export function calculateConfidence(
 	heuristicScore: number,
 	validatorOutput: string,
-	evaluator: AgentEvaluator,
+	_evaluator: AgentEvaluator,
 ): number {
 	// Base confidence from heuristic score (0-10 → 0-1)
 	let confidence = heuristicScore / 10;
@@ -215,10 +217,7 @@ export function calculateConfidence(
  * @param evaluator - AgentEvaluator for calculating confidence scores
  * @returns Aggregated result with weighted decision
  */
-export function aggregateValidations(
-	results: ValidationResult[],
-	evaluator: AgentEvaluator,
-): WeightedVotingResult {
+export function aggregateValidations(results: ValidationResult[], evaluator: AgentEvaluator): WeightedVotingResult {
 	const votes: ValidatorVote[] = results.map((result) => {
 		const heuristicReport = evaluator.evaluate(
 			result.validatorId,

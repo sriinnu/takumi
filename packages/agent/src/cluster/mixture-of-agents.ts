@@ -39,7 +39,7 @@ import { createLogger } from "@takumi/core";
 import type { AgentEvaluator } from "@yugenlab/chitragupta/niyanta";
 import type { MessagePayload } from "../loop.js";
 import type { PhaseContext } from "./phases.js";
-import { ValidationDecision, type ValidationResult } from "./types.js";
+import { ValidationDecision } from "./types.js";
 import { type ValidatorVote, weightedMajority } from "./weighted-voting.js";
 
 const log = createLogger("cluster-moa");

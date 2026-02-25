@@ -28,12 +28,11 @@
  * @see https://arxiv.org/abs/2203.11171
  */
 
-import type { AgentEvent } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import type { AgentEvaluator } from "@yugenlab/chitragupta/niyanta";
 import type { MessagePayload } from "../loop.js";
 import type { PhaseContext } from "./phases.js";
-import { AgentRole, AgentStatus, type ClusterEvent, type ValidationResult } from "./types.js";
+import { AgentRole } from "./types.js";
 
 const log = createLogger("cluster-ensemble");
 
@@ -131,9 +130,7 @@ export async function ensembleExecute(
 	// Sort candidates by heuristic score (highest first)
 	candidates.sort((a, b) => b.heuristicScore - a.heuristicScore);
 
-	log.info(
-		`Ensemble candidates: ${candidates.map((c) => `${c.workerId}=${c.heuristicScore.toFixed(2)}`).join(", ")}`,
-	);
+	log.info(`Ensemble candidates: ${candidates.map((c) => `${c.workerId}=${c.heuristicScore.toFixed(2)}`).join(", ")}`);
 
 	// Select winner (for now, highest heuristic score; can add validator voting later)
 	const winner = candidates[0];
@@ -151,7 +148,9 @@ export async function ensembleExecute(
 		{ input: 0, output: 0 },
 	);
 
-	log.info(`Selected winner: ${winner.workerId} (score=${winner.heuristicScore.toFixed(2)}, consensus=${(consensus * 100).toFixed(0)}%)`);
+	log.info(
+		`Selected winner: ${winner.workerId} (score=${winner.heuristicScore.toFixed(2)}, consensus=${(consensus * 100).toFixed(0)}%)`,
+	);
 
 	return {
 		candidates,
