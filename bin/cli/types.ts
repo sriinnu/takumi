@@ -23,6 +23,7 @@ export interface CliArgs {
 	ship: boolean;
 	detach: boolean;
 	issue?: string;
+	yes: boolean;
 }
 
 export interface DetachedJobRecord {
