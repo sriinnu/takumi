@@ -218,7 +218,7 @@ async function main(): Promise<void> {
 	const isNonTTY = !process.stdin.isTTY;
 	const isOneShot = prompt.length > 0 || args.print || isNonTTY;
 
-	if (!isOneShot && !args.provider && !args.model && !args.resume) {
+	if (!isOneShot && !args.provider && !args.model && !args.resume && !args.yes) {
 		await chooseProviderAndModel(config);
 	}
 
