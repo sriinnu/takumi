@@ -359,7 +359,14 @@ export interface ThemeConfig {
 		error: string;
 		muted: string;
 	};
-	/** Optional ANSI-256 token map used by the Kagami renderer. */
+	/**
+	 * Optional ANSI-256 token map used by the Kagami renderer.
+	 *
+	 * If omitted, the base theme's ANSI map is used when resolving the theme.
+	 * When defining a custom theme, providing a full `ansi` map is recommended,
+	 * as it is treated as the resolved theme's ANSI configuration rather than
+	 * being merged key-by-key with the base theme.
+	 */
 	ansi?: Record<string, number>;
 }
 
