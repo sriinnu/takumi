@@ -57,6 +57,9 @@ export type { SpinnerLine, ToolSpinnerEntry } from "./spinner.js";
 export { TOOL_SPINNER_FRAMES, ToolSpinner } from "./spinner.js";
 // State
 export { AppState } from "./state.js";
+export type { ResolvedTheme } from "./themes.js";
+// Themes
+export { BUILT_IN_THEMES, resolveTheme, THEME_NAMES } from "./themes.js";
 export { ChatView } from "./views/chat.js";
 // Views
 export { RootView } from "./views/root.js";

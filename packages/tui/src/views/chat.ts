@@ -41,7 +41,7 @@ export class ChatView extends Component {
 		this.config = props.config;
 		this.commands = props.commands ?? null;
 
-		this.header = new HeaderPanel({ state: this.state });
+		this.header = new HeaderPanel({ state: this.state, config: this.config });
 		this.messageList = new MessageListPanel({ state: this.state });
 		this.editor = new EditorPanel({
 			onSubmit: (text) => this.handleSubmit(text),
