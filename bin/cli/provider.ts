@@ -1,5 +1,6 @@
 import type { TakumiConfig } from "@takumi/core";
 import { PROVIDER_ENDPOINTS } from "@takumi/core";
+import { tryResolveCliToken } from "./cli-auth.js";
 
 export function canSkipApiKey(config: TakumiConfig): boolean {
 	if (config.provider === "ollama") return true;
@@ -22,13 +23,13 @@ export async function buildSingleProvider(
 	const env = process.env;
 
 	if (providerName === "anthropic") {
-		const key = config.apiKey || env.ANTHROPIC_API_KEY || env.TAKUMI_API_KEY;
+		const key = config.apiKey || env.ANTHROPIC_API_KEY || env.TAKUMI_API_KEY || tryResolveCliToken("anthropic");
 		if (!key) return null;
 		return new agent.DirectProvider({ ...config, apiKey: key });
 	}
 
 	if (providerName === "gemini") {
-		const key = config.apiKey || env.GEMINI_API_KEY || env.GOOGLE_API_KEY || env.TAKUMI_API_KEY;
+		const key = config.apiKey || env.GEMINI_API_KEY || env.GOOGLE_API_KEY || env.TAKUMI_API_KEY || tryResolveCliToken("gemini");
 		if (!key) return null;
 		return new agent.GeminiProvider({
 			...config,
@@ -48,7 +49,7 @@ export async function buildSingleProvider(
 	};
 
 	const envVar = keyMap[providerName];
-	const key = config.apiKey || (envVar ? env[envVar] : undefined) || env.TAKUMI_API_KEY;
+	const key = config.apiKey || (envVar ? env[envVar] : undefined) || env.TAKUMI_API_KEY || tryResolveCliToken(providerName);
 	if (!key && providerName !== "ollama") return null;
 
 	return new agent.OpenAIProvider({

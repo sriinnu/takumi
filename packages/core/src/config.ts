@@ -27,6 +27,7 @@ const DEFAULT_CONFIG: TakumiConfig = {
 	provider: "anthropic",
 	endpoint: "",
 	permissions: [],
+	// Keep default as string to match existing tests expecting "default"
 	theme: "default",
 	logLevel: "info",
 	maxTurns: 100,
@@ -70,6 +71,12 @@ const DEFAULT_CONFIG: TakumiConfig = {
 			enabled: true,
 		},
 	},
+	statusBar: {
+		left: ["model", "mesh"],
+		center: ["status"],
+		right: ["metrics", "keybinds"],
+	},
+	plugins: [],
 };
 
 /** Config file search paths, in priority order (first found wins). */

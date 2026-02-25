@@ -46,6 +46,8 @@ It integrates natively with [Chitragupta](https://github.com/sriinnu/chitragupta
 - **Custom Renderer (Kagami 鏡)** — Yoga WASM flexbox layout, double-buffered ANSI output, cell-level diff
 - **Reactive Signals (Myaku 脈)** — Fine-grained Preact-style signals with auto-dependency tracking (~150 lines)
 - **Agent Loop (Shigoto 仕事)** — ReAct reasoning + tool execution, streaming responses, context compaction
+- **Zero-Config Auth** — Automatically extracts API keys from existing CLI tools (`gh`, `gcloud`, `claude`)
+- **Configurable UI** — Dynamic status bar and plugin system foundation
 - **Rich Components** — Box, Text, Input, Scroll, List, Markdown, Syntax Highlighter, Diff Viewer, Spinner
 - **7 Built-in Tools** — Read, Write, Edit, Bash (sandboxed), Glob, Grep, Ask
 - **Permission System** — Pattern-matched allow/ask/deny rules with session scoping
@@ -85,14 +87,19 @@ pnpm takumi
 
 ### Quick Start with API Key
 
+Takumi supports **Zero-Config Authentication**. If you have the GitHub CLI (`gh`), Google Cloud CLI (`gcloud`), or Claude CLI installed and authenticated, Takumi will automatically extract the tokens. No `.env` setup required!
+
 ```bash
-# Option 1: Direct Anthropic API key (simplest)
+# Option 1: Zero-Config (if gh, gcloud, or claude CLI is authenticated)
+pnpm takumi -y
+
+# Option 2: Direct Anthropic API key
 ANTHROPIC_API_KEY=sk-ant-... pnpm takumi
 
-# Option 2: Via Darpana proxy (supports any provider)
+# Option 3: Via Darpana proxy (supports any provider)
 OPENAI_API_KEY=sk-... pnpm takumi --proxy http://localhost:8082
 
-# Option 3: Local Ollama (no key needed)
+# Option 4: Local Ollama (no key needed)
 pnpm takumi --proxy http://localhost:8082 --model local/llama3
 ```
 
@@ -187,6 +194,7 @@ Options:
   --theme <name>         UI theme
   --log-level <level>    Log level (debug|info|warn|error)
   --cwd <dir>            Working directory
+  --yes, -y              Skip interactive prompts (fast boot)
   --help, -h             Show help
   --version, -v          Show version
 ```

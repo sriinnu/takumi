@@ -70,7 +70,7 @@ export class TakumiApp {
 		this.state = new AppState();
 		this.keybinds = new KeyBindingRegistry();
 		this.commands = new SlashCommandRegistry();
-		this.rootView = new RootView({ state: this.state, commands: this.commands });
+		this.rootView = new RootView({ state: this.state, config: this.config, commands: this.commands });
 		if (options.sendMessage && options.tools) {
 			this.agentRunner = new AgentRunner(this.state, this.config, options.sendMessage, options.tools);
 			this.rootView.chatView.agentRunner = this.agentRunner;

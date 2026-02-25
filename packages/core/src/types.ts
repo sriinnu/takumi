@@ -336,6 +336,40 @@ export interface OrchestrationConfig {
 	};
 }
 
+export interface StatusBarConfig {
+	left?: string[];
+	center?: string[];
+	right?: string[];
+}
+
+export interface PluginConfig<TOptions = Record<string, unknown>> {
+	name: string;
+	options?: TOptions;
+}
+
+export interface ThemeConfig {
+	name: string;
+	colors: {
+		primary: string;
+		secondary: string;
+		background: string;
+		foreground: string;
+		success: string;
+		warning: string;
+		error: string;
+		muted: string;
+	};
+	/**
+	 * Optional ANSI-256 token map used by the Kagami renderer.
+	 *
+	 * If omitted, the base theme's ANSI map is used when resolving the theme.
+	 * When defining a custom theme, providing a full `ansi` map is recommended,
+	 * as it is treated as the resolved theme's ANSI configuration rather than
+	 * being merged key-by-key with the base theme.
+	 */
+	ansi?: Record<string, number>;
+}
+
 export interface TakumiConfig {
 	/** API key (provider-specific or generic) */
 	apiKey: string;
@@ -370,8 +404,8 @@ export interface TakumiConfig {
 	/** Permission rules */
 	permissions: PermissionRule[];
 
-	/** Theme name */
-	theme: string;
+	/** Theme name or custom theme config */
+	theme: string | ThemeConfig;
 
 	/** Log level */
 	logLevel: "debug" | "info" | "warn" | "error" | "silent";
@@ -384,4 +418,10 @@ export interface TakumiConfig {
 
 	/** Multi-agent orchestration settings (optional; uses sensible defaults if absent). */
 	orchestration?: OrchestrationConfig;
+
+	/** Status bar configuration */
+	statusBar?: StatusBarConfig;
+
+	/** Plugins configuration */
+	plugins?: PluginConfig[];
 }
