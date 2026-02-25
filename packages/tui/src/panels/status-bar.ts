@@ -113,10 +113,15 @@ export class StatusBarPanel extends Component {
 
 		// ── Branded anchor: 匠 always pinned at position 0 ──────────────────────
 		const BRAND = " 匠 ";
-		screen.writeText(rect.y, rect.x, BRAND, { fg: 141, bg: 55, bold: true });
+		const themeAnsi = this.config.theme?.ansi;
+		const brandFg = themeAnsi?.primary ?? 141;
+		const brandBg = themeAnsi?.bgBrand ?? 55;
+		const brandSeparatorFg = themeAnsi?.muted ?? 99;
+		const brandSeparatorBg = themeAnsi?.bg ?? 236;
+		screen.writeText(rect.y, rect.x, BRAND, { fg: brandFg, bg: brandBg, bold: true });
 		const brandWidth = BRAND.length;
 		// Separator pip after brand
-		screen.writeText(rect.y, rect.x + brandWidth, "│", { fg: 99, bg: 236, bold: false });
+		screen.writeText(rect.y, rect.x + brandWidth, "│", { fg: brandSeparatorFg, bg: brandSeparatorBg, bold: false });
 		const anchorWidth = brandWidth + 1; // brand + separator
 
 		// Left side
