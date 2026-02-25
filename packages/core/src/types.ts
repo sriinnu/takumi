@@ -342,9 +342,9 @@ export interface StatusBarConfig {
 	right?: string[];
 }
 
-export interface PluginConfig {
+export interface PluginConfig<TOptions = Record<string, unknown>> {
 	name: string;
-	options?: Record<string, any>;
+	options?: TOptions;
 }
 
 export interface ThemeConfig {
