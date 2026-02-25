@@ -113,7 +113,7 @@ export class StatusBarPanel extends Component {
 
 		// ── Branded anchor: 匠 always pinned at position 0 ──────────────────────
 		const BRAND = " 匠 ";
-		const themeAnsi = this.config.theme?.ansi;
+		const themeAnsi = typeof this.config.theme === "object" ? this.config.theme.ansi : undefined;
 		const brandFg = themeAnsi?.primary ?? 141;
 		const brandBg = themeAnsi?.bgBrand ?? 55;
 		const brandSeparatorFg = themeAnsi?.muted ?? 99;

@@ -1,3 +1,6 @@
 pnpm exec lint-staged
+pnpm exec tsc -p packages/core/tsconfig.json --noEmit
+pnpm exec tsc -p packages/render/tsconfig.json --noEmit
 pnpm exec tsc -p packages/bridge/tsconfig.json --noEmit
+pnpm exec tsc -p packages/agent/tsconfig.json --noEmit
 pnpm exec tsc -p packages/tui/tsconfig.json --noEmit
