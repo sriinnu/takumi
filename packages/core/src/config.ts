@@ -27,19 +27,8 @@ const DEFAULT_CONFIG: TakumiConfig = {
 	provider: "anthropic",
 	endpoint: "",
 	permissions: [],
-	theme: {
-		name: "default",
-		colors: {
-			primary: "#00ff00",
-			secondary: "#0088ff",
-			background: "#000000",
-			foreground: "#ffffff",
-			success: "#00ff00",
-			warning: "#ffff00",
-			error: "#ff0000",
-			muted: "#888888",
-		},
-	},
+	// Keep default as string to match existing tests expecting "default"
+	theme: "default",
 	logLevel: "info",
 	maxTurns: 100,
 	experimental: {},
