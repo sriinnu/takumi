@@ -70,6 +70,12 @@ const DEFAULT_CONFIG: TakumiConfig = {
 			enabled: true,
 		},
 	},
+	statusBar: {
+		left: ["model", "mesh"],
+		center: ["status"],
+		right: ["metrics", "keybinds"],
+	},
+	plugins: [],
 };
 
 /** Config file search paths, in priority order (first found wins). */

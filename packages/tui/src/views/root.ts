@@ -8,7 +8,7 @@
  * - With preview: [file tree | messages | file preview]  (replaces info sidebar)
  */
 
-import type { KeyEvent, Rect } from "@takumi/core";
+import type { KeyEvent, Rect, TakumiConfig } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import type { Screen } from "@takumi/render";
 import { Component, effect } from "@takumi/render";
@@ -21,6 +21,7 @@ import { ChatView } from "./chat.js";
 
 export interface RootViewProps {
 	state: AppState;
+	config: TakumiConfig;
 	commands?: SlashCommandRegistry;
 	onFileSelect?: (filePath: string) => void;
 	projectRoot?: string;
@@ -28,6 +29,7 @@ export interface RootViewProps {
 
 export class RootView extends Component {
 	private state: AppState;
+	private config: TakumiConfig;
 	readonly chatView: ChatView;
 	readonly sidebar: SidebarPanel;
 	readonly fileTree: FileTreePanel;
@@ -39,9 +41,11 @@ export class RootView extends Component {
 	constructor(props: RootViewProps) {
 		super();
 		this.state = props.state;
+		this.config = props.config;
 
 		this.chatView = new ChatView({
 			state: this.state,
+			config: this.config,
 			commands: props.commands,
 			projectRoot: props.projectRoot,
 		});
