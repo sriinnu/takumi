@@ -7,6 +7,7 @@ import { cmdAttach, cmdJobs, cmdStop, cmdWatch, startDetachedJob } from "./cli/d
 import { printHelp } from "./cli/help.js";
 import { fetchIssueContext, readStdin, runOneShot } from "./cli/one-shot.js";
 import { buildSingleProvider, canSkipApiKey, createProvider } from "./cli/provider.js";
+import { tryResolveCliToken } from "./cli/cli-auth.js";
 import { cmdDelete, cmdExport, cmdList, cmdLogs, cmdStatus } from "./cli/session-commands.js";
 
 const VERSION = "0.1.0";
@@ -223,18 +224,23 @@ async function main(): Promise<void> {
 	}
 
 	if (!config.apiKey && !config.proxyUrl && !canSkipApiKey(config) && !hasProviderEnvKey(config)) {
-		console.error(
-			`\nError: No API key configured for provider '${config.provider}'.\n\n` +
-				"Set an API key environment variable for your provider:\n" +
-				"  ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, etc.\n\n" +
-				"Or pass --api-key <key> on the command line.\n" +
-				"Or configure apiKey in:\n" +
-				"  .takumi/config.json\n" +
-				"  ~/.takumi/config.json\n\n" +
-				"Or use --proxy to connect through Darpana.\n" +
-				"Or use --provider ollama for local models (no key needed).\n",
-		);
-		process.exit(1);
+		const cliToken = tryResolveCliToken(config.provider);
+		if (cliToken) {
+			config.apiKey = cliToken;
+		} else {
+			console.error(
+				`\nError: No API key configured for provider '${config.provider}'.\n\n` +
+					"Set an API key environment variable for your provider:\n" +
+					"  ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, etc.\n\n" +
+					"Or pass --api-key <key> on the command line.\n" +
+					"Or configure apiKey in:\n" +
+					"  .takumi/config.json\n" +
+					"  ~/.takumi/config.json\n\n" +
+					"Or use --proxy to connect through Darpana.\n" +
+					"Or use --provider ollama for local models (no key needed).\n",
+			);
+			process.exit(1);
+		}
 	}
 
 	if (config.workingDirectory && config.workingDirectory !== process.cwd()) {
