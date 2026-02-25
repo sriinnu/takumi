@@ -23,7 +23,12 @@ export async function buildSingleProvider(
 	const env = process.env;
 
 	if (providerName === "anthropic") {
-		const key = config.apiKey || env.ANTHROPIC_API_KEY || env.TAKUMI_API_KEY || tryResolveCliToken("anthropic");
+		const key =
+			config.apiKey ||
+			env.ANTHROPIC_API_KEY ||
+			env.CLAUDE_CODE_OAUTH_TOKEN ||
+			env.TAKUMI_API_KEY ||
+			tryResolveCliToken("anthropic");
 		if (!key) return null;
 		return new agent.DirectProvider({ ...config, apiKey: key });
 	}
@@ -49,7 +54,12 @@ export async function buildSingleProvider(
 	};
 
 	const envVar = keyMap[providerName];
-	const key = config.apiKey || (envVar ? env[envVar] : undefined) || env.TAKUMI_API_KEY || tryResolveCliToken(providerName);
+	const key =
+		config.apiKey ||
+		(envVar ? env[envVar] : undefined) ||
+		env.TAKUMI_API_KEY ||
+		(providerName === "openai" ? tryResolveCliToken("codex") : undefined) ||
+		tryResolveCliToken(providerName);
 	if (!key && providerName !== "ollama") return null;
 
 	return new agent.OpenAIProvider({
