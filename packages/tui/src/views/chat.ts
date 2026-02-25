@@ -2,7 +2,7 @@
  * ChatView — the main chat interface combining message list and input.
  */
 
-import type { KeyEvent, Message, Rect } from "@takumi/core";
+import type { KeyEvent, Message, Rect, TakumiConfig } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import type { Screen } from "@takumi/render";
 import { Component } from "@takumi/render";
@@ -18,12 +18,14 @@ const log = createLogger("chat-view");
 
 export interface ChatViewProps {
 	state: AppState;
+	config: TakumiConfig;
 	commands?: SlashCommandRegistry;
 	projectRoot?: string;
 }
 
 export class ChatView extends Component {
 	private state: AppState;
+	private config: TakumiConfig;
 	private header: HeaderPanel;
 	private messageList: MessageListPanel;
 	private editor: EditorPanel;
@@ -36,16 +38,17 @@ export class ChatView extends Component {
 	constructor(props: ChatViewProps) {
 		super();
 		this.state = props.state;
+		this.config = props.config;
 		this.commands = props.commands ?? null;
 
-		this.header = new HeaderPanel({ state: this.state });
+		this.header = new HeaderPanel({ state: this.state, config: this.config });
 		this.messageList = new MessageListPanel({ state: this.state });
 		this.editor = new EditorPanel({
 			onSubmit: (text) => this.handleSubmit(text),
 			commands: props.commands,
 			projectRoot: props.projectRoot,
 		});
-		this.statusBar = new StatusBarPanel({ state: this.state });
+		this.statusBar = new StatusBarPanel({ state: this.state, config: this.config });
 
 		this.appendChild(this.header);
 		this.appendChild(this.messageList);
