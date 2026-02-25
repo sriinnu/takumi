@@ -54,6 +54,9 @@
 	"pnpm": {
 		"onlyBuiltDependencies": [
 			"esbuild"
+		],
+		"ignoredBuiltDependencies": [
+			"better-sqlite3"
 		]
 	},
 	"lint-staged": {
