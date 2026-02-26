@@ -24,6 +24,10 @@ export { createIsolationContext } from "./isolation.js";
 export type { OrchestratorOptions } from "./orchestrator.js";
 // ── Orchestrator ──────────────────────────────────────────────────────────────
 export { ClusterOrchestrator } from "./orchestrator.js";
+
+// ── Tree-of-Thoughts ─────────────────────────────────────────────────────────
+export type { ThoughtNode, ToTConfig, ToTResult } from "./tot-planner.js";
+export { totPlan } from "./tot-planner.js";
 export type {
 	AgentContext,
 	AgentInstance,
