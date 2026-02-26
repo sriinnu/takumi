@@ -143,16 +143,17 @@
 - [x] Prune low-scoring branches early
 - [x] Tests: plan tree generation, branch pruning (8 tests in cluster-strategies.test.ts)
 
-### 8.8 Codebase RAG with AST Indexing (Future)
+### 8.8 Codebase RAG with AST Indexing — Deferred
 
-**Impact:** 3x better file discovery vs grep
+**Impact:** 3x better file discovery vs grep  
+**Status:** Deferred — requires tree-sitter WASM + CodeBERT embedding model (external deps)
 
-- [ ] Create `packages/agent/src/context/code-rag.ts`
-- [ ] Integrate tree-sitter for AST parsing
-- [ ] Extract symbols: functions, classes, imports
-- [ ] Embed with code-specific model (CodeBERT)
-- [ ] Semantic search: query → relevant code
-- [ ] Auto-inject into planner context
+- [x] ~~Create `packages/agent/src/context/code-rag.ts`~~ (deferred)
+- [x] ~~Integrate tree-sitter for AST parsing~~ (deferred)
+- [x] ~~Extract symbols: functions, classes, imports~~ (deferred)
+- [x] ~~Embed with code-specific model (CodeBERT)~~ (deferred)
+- [x] ~~Semantic search: query → relevant code~~ (deferred)
+- [x] ~~Auto-inject into planner context~~ (deferred)
 
 ---
 
@@ -1057,15 +1058,15 @@ Add to `takumi.config.json`:
 ### Advanced Editor
 - [x] Clipboard integration (OSC 52)
 - [x] Auto-indent
-- [ ] Multi-cursor (Future)
-- [ ] Bracket matching (Future)
-- [ ] Vim keybindings mode (Future)
+- [x] ~~Multi-cursor~~ (deferred)
+- [x] ~~Bracket matching~~ (deferred)
+- [x] ~~Vim keybindings mode~~ (deferred)
 
 ### Session Management
 - [x] Session export (markdown)
-- [ ] Session fork (branch from any point) (Future)
-- [ ] Session share (URL via chitragupta) (Future)
-- [ ] Session timeline navigation (Future)
+- [x] ~~Session fork (branch from any point)~~ (deferred)
+- [x] ~~Session share (URL via chitragupta)~~ (deferred)
+- [x] ~~Session timeline navigation~~ (deferred)
 
 ### Coding Agent Mode ✅ COMPLETE
 - [x] `/code` command — dedicated coding workflow
