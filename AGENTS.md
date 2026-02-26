@@ -79,3 +79,5 @@ The `.husky/pre-commit` hook runs:
 ### Commit Messages
 Follow conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`.
 Keep the first line under 72 characters.
+
+**Never include `Co-Authored-By:` or `Co-authored-by:` trailers in any commit message.** Commits must be authored solely by the developer. If an AI tool adds these automatically, strip them before pushing (use `git filter-branch` or `git rebase -i` to rewrite).
