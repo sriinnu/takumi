@@ -123,4 +123,4 @@ When validators reject:
 4. The worker produces a revised output.
 5. Validation re-runs (up to `maxRetries`).
 
-See [ORCHESTRATION.md](ORCHESTRATION.md) for the full phase flow.
+See [orchestration.md](orchestration.md) for the full phase flow.

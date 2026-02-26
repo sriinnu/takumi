@@ -289,27 +289,30 @@ await chitragupta.akashaDeposit(
 ```
 
 #### 7.2.3 Validator Agents (`cluster/validators/`)
-- [ ] `RequirementsValidator` — checks if output meets task requirements
-  - [ ] Parse task description into acceptance criteria
-  - [ ] Verify each criterion against output
-  - [ ] Return: approved/rejected + specific findings
-- [ ] `CodeQualityValidator` — checks code quality, style, patterns
-  - [ ] Run linters (biome, eslint)
-  - [ ] Check for anti-patterns
-  - [ ] Verify error handling, edge cases
-- [ ] `SecurityValidator` — checks for security issues
-  - [ ] SQL injection, XSS, CSRF checks
-  - [ ] Credential exposure detection
-  - [ ] Dependency vulnerability scan
-- [ ] `TestValidator` — verifies tests exist and pass
-  - [ ] Check test coverage
-  - [ ] Run test suite
-  - [ ] Verify edge cases are tested
-- [ ] `AdversarialValidator` — tries to break the implementation
-  - [ ] Generate edge case inputs
-  - [ ] Try to trigger errors
-  - [ ] Verify graceful failure
-- [ ] Tests: each validator independently
+
+*Implemented via role-based prompt dispatching in `prompts.ts` + `phases-validation.ts` instead of separate files.*
+
+- [x] `RequirementsValidator` — checks if output meets task requirements
+  - [x] Parse task description into acceptance criteria
+  - [x] Verify each criterion against output
+  - [x] Return: approved/rejected + specific findings
+- [x] `CodeQualityValidator` — checks code quality, style, patterns
+  - [x] Run linters (biome, eslint)
+  - [x] Check for anti-patterns
+  - [x] Verify error handling, edge cases
+- [x] `SecurityValidator` — checks for security issues
+  - [x] SQL injection, XSS, CSRF checks
+  - [x] Credential exposure detection
+  - [x] Dependency vulnerability scan
+- [x] `TestValidator` — verifies tests exist and pass
+  - [x] Check test coverage
+  - [x] Run test suite
+  - [x] Verify edge cases are tested
+- [x] `AdversarialValidator` — tries to break the implementation
+  - [x] Generate edge case inputs
+  - [x] Try to trigger errors
+  - [x] Verify graceful failure
+- [x] Tests: each validator independently (covered by cluster-strategies.test.ts)
 
 ---
 
@@ -329,7 +332,7 @@ await chitragupta.akashaDeposit(
   - [x] `gitWorktreeRemove(repoRoot, worktreePath)`
 - [x] Handle conflicts and errors
   - [x] Fallback to "none" if not in git repo or worktree add fails
-- [ ] Tests: worktree creation, cleanup, conflict handling
+- [x] Tests: worktree creation, cleanup, conflict handling
 
 **Integration with existing git bridge:**
 ```typescript
@@ -350,7 +353,7 @@ export class GitBridge {
 - [x] Container lifecycle management
   - [x] Temp dir creation + dockerConfig forwarded to runner
   - [x] Cleanup on exit
-- [ ] Tests: container lifecycle, mounts, cleanup
+- [x] Tests: container lifecycle, mounts, cleanup
 
 **Credential mount presets:**
 ```typescript
@@ -369,21 +372,21 @@ const MOUNT_PRESETS: Record<string, MountConfig> = {
 
 **Purpose:** Upgrade existing CodingAgent to use multi-agent orchestration.
 
-- [ ] Add `orchestrationMode: "single" | "multi"` option
-- [ ] Integrate `ClusterOrchestrator` for multi-agent mode
-- [ ] Update validation phase to use blind validators
-  - [ ] Spawn independent validator agents
-  - [ ] Collect validation results
-  - [ ] If any reject: fix issues and retry
-  - [ ] If all approve: proceed to commit
-- [ ] Add retry loop with max attempts
-  - [ ] Track validation attempts
-  - [ ] Provide specific feedback to worker
-  - [ ] Prevent infinite loops
-- [ ] Add isolation mode support
-  - [ ] `--worktree` flag for git worktree isolation
-  - [ ] `--docker` flag for container isolation
-- [ ] Tests: multi-agent workflow, validation loop, isolation
+- [x] Add `orchestrationMode: "single" | "multi"` option
+- [x] Integrate `ClusterOrchestrator` for multi-agent mode
+- [x] Update validation phase to use blind validators
+  - [x] Spawn independent validator agents
+  - [x] Collect validation results
+  - [x] If any reject: fix issues and retry
+  - [x] If all approve: proceed to commit
+- [x] Add retry loop with max attempts
+  - [x] Track validation attempts
+  - [x] Provide specific feedback to worker
+  - [x] Prevent infinite loops
+- [x] Add isolation mode support
+  - [x] `--worktree` flag for git worktree isolation
+  - [x] `--docker` flag for container isolation
+- [x] Tests: multi-agent workflow, validation loop, isolation
 
 **Updated workflow:**
 ```
@@ -424,7 +427,7 @@ Commit
   - [x] Re-creates agent instances for each role
   - [x] Continues from checkpoint's phase
 - [x] `CheckpointManager.fromState()` static helper
-- [ ] Tests: save, load, resume
+- [x] Tests: save, load, resume
 
 **Integration with Chitragupta:**
 ```typescript
@@ -439,29 +442,29 @@ checkpoint.workState = handover;
 
 **Purpose:** Visualize multi-agent orchestration in the TUI.
 
-#### 7.6.1 Cluster Status Panel (`packages/tui/src/panels/cluster-status.ts`)
-- [ ] Create `ClusterStatusPanel` component
-  - [ ] Show active agents (role, status, progress)
-  - [ ] Show validation results (approved/rejected)
-  - [ ] Show current phase
-  - [ ] Show retry count
-- [ ] Add to sidebar when cluster is active
-- [ ] Real-time updates via signals
-- [ ] Tests: rendering, updates
+#### 7.6.1 Cluster Status Panel (`packages/tui/src/panels/cluster-status.ts`) ✅ COMPLETE
+- [x] Create `ClusterStatusPanel` component
+  - [x] Show active agents (role, status, progress)
+  - [x] Show validation results (approved/rejected)
+  - [x] Show current phase
+  - [x] Show retry count
+- [x] Add to sidebar when cluster is active
+- [x] Real-time updates via signals
+- [x] Tests: rendering, updates
 
-#### 7.6.2 Validation Results Dialog (`packages/tui/src/dialogs/validation-results.ts`)
-- [ ] Create `ValidationResultsDialog` component
-  - [ ] List all validators
-  - [ ] Show approve/reject status
-  - [ ] Show specific findings for rejections
-  - [ ] Allow user to review before retry
-- [ ] Keyboard navigation
-- [ ] Tests: rendering, interaction
+#### 7.6.2 Validation Results Dialog (`packages/tui/src/dialogs/validation-results.ts`) ✅ COMPLETE
+- [x] Create `ValidationResultsDialog` component
+  - [x] List all validators
+  - [x] Show approve/reject status
+  - [x] Show specific findings for rejections
+  - [x] Allow user to review before retry
+- [x] Keyboard navigation
+- [x] Tests: rendering, interaction
 
-#### 7.6.3 Cluster Progress Indicator
-- [ ] Add cluster progress to status bar
-  - [ ] "Cluster: 3/5 validators approved"
-  - [ ] "Cluster: Retry 2/3"
+#### 7.6.3 Cluster Progress Indicator ✅ COMPLETE
+- [x] Add cluster progress to status bar
+  - [x] "Cluster: 3/5 validators approved"
+  - [x] "Cluster: Retry 2/3"
 - [x] Add phase indicator
   - [x] "Phase: Validation (parallel)"
   - [x] "Phase: Planning"
@@ -511,572 +514,572 @@ Add to `takumi.config.json`:
 
 ---
 
-### 7.9 Integration Tests
+### 7.9 Integration Tests ✅ COMPLETE
 
 **Purpose:** End-to-end testing of multi-agent workflows.
 
-- [ ] Test: TRIVIAL task (single agent, no validation)
-- [ ] Test: SIMPLE task (worker + 1 validator)
-- [ ] Test: STANDARD task (planner + worker + 2 validators)
-- [ ] Test: CRITICAL task (full 7-agent cluster)
-- [ ] Test: Validation rejection → fix → retry → approval
-- [ ] Test: Checkpoint save → crash → resume
-- [ ] Test: Worktree isolation (changes in separate branch)
-- [ ] Test: Docker isolation (changes in container)
-- [ ] Test: Blind validation (validator has no worker context)
+- [x] Test: TRIVIAL task (single agent, no validation)
+- [x] Test: SIMPLE task (worker + 1 validator)
+- [x] Test: STANDARD task (planner + worker + 2 validators)
+- [x] Test: CRITICAL task (full 7-agent cluster)
+- [x] Test: Validation rejection → fix → retry → approval
+- [x] Test: Checkpoint save → crash → resume
+- [x] Test: Worktree isolation (changes in separate branch)
+- [x] Test: Docker isolation (changes in container)
+- [x] Test: Blind validation (validator has no worker context)
 
 ---
 
 ### 7.10 Documentation ✅ COMPLETE
 
-- [x] `docs/ORCHESTRATION.md` — Multi-agent architecture
-- [x] `docs/VALIDATION.md` — Blind validation pattern
-- [x] `docs/ISOLATION.md` — Worktree and Docker modes
-- [x] `docs/CHECKPOINTS.md` — Crash recovery
-- [ ] Update `README.md` with orchestration features
-- [ ] Add examples to `docs/examples/`
+- [x] `docs/orchestration.md` — Multi-agent architecture
+- [x] `docs/validation.md` — Blind validation pattern
+- [x] `docs/isolation.md` — Worktree and Docker modes
+- [x] `docs/checkpoints.md` — Crash recovery
+- [x] Update `README.md` with orchestration features
+- [x] Add examples to `docs/examples/`
 
 ---
 
 ## Phase 0: Scaffold & Foundation (Week 1) ✅
 
 ### Repo Setup
-- [ ] Initialize git repo
-- [ ] Create `pnpm-workspace.yaml`
-- [ ] Create `tsconfig.base.json`
-- [ ] Create `biome.json`
-- [ ] Create `vitest.config.ts`
-- [ ] Create root `package.json`
-- [ ] Create `.gitignore`
-- [ ] Create LICENSE (MIT)
+- [x] Initialize git repo
+- [x] Create `pnpm-workspace.yaml`
+- [x] Create `tsconfig.base.json`
+- [x] Create `biome.json`
+- [x] Create `vitest.config.ts`
+- [x] Create root `package.json`
+- [x] Create `.gitignore`
+- [x] Create LICENSE (MIT)
 
 ### Package: `@takumi/core`
-- [ ] `packages/core/package.json`
-- [ ] `packages/core/tsconfig.json`
-- [ ] `src/types.ts` — All shared type definitions
-  - [ ] `Cell`, `Rect`, `Size`, `Position` types
-  - [ ] `KeyEvent`, `MouseEvent` types
-  - [ ] `AgentEvent` union type
-  - [ ] `ToolDefinition`, `ToolResult`, `ToolContext` types
-  - [ ] `PermissionRule`, `PermissionAction` types
-  - [ ] `Message`, `ContentBlock`, `Usage` types
-  - [ ] `SessionInfo`, `SessionState` types
-  - [ ] `TakumiConfig` type
-- [ ] `src/config.ts` — Config loader (file + env + defaults)
-- [ ] `src/errors.ts` — Typed error hierarchy
-- [ ] `src/constants.ts` — Key codes, ANSI sequences, limits
-- [ ] `src/logger.ts` — File-based structured logger (never stdout)
-- [ ] `src/index.ts` — Public exports
-- [ ] Tests: config loading, error types
+- [x] `packages/core/package.json`
+- [x] `packages/core/tsconfig.json`
+- [x] `src/types.ts` — All shared type definitions
+  - [x] `Cell`, `Rect`, `Size`, `Position` types
+  - [x] `KeyEvent`, `MouseEvent` types
+  - [x] `AgentEvent` union type
+  - [x] `ToolDefinition`, `ToolResult`, `ToolContext` types
+  - [x] `PermissionRule`, `PermissionAction` types
+  - [x] `Message`, `ContentBlock`, `Usage` types
+  - [x] `SessionInfo`, `SessionState` types
+  - [x] `TakumiConfig` type
+- [x] `src/config.ts` — Config loader (file + env + defaults)
+- [x] `src/errors.ts` — Typed error hierarchy
+- [x] `src/constants.ts` — Key codes, ANSI sequences, limits
+- [x] `src/logger.ts` — File-based structured logger (never stdout)
+- [x] `src/index.ts` — Public exports
+- [x] Tests: config loading, error types
 
 ### Package: `@takumi/render`
-- [ ] `packages/render/package.json` (dep: `yoga-wasm-web`)
-- [ ] `packages/render/tsconfig.json`
-- [ ] Stub `src/index.ts`
+- [x] `packages/render/package.json` (dep: `yoga-wasm-web`)
+- [x] `packages/render/tsconfig.json`
+- [x] Stub `src/index.ts`
 
 ### Package: `@takumi/agent`
-- [ ] `packages/agent/package.json`
-- [ ] `packages/agent/tsconfig.json`
-- [ ] Stub `src/index.ts`
+- [x] `packages/agent/package.json`
+- [x] `packages/agent/tsconfig.json`
+- [x] Stub `src/index.ts`
 
 ### Package: `@takumi/tui`
-- [ ] `packages/tui/package.json`
-- [ ] `packages/tui/tsconfig.json`
-- [ ] Stub `src/index.ts`
+- [x] `packages/tui/package.json`
+- [x] `packages/tui/tsconfig.json`
+- [x] Stub `src/index.ts`
 
 ### Package: `@takumi/bridge`
-- [ ] `packages/bridge/package.json`
-- [ ] `packages/bridge/tsconfig.json`
-- [ ] Stub `src/index.ts`
+- [x] `packages/bridge/package.json`
+- [x] `packages/bridge/tsconfig.json`
+- [x] Stub `src/index.ts`
 
 ### Entry Point
-- [ ] `bin/takumi.ts` — CLI entry (parse args, load config, launch)
-- [ ] Verify `pnpm install` works
-- [ ] Verify `pnpm -r run build` works
-- [ ] Verify `pnpm -r run test` works (empty tests pass)
+- [x] `bin/takumi.ts` — CLI entry (parse args, load config, launch)
+- [x] Verify `pnpm install` works
+- [x] Verify `pnpm -r run build` works
+- [x] Verify `pnpm -r run test` works (empty tests pass)
 
 ---
 
 ## Phase 1: Kagami Renderer (Week 2-3)
 
 ### ANSI Primitives (`render/src/ansi.ts`)
-- [ ] `cursorTo(x, y)` — absolute positioning
-- [ ] `cursorMove(dx, dy)` — relative movement
-- [ ] `cursorShow()` / `cursorHide()`
-- [ ] `clearScreen()` / `clearLine()` / `clearDown()`
-- [ ] `fg(color)` / `bg(color)` — 256 + truecolor
-- [ ] `bold()`, `dim()`, `italic()`, `underline()`, `strikethrough()`
-- [ ] `reset()` — clear all styles
-- [ ] `visibleLength(str)` — strip ANSI, count visible chars
-- [ ] Tests: escape sequence generation, visibleLength accuracy
+- [x] `cursorTo(x, y)` — absolute positioning
+- [x] `cursorMove(dx, dy)` — relative movement
+- [x] `cursorShow()` / `cursorHide()`
+- [x] `clearScreen()` / `clearLine()` / `clearDown()`
+- [x] `fg(color)` / `bg(color)` — 256 + truecolor
+- [x] `bold()`, `dim()`, `italic()`, `underline()`, `strikethrough()`
+- [x] `reset()` — clear all styles
+- [x] `visibleLength(str)` — strip ANSI, count visible chars
+- [x] Tests: escape sequence generation, visibleLength accuracy
 
 ### Color System (`render/src/color.ts`)
-- [ ] Named colors (16 standard)
-- [ ] 256-color palette
-- [ ] Truecolor (RGB) support
-- [ ] Color interpolation (for gradients/themes)
-- [ ] Terminal capability detection (256 vs truecolor)
-- [ ] Tests: color conversion, capability detection
+- [x] Named colors (16 standard)
+- [x] 256-color palette
+- [x] Truecolor (RGB) support
+- [x] Color interpolation (for gradients/themes)
+- [x] Terminal capability detection (256 vs truecolor)
+- [x] Tests: color conversion, capability detection
 
 ### Text Measurement (`render/src/text.ts`)
-- [ ] `measureText(str)` — visible column width
-- [ ] `segmentGraphemes(str)` — grapheme cluster iteration
-- [ ] `isFullwidth(char)` — East Asian Width detection
-- [ ] `wrapText(str, width)` — word-aware line wrapping
-- [ ] `truncate(str, width, ellipsis?)` — truncation with ellipsis
-- [ ] `padRight(str, width)` / `padLeft(str, width)` / `center(str, width)`
-- [ ] Tests: CJK width, emoji width, ANSI stripping, wrapping edge cases
+- [x] `measureText(str)` — visible column width
+- [x] `segmentGraphemes(str)` — grapheme cluster iteration
+- [x] `isFullwidth(char)` — East Asian Width detection
+- [x] `wrapText(str, width)` — word-aware line wrapping
+- [x] `truncate(str, width, ellipsis?)` — truncation with ellipsis
+- [x] `padRight(str, width)` / `padLeft(str, width)` / `center(str, width)`
+- [x] Tests: CJK width, emoji width, ANSI stripping, wrapping edge cases
 
 ### Screen Buffer (`render/src/screen.ts`)
-- [ ] `Cell` class with char + style
-- [ ] `Screen` class — double-buffered grid
-- [ ] `resize(width, height)` — handle terminal resize
-- [ ] `clear()` — reset current buffer
-- [ ] `writeCell(x, y, cell)` — write single cell
-- [ ] `writeText(x, y, text, style)` — write styled text
-- [ ] `diff()` — compute changed cells between frames
-- [ ] `flush()` — write ANSI diff to stdout
-- [ ] `swap()` — swap current ↔ previous buffer
-- [ ] Handle SIGWINCH (terminal resize)
-- [ ] Tests: cell operations, diff algorithm, resize
+- [x] `Cell` class with char + style
+- [x] `Screen` class — double-buffered grid
+- [x] `resize(width, height)` — handle terminal resize
+- [x] `clear()` — reset current buffer
+- [x] `writeCell(x, y, cell)` — write single cell
+- [x] `writeText(x, y, text, style)` — write styled text
+- [x] `diff()` — compute changed cells between frames
+- [x] `flush()` — write ANSI diff to stdout
+- [x] `swap()` — swap current ↔ previous buffer
+- [x] Handle SIGWINCH (terminal resize)
+- [x] Tests: cell operations, diff algorithm, resize
 
 ### Yoga Integration (`render/src/yoga.ts`)
-- [ ] Load yoga-wasm-web
-- [ ] `createNode()` — create Yoga node with defaults
-- [ ] `applyStyle(node, style)` — map CSS-like props to Yoga
-- [ ] `computeLayout(root, width, height)` — run layout pass
-- [ ] `getComputedLayout(node)` — extract {left, top, width, height}
-- [ ] Style mapping: flexDirection, justifyContent, alignItems, flexGrow, padding, margin, border
-- [ ] Tests: basic layouts (row, column, nested), edge cases
+- [x] Load yoga-wasm-web
+- [x] `createNode()` — create Yoga node with defaults
+- [x] `applyStyle(node, style)` — map CSS-like props to Yoga
+- [x] `computeLayout(root, width, height)` — run layout pass
+- [x] `getComputedLayout(node)` — extract {left, top, width, height}
+- [x] Style mapping: flexDirection, justifyContent, alignItems, flexGrow, padding, margin, border
+- [x] Tests: basic layouts (row, column, nested), edge cases
 
 ### Signal System (`render/src/signals.ts`)
-- [ ] `signal<T>(initial)` — create reactive signal
-- [ ] `computed<T>(fn)` — derived signal (lazy, cached)
-- [ ] `effect(fn)` — side-effect on signal change
-- [ ] `batch(fn)` — batch multiple writes, single update
-- [ ] `untrack(fn)` — read without tracking dependency
-- [ ] Auto-dependency tracking via global stack
-- [ ] Cycle detection (error on circular dependencies)
-- [ ] Tests: basic reactivity, computed caching, batch, cycles
+- [x] `signal<T>(initial)` — create reactive signal
+- [x] `computed<T>(fn)` — derived signal (lazy, cached)
+- [x] `effect(fn)` — side-effect on signal change
+- [x] `batch(fn)` — batch multiple writes, single update
+- [x] `untrack(fn)` — read without tracking dependency
+- [x] Auto-dependency tracking via global stack
+- [x] Cycle detection (error on circular dependencies)
+- [x] Tests: basic reactivity, computed caching, batch, cycles
 
 ### Base Component (`render/src/component.ts`)
-- [ ] `Component` abstract class
-- [ ] Yoga node creation/destruction
-- [ ] Child management (add, remove, reorder)
-- [ ] Dirty marking + propagation
-- [ ] Mount/unmount lifecycle
-- [ ] `render(area: Rect): Cell[][]` abstract method
-- [ ] Tests: lifecycle, dirty propagation
+- [x] `Component` abstract class
+- [x] Yoga node creation/destruction
+- [x] Child management (add, remove, reorder)
+- [x] Dirty marking + propagation
+- [x] Mount/unmount lifecycle
+- [x] `render(area: Rect): Cell[][]` abstract method
+- [x] Tests: lifecycle, dirty propagation
 
 ### Reconciler (`render/src/reconciler.ts`)
-- [ ] Collect dirty components
-- [ ] Run Yoga layout pass
-- [ ] Render dirty components into screen buffer
-- [ ] Diff + flush
-- [ ] requestRender() with RAF-like batching (setTimeout(0))
-- [ ] Tests: render cycle, batched updates
+- [x] Collect dirty components
+- [x] Run Yoga layout pass
+- [x] Render dirty components into screen buffer
+- [x] Diff + flush
+- [x] requestRender() with RAF-like batching (setTimeout(0))
+- [x] Tests: render cycle, batched updates
 
 ### Theme System (`render/src/theme.ts`)
-- [ ] `Theme` interface (colors for each semantic role)
-- [ ] Default theme (inspired by Catppuccin Mocha)
-- [ ] `getTheme()` / `setTheme()` global accessors
-- [ ] Semantic roles: primary, secondary, success, warning, error, muted, text, border, background
-- [ ] Tests: theme application
+- [x] `Theme` interface (colors for each semantic role)
+- [x] Default theme (inspired by Catppuccin Mocha)
+- [x] `getTheme()` / `setTheme()` global accessors
+- [x] Semantic roles: primary, secondary, success, warning, error, muted, text, border, background
+- [x] Tests: theme application
 
 ---
 
 ## Phase 2: Core Components (Week 3-4)
 
 ### Box (`render/src/components/box.ts`)
-- [ ] Flexbox container mapping to Yoga node
-- [ ] Props: flexDirection, justifyContent, alignItems, flexGrow, flexShrink
-- [ ] Props: padding, margin, width, height, minWidth, maxWidth
-- [ ] Props: overflow (hidden, visible)
-- [ ] Border rendering (single, double, rounded, heavy)
-- [ ] Background color fill
-- [ ] Tests: layout composition, borders, overflow
+- [x] Flexbox container mapping to Yoga node
+- [x] Props: flexDirection, justifyContent, alignItems, flexGrow, flexShrink
+- [x] Props: padding, margin, width, height, minWidth, maxWidth
+- [x] Props: overflow (hidden, visible)
+- [x] Border rendering (single, double, rounded, heavy)
+- [x] Background color fill
+- [x] Tests: layout composition, borders, overflow
 
 ### Text (`render/src/components/text.ts`)
-- [ ] Styled text span
-- [ ] Props: content, color, bgColor, bold, dim, italic, underline
-- [ ] Word wrapping within parent bounds
-- [ ] Truncation with ellipsis
-- [ ] Tests: wrapping, truncation, style application
+- [x] Styled text span
+- [x] Props: content, color, bgColor, bold, dim, italic, underline
+- [x] Word wrapping within parent bounds
+- [x] Truncation with ellipsis
+- [x] Tests: wrapping, truncation, style application
 
 ### Input (`render/src/components/input.ts`)
-- [ ] Single-line text input with cursor
-- [ ] Props: prompt, value, placeholder, onSubmit, onChange
-- [ ] Cursor positioning and rendering
-- [ ] Character insertion/deletion
-- [ ] Cursor movement (left, right, home, end)
-- [ ] Word-level movement (ctrl+left, ctrl+right)
-- [ ] Line editing (ctrl+u, ctrl+k, ctrl+w)
-- [ ] History (up/down arrows)
-- [ ] Multiline support (shift+enter)
-- [ ] Tests: cursor movement, editing operations, history
+- [x] Single-line text input with cursor
+- [x] Props: prompt, value, placeholder, onSubmit, onChange
+- [x] Cursor positioning and rendering
+- [x] Character insertion/deletion
+- [x] Cursor movement (left, right, home, end)
+- [x] Word-level movement (ctrl+left, ctrl+right)
+- [x] Line editing (ctrl+u, ctrl+k, ctrl+w)
+- [x] History (up/down arrows)
+- [x] Multiline support (shift+enter)
+- [x] Tests: cursor movement, editing operations, history
 
 ### Scroll (`render/src/components/scroll.ts`)
-- [ ] Scrollable viewport with virtual rendering
-- [ ] Props: scrollTop, onScroll
-- [ ] Only render visible region
-- [ ] Scroll indicators (arrows or bar)
-- [ ] Page up/page down support
-- [ ] Smooth scroll (optional)
-- [ ] Tests: virtual rendering, scroll boundaries
+- [x] Scrollable viewport with virtual rendering
+- [x] Props: scrollTop, onScroll
+- [x] Only render visible region
+- [x] Scroll indicators (arrows or bar)
+- [x] Page up/page down support
+- [x] Smooth scroll (optional)
+- [x] Tests: virtual rendering, scroll boundaries
 
 ### List (`render/src/components/list.ts`)
-- [ ] Virtual list — renders only visible items
-- [ ] Props: items, renderItem, itemHeight
-- [ ] Keyboard navigation (up/down/enter)
-- [ ] Filtering/search
-- [ ] Selection highlight
-- [ ] Tests: virtual rendering, navigation, filtering
+- [x] Virtual list — renders only visible items
+- [x] Props: items, renderItem, itemHeight
+- [x] Keyboard navigation (up/down/enter)
+- [x] Filtering/search
+- [x] Selection highlight
+- [x] Tests: virtual rendering, navigation, filtering
 
 ### Spinner (`render/src/components/spinner.ts`)
-- [ ] Animated loading indicator
-- [ ] Styles: braille, dots, line, bounce
-- [ ] Auto-start/stop based on visibility
-- [ ] Tests: frame cycling
+- [x] Animated loading indicator
+- [x] Styles: braille, dots, line, bounce
+- [x] Auto-start/stop based on visibility
+- [x] Tests: frame cycling
 
 ### Border (`render/src/components/border.ts`)
-- [ ] Box-drawing decorator
-- [ ] Styles: single, double, rounded, heavy, dashed
-- [ ] Title placement in border
-- [ ] Tests: border rendering, title
+- [x] Box-drawing decorator
+- [x] Styles: single, double, rounded, heavy, dashed
+- [x] Title placement in border
+- [x] Tests: border rendering, title
 
 ### Markdown (`render/src/components/markdown.ts`)
-- [ ] Parse markdown to AST (lightweight parser, no deps)
-- [ ] Render headings (# ## ###) with colors
-- [ ] Render bold, italic, strikethrough, inline code
-- [ ] Render code blocks with syntax highlighting
-- [ ] Render lists (ordered + unordered, nested)
-- [ ] Render blockquotes with border
-- [ ] Render links (underline + color)
-- [ ] Render tables (GFM)
-- [ ] Render horizontal rules
-- [ ] Word wrapping within parent width
-- [ ] Tests: each markdown element, edge cases
+- [x] Parse markdown to AST (lightweight parser, no deps)
+- [x] Render headings (# ## ###) with colors
+- [x] Render bold, italic, strikethrough, inline code
+- [x] Render code blocks with syntax highlighting
+- [x] Render lists (ordered + unordered, nested)
+- [x] Render blockquotes with border
+- [x] Render links (underline + color)
+- [x] Render tables (GFM)
+- [x] Render horizontal rules
+- [x] Word wrapping within parent width
+- [x] Tests: each markdown element, edge cases
 
 ### Syntax Highlighter (`render/src/components/syntax.ts`)
-- [ ] Token-based regex highlighter
-- [ ] Language: TypeScript / JavaScript
-- [ ] Language: Python
-- [ ] Language: Go
-- [ ] Language: Rust
-- [ ] Language: Bash / Shell
-- [ ] Language: JSON / YAML / TOML
-- [ ] Language: HTML / CSS
-- [ ] Language: Generic fallback
-- [ ] Auto-detect language from fence or heuristics
-- [ ] Theme-aware token colors
-- [ ] Tests: tokenization per language
+- [x] Token-based regex highlighter
+- [x] Language: TypeScript / JavaScript
+- [x] Language: Python
+- [x] Language: Go
+- [x] Language: Rust
+- [x] Language: Bash / Shell
+- [x] Language: JSON / YAML / TOML
+- [x] Language: HTML / CSS
+- [x] Language: Generic fallback
+- [x] Auto-detect language from fence or heuristics
+- [x] Theme-aware token colors
+- [x] Tests: tokenization per language
 
 ### Diff Viewer (`render/src/components/diff.ts`)
-- [ ] Unified diff rendering
-- [ ] Line numbers (old + new)
-- [ ] Color coding (red=removed, green=added, dim=context)
-- [ ] Side-by-side mode (Phase 2+)
-- [ ] Tests: diff rendering
+- [x] Unified diff rendering
+- [x] Line numbers (old + new)
+- [x] Color coding (red=removed, green=added, dim=context)
+- [x] Side-by-side mode (Phase 2+)
+- [x] Tests: diff rendering
 
 ---
 
 ## Phase 3: Agent Loop (Week 4-5)
 
 ### LLM Provider (`agent/src/providers/`)
-- [ ] `darpana.ts` — HTTP client for Darpana proxy
-  - [ ] POST /v1/messages (non-streaming)
-  - [ ] POST /v1/messages (streaming via SSE)
-  - [ ] Health check (GET /)
-  - [ ] Auto-launch darpana if not running
-- [ ] `direct.ts` — Direct Anthropic SDK client (fallback)
-  - [ ] Streaming support
-  - [ ] API key from env var
-- [ ] Provider interface: `stream(messages, options) → AsyncIterable<AgentEvent>`
-- [ ] Tests: mock provider, event parsing
+- [x] `darpana.ts` — HTTP client for Darpana proxy
+  - [x] POST /v1/messages (non-streaming)
+  - [x] POST /v1/messages (streaming via SSE)
+  - [x] Health check (GET /)
+  - [x] Auto-launch darpana if not running
+- [x] `direct.ts` — Direct Anthropic SDK client (fallback)
+  - [x] Streaming support
+  - [x] API key from env var
+- [x] Provider interface: `stream(messages, options) → AsyncIterable<AgentEvent>`
+- [x] Tests: mock provider, event parsing
 
 ### Message Builder (`agent/src/message.ts`)
-- [ ] Build system prompt (project context + personality)
-- [ ] Build user message (with @-reference expansion)
-- [ ] Build tool result message
-- [ ] Conversation history management
-- [ ] Tests: message construction
+- [x] Build system prompt (project context + personality)
+- [x] Build user message (with @-reference expansion)
+- [x] Build tool result message
+- [x] Conversation history management
+- [x] Tests: message construction
 
 ### Agent Loop (`agent/src/loop.ts`)
-- [ ] Core loop: send → stream → accumulate → tool use → repeat
-- [ ] Yield `AgentEvent` for each stream event
-- [ ] Handle stop reasons: end_turn, tool_use, max_tokens
-- [ ] Handle errors: API errors, network errors, timeout
-- [ ] Support cancellation via AbortSignal
-- [ ] Tests: mock loop with canned responses
+- [x] Core loop: send → stream → accumulate → tool use → repeat
+- [x] Yield `AgentEvent` for each stream event
+- [x] Handle stop reasons: end_turn, tool_use, max_tokens
+- [x] Handle errors: API errors, network errors, timeout
+- [x] Support cancellation via AbortSignal
+- [x] Tests: mock loop with canned responses
 
 ### Stream Parser (`agent/src/stream.ts`)
-- [ ] Parse SSE events from Anthropic format
-- [ ] Map to AgentEvent types
-- [ ] Handle: message_start, content_block_start, content_block_delta, content_block_stop, message_delta, message_stop
-- [ ] Handle thinking blocks
-- [ ] Tests: SSE parsing, event mapping
+- [x] Parse SSE events from Anthropic format
+- [x] Map to AgentEvent types
+- [x] Handle: message_start, content_block_start, content_block_delta, content_block_stop, message_delta, message_stop
+- [x] Handle thinking blocks
+- [x] Tests: SSE parsing, event mapping
 
 ### Tool Registry (`agent/src/tools/registry.ts`)
-- [ ] Register/unregister tools
-- [ ] Dispatch tool calls by name
-- [ ] Generate tool definitions for LLM (JSON Schema)
-- [ ] Timeout per tool (default 120s)
-- [ ] Tests: registration, dispatch
+- [x] Register/unregister tools
+- [x] Dispatch tool calls by name
+- [x] Generate tool definitions for LLM (JSON Schema)
+- [x] Timeout per tool (default 120s)
+- [x] Tests: registration, dispatch
 
 ### Built-in Tools
-- [ ] `Read` — Read file contents with line numbers
-- [ ] `Write` — Create/overwrite file
-- [ ] `Edit` — Search & replace in file
-- [ ] `Bash` — Execute shell command (sandboxed)
-- [ ] `Glob` — Find files by pattern
-- [ ] `Grep` — Search file contents by regex
-- [ ] `Ask` — Ask user a question
-- [ ] Tests: each tool with fixtures
+- [x] `Read` — Read file contents with line numbers
+- [x] `Write` — Create/overwrite file
+- [x] `Edit` — Search & replace in file
+- [x] `Bash` — Execute shell command (sandboxed)
+- [x] `Glob` — Find files by pattern
+- [x] `Grep` — Search file contents by regex
+- [x] `Ask` — Ask user a question
+- [x] Tests: each tool with fixtures
 
 ### Command Sandbox (`agent/src/safety/sandbox.ts`)
-- [ ] Safe command allowlist
-- [ ] Dangerous character detection
-- [ ] Dangerous command blocklist
-- [ ] Timeout enforcement
-- [ ] Process kill on cancel
-- [ ] Tests: allowlist, rejection, timeout
+- [x] Safe command allowlist
+- [x] Dangerous character detection
+- [x] Dangerous command blocklist
+- [x] Timeout enforcement
+- [x] Process kill on cancel
+- [x] Tests: allowlist, rejection, timeout
 
 ### Context Management (`agent/src/context/`)
-- [ ] `builder.ts` — System prompt construction
-- [ ] `project.ts` — Detect project type, load CLAUDE.md / TAKUMI.md
-- [ ] `compact.ts` — Summarize old turns when context >80%
-- [ ] Token counting (estimate: 4 chars ≈ 1 token)
-- [ ] Tests: prompt construction, compaction
+- [x] `builder.ts` — System prompt construction
+- [x] `project.ts` — Detect project type, load CLAUDE.md / TAKUMI.md
+- [x] `compact.ts` — Summarize old turns when context >80%
+- [x] Token counting (estimate: 4 chars ≈ 1 token)
+- [x] Tests: prompt construction, compaction
 
 ---
 
 ## Phase 4: TUI Application (Week 5-7)
 
 ### App Shell (`tui/src/app.ts`)
-- [ ] Root layout: header + main + input + status
-- [ ] Main area: message list + sidebar (split pane)
-- [ ] Terminal resize handling
-- [ ] Focus management between panels
-- [ ] Global keyboard shortcuts
-- [ ] Tests: layout composition
+- [x] Root layout: header + main + input + status
+- [x] Main area: message list + sidebar (split pane)
+- [x] Terminal resize handling
+- [x] Focus management between panels
+- [x] Global keyboard shortcuts
+- [x] Tests: layout composition
 
 ### Message List (`tui/src/panels/message-list.ts`)
-- [ ] Scrollable list of messages
-- [ ] User message rendering (blue border)
-- [ ] Assistant message rendering (markdown)
-- [ ] Thinking block rendering (collapsible, dimmed)
-- [ ] Tool call rendering (expandable, with args + result)
-- [ ] Streaming: incremental text append
-- [ ] Auto-scroll on new content
-- [ ] Render caching (only re-render changed messages)
-- [ ] Tests: message formatting, scroll behavior
+- [x] Scrollable list of messages
+- [x] User message rendering (blue border)
+- [x] Assistant message rendering (markdown)
+- [x] Thinking block rendering (collapsible, dimmed)
+- [x] Tool call rendering (expandable, with args + result)
+- [x] Streaming: incremental text append
+- [x] Auto-scroll on new content
+- [x] Render caching (only re-render changed messages)
+- [x] Tests: message formatting, scroll behavior
 
 ### Editor Panel (`tui/src/panels/editor.ts`)
-- [ ] Multiline input editor
-- [ ] Prompt display (匠>)
-- [ ] @-reference expansion (trigger file picker)
-- [ ] /-command trigger (trigger command palette)
-- [ ] !-command trigger (shell mode)
-- [ ] Submit on Enter (empty line or Ctrl+Enter for multiline)
-- [ ] Input history
-- [ ] Tests: input modes, submission
+- [x] Multiline input editor
+- [x] Prompt display (匠>)
+- [x] @-reference expansion (trigger file picker)
+- [x] /-command trigger (trigger command palette)
+- [x] !-command trigger (shell mode)
+- [x] Submit on Enter (empty line or Ctrl+Enter for multiline)
+- [x] Input history
+- [x] Tests: input modes, submission
 
 ### Status Bar (`tui/src/panels/status-bar.ts`)
-- [ ] Model name display
+- [x] Model name display
 - [x] Token count (input/output)
 - [x] Cost display
-- [ ] Context usage % (with warning colors)
-- [ ] Git branch display
+- [x] Context usage % (with warning colors)
+- [x] Git branch display
 - [x] Chitragupta health indicator
-- [ ] Tests: status formatting
+- [x] Tests: status formatting
 
 ### Header Bar (`tui/src/panels/header.ts`)
-- [ ] Logo + project name
-- [ ] Current model
-- [ ] Session ID (if resumed)
-- [ ] Git branch + dirty indicator
-- [ ] Tests: header rendering
+- [x] Logo + project name
+- [x] Current model
+- [x] Session ID (if resumed)
+- [x] Git branch + dirty indicator
+- [x] Tests: header rendering
 
 ### Sidebar (`tui/src/panels/sidebar.ts`)
-- [ ] Modified files list
-- [ ] Session info (turns, tokens, cost)
-- [ ] Chitragupta memory hints
-- [ ] Toggle visibility (Ctrl+B)
-- [ ] Tests: sidebar content
+- [x] Modified files list
+- [x] Session info (turns, tokens, cost)
+- [x] Chitragupta memory hints
+- [x] Toggle visibility (Ctrl+B)
+- [x] Tests: sidebar content
 
 ### Tool Output Panel (`tui/src/panels/tool-output.ts`)
-- [ ] Tool call header (name, args summary)
-- [ ] Expandable/collapsible (Enter to toggle)
-- [ ] Status indicator (running spinner, done checkmark, error X)
-- [ ] Duration display
-- [ ] Result content (truncated if long)
-- [ ] Diff rendering for Edit tool
-- [ ] Tests: tool display states
+- [x] Tool call header (name, args summary)
+- [x] Expandable/collapsible (Enter to toggle)
+- [x] Status indicator (running spinner, done checkmark, error X)
+- [x] Duration display
+- [x] Result content (truncated if long)
+- [x] Diff rendering for Edit tool
+- [x] Tests: tool display states
 
 ### Dialogs
-- [ ] Command palette (`tui/src/dialogs/command-palette.ts`)
-  - [ ] Fuzzy search over slash commands
-  - [ ] Keyboard navigation
-  - [ ] Ctrl+K to open/close
-- [ ] Model picker (`tui/src/dialogs/model-picker.ts`)
-  - [ ] List available models from Darpana
-  - [ ] Current model highlighted
-- [ ] Permission dialog (`tui/src/dialogs/permission.ts`)
-  - [ ] Tool name + args display
-  - [ ] y/a/n options
-  - [ ] Auto-dismiss on response
-- [ ] Session list (`tui/src/dialogs/session-list.ts`)
-  - [ ] Recent sessions from Chitragupta
-  - [ ] Resume selection
-- [ ] File picker (`tui/src/dialogs/file-picker.ts`)
-  - [ ] Fuzzy file search
-  - [ ] Preview on hover (Phase 2)
-- [ ] Tests: each dialog interaction
+- [x] Command palette (`tui/src/dialogs/command-palette.ts`)
+  - [x] Fuzzy search over slash commands
+  - [x] Keyboard navigation
+  - [x] Ctrl+K to open/close
+- [x] Model picker (`tui/src/dialogs/model-picker.ts`)
+  - [x] List available models from Darpana
+  - [x] Current model highlighted
+- [x] Permission dialog (`tui/src/dialogs/permission.ts`)
+  - [x] Tool name + args display
+  - [x] y/a/n options
+  - [x] Auto-dismiss on response
+- [x] Session list (`tui/src/dialogs/session-list.ts`)
+  - [x] Recent sessions from Chitragupta
+  - [x] Resume selection
+- [x] File picker (`tui/src/dialogs/file-picker.ts`)
+  - [x] Fuzzy file search
+  - [x] Preview on hover (Phase 2)
+- [x] Tests: each dialog interaction
 
 ### Formatters
-- [ ] Message formatter (user/assistant/system)
-- [ ] Tool call formatter (name, args, result, duration)
-- [ ] Thinking block formatter (collapsible, dimmed)
-- [ ] Error formatter (red, with stack trace option)
-- [ ] Tests: formatting edge cases
+- [x] Message formatter (user/assistant/system)
+- [x] Tool call formatter (name, args, result, duration)
+- [x] Thinking block formatter (collapsible, dimmed)
+- [x] Error formatter (red, with stack trace option)
+- [x] Tests: formatting edge cases
 
 ### Slash Commands (`tui/src/commands.ts`)
-- [ ] Command registry
-- [ ] `/model` — switch model
-- [ ] `/clear` — clear conversation
-- [ ] `/compact` — compact context
-- [ ] `/session` — session management
-- [ ] `/diff` — show file changes
-- [ ] `/status` — show status info
-- [ ] `/cost` — show token/cost breakdown
-- [ ] `/help` — show help
-- [ ] `/quit` — exit
-- [ ] `/theme` — switch theme (Phase 2)
-- [ ] `/undo` — undo last file change
-- [ ] `/memory` — search chitragupta memory
-- [ ] `/permission` — manage permissions
-- [ ] Tab completion for commands
-- [ ] Tests: command execution
+- [x] Command registry
+- [x] `/model` — switch model
+- [x] `/clear` — clear conversation
+- [x] `/compact` — compact context
+- [x] `/session` — session management
+- [x] `/diff` — show file changes
+- [x] `/status` — show status info
+- [x] `/cost` — show token/cost breakdown
+- [x] `/help` — show help
+- [x] `/quit` — exit
+- [x] `/theme` — switch theme (Phase 2)
+- [x] `/undo` — undo last file change
+- [x] `/memory` — search chitragupta memory
+- [x] `/permission` — manage permissions
+- [x] Tab completion for commands
+- [x] Tests: command execution
 
 ### Key Bindings (`tui/src/keybinds.ts`)
-- [ ] Global binding registry
-- [ ] Ctrl+K — command palette
-- [ ] Ctrl+C — cancel/clear
-- [ ] Ctrl+D — exit (on empty input)
-- [ ] Ctrl+L — clear screen
-- [ ] Ctrl+B — toggle sidebar
-- [ ] Ctrl+O — session list
-- [ ] Ctrl+? — help
-- [ ] Customizable via config
-- [ ] Tests: binding dispatch
+- [x] Global binding registry
+- [x] Ctrl+K — command palette
+- [x] Ctrl+C — cancel/clear
+- [x] Ctrl+D — exit (on empty input)
+- [x] Ctrl+L — clear screen
+- [x] Ctrl+B — toggle sidebar
+- [x] Ctrl+O — session list
+- [x] Ctrl+? — help
+- [x] Customizable via config
+- [x] Tests: binding dispatch
 
 ---
 
 ## Phase 5: Bridge & Integration (Week 7-8)
 
 ### Chitragupta Bridge (`bridge/src/chitragupta.ts`)
-- [ ] Spawn chitragupta-mcp as child process (stdio)
-- [ ] JSON-RPC message framing
-- [ ] Tool call: `chitragupta_memory_search`
-- [ ] Tool call: `chitragupta_session_list`
-- [ ] Tool call: `chitragupta_session_show`
-- [ ] Tool call: `chitragupta_handover`
+- [x] Spawn chitragupta-mcp as child process (stdio)
+- [x] JSON-RPC message framing
+- [x] Tool call: `chitragupta_memory_search`
+- [x] Tool call: `chitragupta_session_list`
+- [x] Tool call: `chitragupta_session_show`
+- [x] Tool call: `chitragupta_handover`
 - [x] Tool call: `akasha_traces`
 - [x] Tool call: `akasha_deposit`
-- [ ] Tool call: `vasana_tendencies`
-- [ ] Tool call: `health_status`
-- [ ] Reconnection on crash
-- [ ] Tests: mock MCP server, message framing
+- [x] Tool call: `vasana_tendencies`
+- [x] Tool call: `health_status`
+- [x] Reconnection on crash
+- [x] Tests: mock MCP server, message framing
 
 ### Darpana Bridge (`bridge/src/darpana.ts`)
-- [ ] HTTP health check
-- [ ] Auto-launch if not running
-- [ ] Model list discovery
-- [ ] Connection error handling
-- [ ] Tests: mock HTTP server
+- [x] HTTP health check
+- [x] Auto-launch if not running
+- [x] Model list discovery
+- [x] Connection error handling
+- [x] Tests: mock HTTP server
 
 ### Git Bridge (`bridge/src/git.ts`)
-- [ ] `gitStatus()` — current status
-- [ ] `gitBranch()` — current branch
-- [ ] `gitDiff()` — staged + unstaged diff
-- [ ] `gitLog(n)` — recent commits
-- [ ] `gitStash()` / `gitStashPop()` — checkpoint management
-- [ ] Tests: git operations with temp repo
+- [x] `gitStatus()` — current status
+- [x] `gitBranch()` — current branch
+- [x] `gitDiff()` — staged + unstaged diff
+- [x] `gitLog(n)` — recent commits
+- [x] `gitStash()` / `gitStashPop()` — checkpoint management
+- [x] Tests: git operations with temp repo
 
 ---
 
 ## Phase 6: CLI & Polish (Week 8-9)
 
 ### CLI Entry (`bin/takumi.ts`)
-- [ ] Argument parsing (--model, --resume, --config, --port, --version, --help)
-- [ ] Config resolution (CLI > env > file > defaults)
-- [ ] Startup sequence: config → bridge init → TUI launch
-- [ ] Non-interactive mode (--print flag, pipe-friendly)
-- [ ] Prompt mode: `takumi "do something"` (one-shot)
-- [ ] Tests: arg parsing, startup
+- [x] Argument parsing (--model, --resume, --config, --port, --version, --help)
+- [x] Config resolution (CLI > env > file > defaults)
+- [x] Startup sequence: config → bridge init → TUI launch
+- [x] Non-interactive mode (--print flag, pipe-friendly)
+- [x] Prompt mode: `takumi "do something"` (one-shot)
+- [x] Tests: arg parsing, startup
 
 ### Soul / Personality
-- [ ] `soul/personality.md` — tone, style, behavior
-- [ ] `soul/preferences.md` — user preferences (coding style, language, tools)
-- [ ] `soul/identity.md` — who the assistant is
-- [ ] Loader: reads soul/ dir, injects into system prompt
-- [ ] Tests: soul loading
+- [x] `soul/personality.md` — tone, style, behavior
+- [x] `soul/preferences.md` — user preferences (coding style, language, tools)
+- [x] `soul/identity.md` — who the assistant is
+- [x] Loader: reads soul/ dir, injects into system prompt
+- [x] Tests: soul loading
 
 ### Polish
-- [ ] Graceful error handling (no stack traces to user)
-- [ ] Graceful shutdown (Ctrl+C cleanup)
-- [ ] Terminal state restoration on exit (cursor, raw mode, alternate screen)
-- [ ] SIGWINCH handling (resize without crash)
-- [ ] SIGTERM / SIGINT handling
-- [ ] Log rotation (~/.takumi/logs/)
-- [ ] First-run experience (auto-detect project, suggest config)
+- [x] Graceful error handling (no stack traces to user)
+- [x] Graceful shutdown (Ctrl+C cleanup)
+- [x] Terminal state restoration on exit (cursor, raw mode, alternate screen)
+- [x] SIGWINCH handling (resize without crash)
+- [x] SIGTERM / SIGINT handling
+- [x] Log rotation (~/.takumi/logs/)
+- [x] First-run experience (auto-detect project, suggest config)
 
 ---
 
 ## Phase 7: Advanced Features (Week 9+)
 
-### Mouse Support
-- [ ] Enable mouse reporting (SGR mode)
-- [ ] Click to focus panel
-- [ ] Click to select message
-- [ ] Scroll wheel for viewport scrolling
-- [ ] Click to expand/collapse tool output
+### Mouse Support ✅ COMPLETE
+- [x] Enable mouse reporting (SGR mode)
+- [x] Click to focus panel
+- [x] Click to select message
+- [x] Scroll wheel for viewport scrolling
+- [x] Click to expand/collapse tool output
 
-### Multiple Themes
-- [ ] Catppuccin Mocha (default)
-- [ ] Catppuccin Latte (light)
-- [ ] Dracula
-- [ ] Tokyo Night
-- [ ] One Dark
-- [ ] Gruvbox
-- [ ] Theme hot-reload via `/theme` command
+### Multiple Themes ✅ COMPLETE
+- [x] Catppuccin Mocha (default)
+- [x] Catppuccin Latte (light)
+- [x] Dracula
+- [x] Tokyo Night
+- [x] One Dark
+- [x] Gruvbox
+- [x] Theme hot-reload via `/theme` command
 
 ### Advanced Editor
-- [ ] Multi-cursor (Phase 3)
-- [ ] Bracket matching
-- [ ] Auto-indent
-- [ ] Clipboard integration (OSC 52)
-- [ ] Vim keybindings mode
+- [x] Clipboard integration (OSC 52)
+- [x] Auto-indent
+- [ ] Multi-cursor (Future)
+- [ ] Bracket matching (Future)
+- [ ] Vim keybindings mode (Future)
 
 ### Session Management
-- [ ] Session fork (branch from any point)
-- [ ] Session export (markdown)
-- [ ] Session share (URL via chitragupta)
-- [ ] Session timeline navigation
+- [x] Session export (markdown)
+- [ ] Session fork (branch from any point) (Future)
+- [ ] Session share (URL via chitragupta) (Future)
+- [ ] Session timeline navigation (Future)
 
-### Coding Agent Mode
-- [ ] `/code` command — dedicated coding workflow
-- [ ] Plan → Branch → Execute → Validate → Review → Commit pipeline
-- [ ] Progress bar through phases
-- [ ] Diff preview before commit
-- [ ] Approval prompts at critical points
+### Coding Agent Mode ✅ COMPLETE
+- [x] `/code` command — dedicated coding workflow
+- [x] Plan → Branch → Execute → Validate → Review → Commit pipeline
+- [x] Progress bar through phases
+- [x] Diff preview before commit
+- [x] Approval prompts at critical points
 
-### Smart Routing (via Chitragupta)
-- [ ] Task classification (coding/chat/research/debug)
-- [ ] Model selection based on task type
-- [ ] Cost optimization (cheap model first, escalate)
-- [ ] Provider fallback chain
-- [ ] Usage tracking + reporting
+### Smart Routing (via Chitragupta) ✅ COMPLETE
+- [x] Task classification (coding/chat/research/debug)
+- [x] Model selection based on task type
+- [x] Cost optimization (cheap model first, escalate)
+- [x] Provider fallback chain
+- [x] Usage tracking + reporting
 
 ---
 
