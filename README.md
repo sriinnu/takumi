@@ -46,6 +46,11 @@ It integrates natively with [Chitragupta](https://github.com/sriinnu/chitragupta
 - **Custom Renderer (Kagami 鏡)** — Yoga WASM flexbox layout, double-buffered ANSI output, cell-level diff
 - **Reactive Signals (Myaku 脈)** — Fine-grained Preact-style signals with auto-dependency tracking (~150 lines)
 - **Agent Loop (Shigoto 仕事)** — ReAct reasoning + tool execution, streaming responses, context compaction
+- **Multi-Agent Orchestration** — Task classifier → planner + workers + 5 specialized validators in parallel
+- **ArXiv Research Strategies** — Self-Consistency ensemble, Reflexion self-critique, Mixture-of-Agents, Tree-of-Thoughts, Progressive Refinement, Adaptive Temperature
+- **Blind Validation** — Validators receive only task + output, never worker conversation history
+- **Checkpoint & Resume** — Crash recovery for long-running multi-agent tasks (local + Akasha)
+- **Isolation Modes** — Git worktree or Docker container isolation for risky operations
 - **Zero-Config Auth** — Automatically extracts API keys from existing CLI tools (`gh`, `gcloud`, `claude`)
 - **Configurable UI** — Dynamic status bar and plugin system foundation
 - **Rich Components** — Box, Text, Input, Scroll, List, Markdown, Syntax Highlighter, Diff Viewer, Spinner
@@ -386,6 +391,47 @@ packages/<name>/
 
 ## Integration
 
+### Multi-Agent Orchestration
+
+Takumi includes a full multi-agent cluster system for complex coding tasks. Triggered via `/code` or automatic task classification:
+
+```
+Task → Classify → Plan → Execute → Validate (5 blind validators) → Fix/Retry → Commit
+```
+
+**Agent Roles:**
+
+| Role | Purpose |
+|---|---|
+| Planner | Decomposes task into steps |
+| Worker | Executes the plan (reads/writes/edits files) |
+| Requirements Validator | Verifies output meets task requirements |
+| Code Quality Validator | Checks style, patterns, error handling |
+| Security Validator | Identifies vulnerabilities (XSS, injection, credentials) |
+| Test Validator | Verifies tests exist and pass |
+| Adversarial Validator | Tries to break the implementation |
+
+**Task Complexity → Agent Count:**
+- TRIVIAL: 1 agent, no validation
+- SIMPLE: worker + 1 validator
+- STANDARD: planner + worker + 2 validators
+- CRITICAL: planner + worker + 5 validators
+
+**ArXiv Research Strategies** (configurable):
+- Self-Consistency Ensemble — spawn K workers, majority vote (arXiv:2203.11171)
+- Reflexion — self-critique on failure, store in Akasha memory (arXiv:2303.11366)
+- Mixture-of-Agents — multi-round validator cross-talk (arXiv:2406.04692)
+- Tree-of-Thoughts — branch/score/prune plan search (arXiv:2305.10601)
+- Progressive Refinement — critic feedback loop, incremental fixes
+- Adaptive Temperature — complexity-aware temperature scaling
+
+**Isolation Modes:**
+- `none` — work directly in the repo
+- `worktree` — git worktree for safe branching
+- `docker` — container isolation with credential passthrough
+
+See [docs/orchestration.md](docs/orchestration.md), [docs/validation.md](docs/validation.md), [docs/isolation.md](docs/isolation.md), [docs/checkpoints.md](docs/checkpoints.md) for architecture details.
+
 ### Chitragupta (Memory & MCP)
 
 Takumi spawns Chitragupta as a child process via MCP stdio transport:
@@ -483,7 +529,9 @@ If not installed, Takumi works fine without it (graceful degradation).
 | **Phase 4** — TUI Application | Done | 1458 | Panels, 5 dialogs, 13 commands, keybinds, mouse |
 | **Phase 5** — Bridge & Integration | Done | 1537 | Chitragupta MCP, Darpana HTTP, git, sessions |
 | **Phase 6** — CLI & Polish | Done | 1537 | Markdown rendering, session persistence, auto-connect |
-| **Phase 7** — Remaining | Planned | — | Image/vision, provider failover, mid-stream recovery |
+| **Phase 7** — Multi-Agent | Done | 2095 | Cluster orchestrator, 5 validators, checkpoint, isolation |
+| **Phase 8** — ArXiv Research | Done | 2095 | Ensemble, Reflexion, MoA, ToT, Progressive Refinement, Bandit |
+| **Future** — Stretch Goals | Planned | — | Codebase RAG (AST+CodeBERT), vim mode, session fork |
 
 ---
 
