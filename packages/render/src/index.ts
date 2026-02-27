@@ -66,6 +66,8 @@ export type { SpinnerProps, SpinnerStyle } from "./components/spinner.js";
 export { SPINNER_STYLES, Spinner } from "./components/spinner.js";
 export type { LanguageRules, SyntaxProps, Token, TokenType } from "./components/syntax.js";
 export { LANGUAGE_MAP, Syntax, tokenizeLine } from "./components/syntax.js";
+export type { ColumnAlign, ColumnDefinition, TableProps } from "./components/table.js";
+export { computeColumnWidths, Table } from "./components/table.js";
 export type { TextProps } from "./components/text.js";
 export { TextComponent } from "./components/text.js";
 export type { DiffFile, DiffHunk, DiffLine as ParsedDiffLine } from "./diff-parser.js";
@@ -88,6 +90,17 @@ export {
 	signal,
 	untrack,
 } from "./signals.js";
+// Terminal detection
+export type { EnvSource, TerminalCapabilities, TerminalName } from "./terminal.js";
+export {
+	beginSyncUpdate,
+	detectCapabilities,
+	detectTerminal,
+	endSyncUpdate,
+	supportsOsc52,
+	supportsTruecolor,
+	terminalSummary,
+} from "./terminal.js";
 // Text utilities
 export {
 	isFullwidth,
