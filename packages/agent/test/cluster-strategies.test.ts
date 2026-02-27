@@ -9,7 +9,7 @@
 import type { AgentEvent } from "@takumi/core";
 import { describe, expect, it, vi } from "vitest";
 import { type EnsembleConfig, ensembleExecute } from "../src/cluster/ensemble.js";
-import { type ToTConfig, totPlan } from "../src/cluster/tot-planner.js";
+import { totPlan } from "../src/cluster/tot-planner.js";
 import { ValidationDecision, type ValidationResult } from "../src/cluster/types.js";
 import {
 	aggregateValidations,

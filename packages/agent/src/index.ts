@@ -93,8 +93,11 @@ export {
 	RetryableError,
 	withRetry,
 } from "./retry.js";
+// Safety — allowlist
+export type { AllowlistOverride } from "./safety/allowlist.js";
+export { buildDefaultRules, mergeAllowlist, parseAllowlistConfig } from "./safety/allowlist.js";
 export { PermissionEngine } from "./safety/permissions.js";
-// Safety
+// Safety — sandbox
 export { DANGEROUS_PATTERNS, SAFE_COMMANDS, validateCommand } from "./safety/sandbox.js";
 // SSE stream parser
 export { parseSSEStream } from "./stream.js";
@@ -105,6 +108,9 @@ export { registerBuiltinTools } from "./tools/builtin.js";
 export { editDefinition, editHandler } from "./tools/edit.js";
 export { globDefinition, globHandler } from "./tools/glob.js";
 export { grepDefinition, grepHandler } from "./tools/grep.js";
+export type { McpConnection } from "./tools/mcp.js";
+// MCP tool forwarding
+export { discoverMcpTools } from "./tools/mcp.js";
 // Built-in tools
 export { readDefinition, readHandler } from "./tools/read.js";
 export type { ToolHandler } from "./tools/registry.js";
