@@ -61,5 +61,11 @@ export type { ResolvedTheme } from "./themes.js";
 // Themes
 export { BUILT_IN_THEMES, resolveTheme, THEME_NAMES } from "./themes.js";
 export { ChatView } from "./views/chat.js";
+export type { FileChange } from "./views/code.js";
+// Code view
+export { CodeView } from "./views/code.js";
+export type { LogEntry, LogLevel } from "./views/logs.js";
+// Logs view
+export { LogsView } from "./views/logs.js";
 // Views
 export { RootView } from "./views/root.js";
