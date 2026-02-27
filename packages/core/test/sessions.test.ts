@@ -285,6 +285,9 @@ describe("createAutoSaver", () => {
 		await vi.advanceTimersByTimeAsync(1100);
 		// Allow any remaining I/O promises (mkdir, writeFile) to settle
 		await vi.advanceTimersByTimeAsync(50);
+		// Flush remaining microtasks from async file operations
+		await new Promise((r) => process.nextTick(r));
+		await new Promise((r) => process.nextTick(r));
 
 		loaded = await loadSession("session-periodic", tmpDir);
 		expect(loaded).not.toBeNull();
