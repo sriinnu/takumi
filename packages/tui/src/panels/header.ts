@@ -28,7 +28,7 @@ export class HeaderPanel extends Component {
 		const theme = resolveTheme(this.config?.theme);
 		const bgBrand = theme.ansi.bgBrand; // deep accent bg (brand strip)
 		const fgBrand = theme.ansi.fg; // foreground on brand
-		const bgBar = theme.ansi.bgBar; // normal header bg
+		const _bgBar = theme.ansi.bgBar; // normal header bg
 		const primary = theme.ansi.primary; // accent colour
 
 		// Background fill
