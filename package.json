@@ -1,6 +1,5 @@
 {
 	"name": "takumi",
-	"private": true,
 	"type": "module",
 	"version": "0.1.0",
 	"license": "MIT",
@@ -19,12 +18,36 @@
 		"type": "git",
 		"url": "https://github.com/sriinnu/takumi.git"
 	},
+	"bin": {
+		"takumi": "dist/takumi.cjs"
+	},
+	"files": [
+		"dist/",
+		"bin/",
+		"packages/core/src/",
+		"packages/core/dist/",
+		"packages/render/src/",
+		"packages/render/dist/",
+		"packages/bridge/src/",
+		"packages/bridge/dist/",
+		"packages/agent/src/",
+		"packages/agent/dist/",
+		"packages/tui/src/",
+		"packages/tui/dist/",
+		"README.md"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"build": "pnpm -r run build",
+		"bundle": "node scripts/bundle.mjs",
+		"bundle:watch": "node scripts/bundle.mjs --watch",
+		"prepublishOnly": "pnpm build && pnpm bundle",
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
-		"clean": "pnpm -r run clean",
+		"clean": "pnpm -r run clean && rm -rf dist",
 		"nuke": "node -e \"const fs=require('fs');const p=require('path');['node_modules',...require('fs').readdirSync('packages').map(d=>p.join('packages',d,'node_modules'))].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true});console.log('removed',d)}catch{}})\"",
 		"fresh": "pnpm run nuke && pnpm install && pnpm build",
 		"dev": "pnpm -r --parallel run dev",
@@ -37,14 +60,16 @@
 		"@clack/prompts": "^1.0.1",
 		"@takumi/agent": "workspace:*",
 		"@takumi/core": "workspace:*",
-		"@takumi/tui": "workspace:*"
+		"@takumi/tui": "workspace:*",
+		"tsx": "^4.21.0",
+		"yoga-wasm-web": "^0.3.3"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.3.14",
 		"@types/node": "^22.0.0",
+		"esbuild": "^0.25.0",
 		"husky": "^9.0.0",
 		"lint-staged": "^15.0.0",
-		"tsx": "^4.21.0",
 		"typescript": "^5.7.0",
 		"vitest": "^4.0.18"
 	},

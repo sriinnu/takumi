@@ -45,6 +45,7 @@ export async function buildSingleProvider(
 
 	const keyMap: Record<string, string> = {
 		openai: "OPENAI_API_KEY",
+		github: "GITHUB_TOKEN",
 		groq: "GROQ_API_KEY",
 		deepseek: "DEEPSEEK_API_KEY",
 		mistral: "MISTRAL_API_KEY",
@@ -59,6 +60,7 @@ export async function buildSingleProvider(
 		(envVar ? env[envVar] : undefined) ||
 		env.TAKUMI_API_KEY ||
 		(providerName === "openai" ? tryResolveCliToken("codex") : undefined) ||
+		(providerName === "github" ? tryResolveCliToken("github") : undefined) ||
 		tryResolveCliToken(providerName);
 	if (!key && providerName !== "ollama") return null;
 

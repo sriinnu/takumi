@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG, loadConfig } from "@takumi/core";
+import { DEFAULT_CONFIG, loadConfig, PROVIDER_ENDPOINTS } from "@takumi/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 describe("loadConfig", () => {
@@ -63,5 +63,36 @@ describe("loadConfig", () => {
 	it("workingDirectory defaults to cwd", () => {
 		const config = loadConfig();
 		expect(config.workingDirectory).toBe(process.cwd());
+	});
+});
+
+describe("PROVIDER_ENDPOINTS", () => {
+	it("includes all expected providers", () => {
+		const expected = ["openai", "github", "groq", "deepseek", "mistral", "together", "openrouter"];
+		for (const p of expected) {
+			expect(PROVIDER_ENDPOINTS).toHaveProperty(p);
+			expect(typeof PROVIDER_ENDPOINTS[p]).toBe("string");
+			expect(PROVIDER_ENDPOINTS[p].length).toBeGreaterThan(0);
+		}
+	});
+
+	it("github endpoint points to GitHub Models (not api.openai.com)", () => {
+		expect(PROVIDER_ENDPOINTS.github).toBe("https://models.inference.ai.azure.com/chat/completions");
+		expect(PROVIDER_ENDPOINTS.github).not.toContain("openai.com");
+	});
+
+	it("openai endpoint points to api.openai.com", () => {
+		expect(PROVIDER_ENDPOINTS.openai).toContain("openai.com");
+	});
+
+	it("all endpoints are valid URLs (https for remote, http allowed for localhost)", () => {
+		for (const [provider, url] of Object.entries(PROVIDER_ENDPOINTS)) {
+			expect(() => new URL(url), `${provider} endpoint should be a valid URL`).not.toThrow();
+			const parsed = new URL(url);
+			const isLocal = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+			if (!isLocal) {
+				expect(url, `${provider} remote endpoint should use https`).toMatch(/^https:\/\//);
+			}
+		}
 	});
 });
