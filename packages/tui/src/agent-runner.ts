@@ -126,7 +126,10 @@ export class AgentRunner {
 				}
 			}
 
-			// Finalize: add assistant message to state
+			// Finalize: add assistant message to UI state.
+			// NOTE: this.history is already fully updated by agentLoop (it mutates
+			// history in-place, including all tool-call / tool-result turns).
+			// We only need to push the assistant message into the *display* state.
 			if (fullText) {
 				const assistantMsg: Message = {
 					id: `msg-${Date.now()}`,
@@ -141,10 +144,6 @@ export class AgentRunner {
 				assistantMsg.content.push({ type: "text", text: fullText });
 
 				this.state.addMessage(assistantMsg);
-
-				// Update history for next turn
-				this.history.push({ role: "user", content: [{ type: "text", text }] });
-				this.history.push({ role: "assistant", content: assistantMsg.content });
 			}
 		} catch (err) {
 			log.error("Agent loop error", err);
