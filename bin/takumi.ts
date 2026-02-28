@@ -7,7 +7,7 @@ import { cmdAttach, cmdJobs, cmdStop, cmdWatch, startDetachedJob } from "./cli/d
 import { printHelp } from "./cli/help.js";
 import { fetchIssueContext, readStdin, runOneShot } from "./cli/one-shot.js";
 import { buildSingleProvider, canSkipApiKey, createProvider } from "./cli/provider.js";
-import { tryResolveCliToken } from "./cli/cli-auth.js";
+import { autoDetectAuth } from "./cli/cli-auth.js";
 import { cmdDelete, cmdExport, cmdList, cmdLogs, cmdStatus } from "./cli/session-commands.js";
 import { printSplash } from "./cli/splash.js";
 
@@ -227,28 +227,49 @@ async function main(): Promise<void> {
 	const isNonTTY = !process.stdin.isTTY;
 	const isOneShot = prompt.length > 0 || args.print || isNonTTY;
 
-	if (!isOneShot && !args.provider && !args.model && !args.resume && !args.yes) {
+	// ── Zero-config auth: try every source before showing any UI ─────────────
+	// If the user explicitly passed --provider or --api-key we skip auto-detect
+	// so their intent is respected. Otherwise we probe CLI credentials, env
+	// vars, and a local Ollama instance — in that priority order.
+	const alreadyAuthenticated = Boolean(
+		config.apiKey || config.proxyUrl || canSkipApiKey(config) || hasProviderEnvKey(config),
+	);
+	if (!alreadyAuthenticated && !args.apiKey) {
+		const detected = await autoDetectAuth();
+		if (detected) {
+			// Only override the provider if the user didn't explicitly pick one
+			if (!args.provider) config.provider = detected.provider;
+			config.apiKey = detected.apiKey;
+			if (detected.model && !args.model) config.model = detected.model;
+			if (!isOneShot) {
+				process.stderr.write(`\x1b[2m⚡ Auto-detected: ${detected.source}\x1b[0m\n`);
+			}
+		}
+	}
+
+	// ── Provider/model selection UI — only if nothing was auto-detected ───────
+	const readyToRun = Boolean(
+		config.apiKey || config.proxyUrl || canSkipApiKey(config) || hasProviderEnvKey(config),
+	);
+	if (!isOneShot && !args.provider && !args.model && !args.resume && !args.yes && !readyToRun) {
 		await chooseProviderAndModel(config);
 	}
 
+	// ── Hard fail if still nothing ───────────────────────────────────────────
 	if (!config.apiKey && !config.proxyUrl && !canSkipApiKey(config) && !hasProviderEnvKey(config)) {
-		const cliToken = tryResolveCliToken(config.provider);
-		if (cliToken) {
-			config.apiKey = cliToken;
-		} else {
-			console.error(
-				`\nError: No API key configured for provider '${config.provider}'.\n\n` +
-					"Set an API key environment variable for your provider:\n" +
-					"  ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, etc.\n\n" +
-					"Or pass --api-key <key> on the command line.\n" +
-					"Or configure apiKey in:\n" +
-					"  .takumi/config.json\n" +
-					"  ~/.takumi/config.json\n\n" +
-					"Or use --proxy to connect through Darpana.\n" +
-					"Or use --provider ollama for local models (no key needed).\n",
-			);
-			process.exit(1);
-		}
+		console.error(
+			"\nError: No API key found.\n\n" +
+				"Takumi checked automatically:\n" +
+				"  • Claude CLI  (~/.claude/.credentials.json)\n" +
+				"  • Gemini CLI  (~/.gemini/.env)\n" +
+				"  • Codex CLI   (~/.codex/auth.json)\n" +
+				"  • GitHub CLI  (gh auth token)\n" +
+				"  • Ollama      (localhost:11434)\n" +
+				"  • Env vars    (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY …)\n\n" +
+				"Install any of the above CLIs, set an env var, or pass --api-key <key>.\n" +
+				"Or use --proxy <url> to connect through a Darpana proxy.\n",
+		);
+		process.exit(1);
 	}
 
 	if (config.workingDirectory && config.workingDirectory !== process.cwd()) {
