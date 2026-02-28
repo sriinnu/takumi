@@ -51,6 +51,19 @@ export interface GeminiContent {
 export function convertMessages(messages: MessagePayload[]): GeminiContent[] {
 	const contents: GeminiContent[] = [];
 
+	// Build a map of tool_use_id → function name so that tool_result blocks
+	// can emit a functionResponse.name that matches the original functionCall.name.
+	// Gemini requires the names to match; using the raw ID string will cause errors.
+	const toolUseNames = new Map<string, string>();
+	for (const msg of messages) {
+		if (!Array.isArray(msg.content)) continue;
+		for (const block of msg.content as any[]) {
+			if (block?.type === "tool_use" && block.id && block.name) {
+				toolUseNames.set(block.id as string, block.name as string);
+			}
+		}
+	}
+
 	for (const msg of messages) {
 		const role: "user" | "model" = msg.role === "assistant" ? "model" : "user";
 
@@ -75,7 +88,10 @@ export function convertMessages(messages: MessagePayload[]): GeminiContent[] {
 				case "tool_result":
 					parts.push({
 						functionResponse: {
-							name: block.name ?? block.tool_use_id ?? block.toolUseId ?? "unknown",
+							// Resolve the actual function name from the pre-built map.
+							// Falling back to tool_use_id would cause Gemini to reject
+							// the functionResponse since it can't match the ID to a call.
+							name: toolUseNames.get(block.tool_use_id as string) ?? block.name ?? block.tool_use_id ?? "unknown",
 							response: { content: block.content ?? block.output ?? "" },
 						},
 					});
