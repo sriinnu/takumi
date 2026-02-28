@@ -290,11 +290,11 @@ describe("convertMessages", () => {
 		expect(result).toHaveLength(0);
 	});
 
-	it("uses toolUseId as fallback name for tool_result", () => {
+	it("uses tool_use_id as fallback name for tool_result when no tool_use block present", () => {
 		const messages = [
 			{
 				role: "user" as const,
-				content: [{ type: "tool_result", toolUseId: "toolu_abc", content: "result" }],
+				content: [{ type: "tool_result", tool_use_id: "toolu_abc", content: "result" }],
 			},
 		];
 		const result = convertMessages(messages);
@@ -869,10 +869,12 @@ describe("GeminiProvider", () => {
 	it("sends correct request format to Gemini API", async () => {
 		let capturedUrl = "";
 		let capturedBody: any = null;
+		let capturedHeaders: any = null;
 
 		globalThis.fetch = vi.fn(async (url: any, init: any) => {
 			capturedUrl = url;
 			capturedBody = JSON.parse(init.body);
+			capturedHeaders = init.headers;
 			return createMockResponse(
 				geminiFrame({
 					candidates: [
@@ -896,7 +898,8 @@ describe("GeminiProvider", () => {
 
 		expect(capturedUrl).toContain("gemini-2.5-pro:streamGenerateContent");
 		expect(capturedUrl).toContain("alt=sse");
-		expect(capturedUrl).toContain("key=test-api-key");
+		expect(capturedUrl).not.toContain("key=");
+		expect(capturedHeaders["x-goog-api-key"]).toBe("test-api-key");
 		expect(capturedBody.systemInstruction).toEqual({
 			parts: [{ text: "You are a helpful assistant" }],
 		});

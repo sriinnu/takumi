@@ -68,7 +68,9 @@ export class GeminiProvider {
 		}
 
 		const model = options?.model ?? this.model;
-		const url = `${GEMINI_API_BASE}/${model}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
+		// Keep the API key out of the URL (where it could appear in logs and
+		// error messages) and send it via the x-goog-api-key header instead.
+		const url = `${GEMINI_API_BASE}/${model}:streamGenerateContent?alt=sse`;
 
 		const body: Record<string, unknown> = {
 			contents: convertMessages(messages),
@@ -97,7 +99,10 @@ export class GeminiProvider {
 		try {
 			const response = await fetch(url, {
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: {
+					"Content-Type": "application/json",
+					"x-goog-api-key": this.apiKey,
+				},
 				body: JSON.stringify(body),
 				signal: compositeSignal,
 			});
