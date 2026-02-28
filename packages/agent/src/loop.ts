@@ -91,7 +91,13 @@ export async function* agentLoop(
 
 	const toolDefs = tools.getDefinitions();
 	const system = systemPrompt ?? buildSystemPrompt(toolDefs);
-	let messages: MessagePayload[] = [...history, { role: "user", content: buildUserMessage(userMessage) }];
+	// Push the new user message directly onto the caller's history array.
+	// This ensures that after agentLoop returns, `history` contains the full
+	// turn including all intermediate tool-call / tool-result pairs — not just
+	// the final assistant text. Subsequent turns therefore have complete context.
+	history.push({ role: "user", content: buildUserMessage(userMessage) });
+	// messages is an alias for history — all .push() calls below mutate history.
+	const messages: MessagePayload[] = history;
 
 	// Cumulative token tracking from usage_update events
 	let cumulativeTokens = 0;
@@ -113,10 +119,12 @@ export async function* agentLoop(
 
 			if (shouldCompact(messages, estimatedTokens, maxContextTokens)) {
 				log.info(`Context compaction triggered: ~${estimatedTokens} tokens`);
-				messages = compactMessages(messages, {
+				const compacted = compactMessages(messages, {
 					maxTokens: maxContextTokens,
 					...(typeof compactOptions === "object" ? compactOptions : {}),
 				});
+				// Replace contents in-place so the `history` alias stays in sync.
+				messages.splice(0, messages.length, ...compacted);
 				// Re-estimate after compaction
 				cumulativeTokens = estimateTotalPayloadTokens(messages);
 			}

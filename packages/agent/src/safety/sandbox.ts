@@ -159,31 +159,40 @@ export interface ValidationResult {
 
 /**
  * Validate a shell command against the allowlist and dangerous patterns.
+ *
+ * All segments of a chained command (`&&`, `||`, `;`) are validated
+ * individually. If any segment is disallowed, the entire command is
+ * rejected.
  */
 export function validateCommand(command: string): ValidationResult {
 	if (!command || !command.trim()) {
 		return { allowed: false, reason: "Empty command" };
 	}
 
-	// Check for dangerous patterns first
+	// Check for dangerous patterns against the full command first
 	for (const { pattern, reason } of DANGEROUS_PATTERNS) {
 		if (pattern.test(command)) {
 			return { allowed: false, reason };
 		}
 	}
 
-	// Extract the base command (first word, ignoring env vars)
-	const baseCommand = extractBaseCommand(command);
+	// Split the command into all chained segments (&&, ||, ;)
+	// and validate every one — not just the first.
+	const segments = splitCommandChain(command);
 
-	if (!baseCommand) {
-		return { allowed: false, reason: "Could not determine command" };
-	}
+	for (const segment of segments) {
+		const baseCommand = extractBaseCommand(segment);
 
-	if (!SAFE_COMMANDS.has(baseCommand)) {
-		return {
-			allowed: false,
-			reason: `Command '${baseCommand}' is not in the allowlist. Safe commands: ${[...SAFE_COMMANDS].slice(0, 20).join(", ")}...`,
-		};
+		if (!baseCommand) {
+			return { allowed: false, reason: "Could not determine command in chained segment" };
+		}
+
+		if (!SAFE_COMMANDS.has(baseCommand)) {
+			return {
+				allowed: false,
+				reason: `Command '${baseCommand}' is not in the allowlist. Safe commands: ${[...SAFE_COMMANDS].slice(0, 20).join(", ")}...`,
+			};
+		}
 	}
 
 	return { allowed: true };
@@ -226,4 +235,77 @@ function extractBaseCommand(command: string): string | null {
 	const basename = firstWord.split("/").pop() ?? firstWord;
 
 	return basename;
+}
+
+/**
+ * Split a shell command string into individual executable segments on
+ * &&, ||, ;, and | operators.  Respects single/double quoting so
+ * delimiters inside strings are not treated as separators.
+ */
+function splitCommandChain(command: string): string[] {
+	const segments: string[] = [];
+	let current = "";
+	let inSingle = false;
+	let inDouble = false;
+
+	for (let i = 0; i < command.length; i++) {
+		const ch = command[i];
+
+		if (ch === "'" && !inDouble) {
+			inSingle = !inSingle;
+			current += ch;
+			continue;
+		}
+		if (ch === '"' && !inSingle) {
+			inDouble = !inDouble;
+			current += ch;
+			continue;
+		}
+
+		if (inSingle || inDouble) {
+			current += ch;
+			continue;
+		}
+
+		// && operator
+		if (ch === "&" && command[i + 1] === "&") {
+			const seg = current.trim();
+			if (seg) segments.push(seg);
+			current = "";
+			i++;
+			continue;
+		}
+
+		// || operator
+		if (ch === "|" && command[i + 1] === "|") {
+			const seg = current.trim();
+			if (seg) segments.push(seg);
+			current = "";
+			i++;
+			continue;
+		}
+
+		// Semicolons
+		if (ch === ";") {
+			const seg = current.trim();
+			if (seg) segments.push(seg);
+			current = "";
+			continue;
+		}
+
+		// Pipe
+		if (ch === "|") {
+			const seg = current.trim();
+			if (seg) segments.push(seg);
+			current = "";
+			continue;
+		}
+
+		current += ch;
+	}
+
+	const last = current.trim();
+	if (last) segments.push(last);
+
+	return segments.filter((s) => s.length > 0);
 }
