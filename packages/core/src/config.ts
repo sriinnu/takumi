@@ -7,6 +7,8 @@ import type { OrchestrationConfig, TakumiConfig } from "./types.js";
 /** Default API endpoints per provider (OpenAI-compatible chat completions). */
 export const PROVIDER_ENDPOINTS: Record<string, string> = {
 	openai: "https://api.openai.com/v1/chat/completions",
+	// GitHub Models — OpenAI-compatible, uses a `gh auth token` as the API key
+	github: "https://models.inference.ai.azure.com/chat/completions",
 	groq: "https://api.groq.com/openai/v1/chat/completions",
 	deepseek: "https://api.deepseek.com/v1/chat/completions",
 	mistral: "https://api.mistral.ai/v1/chat/completions",
