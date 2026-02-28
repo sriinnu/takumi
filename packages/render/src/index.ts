@@ -78,6 +78,9 @@ export { renderMarkdown } from "./markdown.js";
 export type { RenderSchedulerOptions } from "./reconciler.js";
 // Render scheduler
 export { RenderScheduler } from "./reconciler.js";
+export type { RendererOptions, RendererStats } from "./renderer.js";
+// Renderer pipeline orchestrator (Kagami)
+export { Renderer } from "./renderer.js";
 export type { ScreenPatch } from "./screen.js";
 // Screen
 export { Screen } from "./screen.js";
