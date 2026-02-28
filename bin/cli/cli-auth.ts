@@ -130,3 +130,120 @@ export function tryResolveCliToken(provider: string): string | undefined {
 	}
 	return undefined;
 }
+
+/**
+ * Probes the local Ollama server (http://localhost:11434).
+ * Returns the list of installed model names, or an empty array if not running.
+ */
+export async function probeOllama(): Promise<string[]> {
+	try {
+		const res = await fetch("http://localhost:11434/api/tags", {
+			signal: AbortSignal.timeout(2000),
+		});
+		if (!res.ok) return [];
+		const data = (await res.json()) as { models?: Array<{ name: string }> };
+		return (data.models ?? []).map((m) => m.name).filter(Boolean);
+	} catch {
+		return [];
+	}
+}
+
+export interface AutoDetectedAuth {
+	provider: string;
+	apiKey: string;
+	model?: string;
+	/** Human-readable description of where the credential came from. */
+	source: string;
+}
+
+/**
+ * Tries every available credential source in priority order and returns the
+ * first one that yields a usable key/token. Returns null if nothing is found.
+ *
+ * Priority:
+ *   1. CLI credential files  (Claude, Gemini, Codex) — fast, no subprocess
+ *   2. Environment variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
+ *   3. GitHub CLI (gh auth token) → GitHub Models endpoint
+ *   4. Ollama local server   (async network probe, done last)
+ */
+export async function autoDetectAuth(): Promise<AutoDetectedAuth | null> {
+	const env = process.env;
+
+	// ── 1. CLI credential files ──────────────────────────────────────────────
+	const claudeToken = tryResolveCliToken("anthropic");
+	if (claudeToken) {
+		return { provider: "anthropic", apiKey: claudeToken, source: "Claude CLI (~/.claude/)" };
+	}
+
+	const geminiCliToken = tryResolveCliToken("gemini");
+	if (geminiCliToken) {
+		return { provider: "gemini", apiKey: geminiCliToken, source: "Gemini CLI (~/.gemini/)" };
+	}
+
+	const codexToken = tryResolveCliToken("codex");
+	if (codexToken) {
+		return { provider: "openai", apiKey: codexToken, source: "Codex CLI (~/.codex/)" };
+	}
+
+	// ── 2. Environment variables ─────────────────────────────────────────────
+	if (env.ANTHROPIC_API_KEY) {
+		return { provider: "anthropic", apiKey: env.ANTHROPIC_API_KEY, source: "ANTHROPIC_API_KEY" };
+	}
+	if (env.CLAUDE_CODE_OAUTH_TOKEN) {
+		return { provider: "anthropic", apiKey: env.CLAUDE_CODE_OAUTH_TOKEN, source: "CLAUDE_CODE_OAUTH_TOKEN" };
+	}
+	if (env.OPENAI_API_KEY) {
+		return { provider: "openai", apiKey: env.OPENAI_API_KEY, source: "OPENAI_API_KEY" };
+	}
+	if (env.GEMINI_API_KEY) {
+		return { provider: "gemini", apiKey: env.GEMINI_API_KEY, source: "GEMINI_API_KEY" };
+	}
+	if (env.GOOGLE_API_KEY) {
+		return { provider: "gemini", apiKey: env.GOOGLE_API_KEY, source: "GOOGLE_API_KEY" };
+	}
+	if (env.GROQ_API_KEY) {
+		return { provider: "groq", apiKey: env.GROQ_API_KEY, source: "GROQ_API_KEY" };
+	}
+	if (env.DEEPSEEK_API_KEY) {
+		return { provider: "deepseek", apiKey: env.DEEPSEEK_API_KEY, source: "DEEPSEEK_API_KEY" };
+	}
+	if (env.MISTRAL_API_KEY) {
+		return { provider: "mistral", apiKey: env.MISTRAL_API_KEY, source: "MISTRAL_API_KEY" };
+	}
+	if (env.TOGETHER_API_KEY) {
+		return { provider: "together", apiKey: env.TOGETHER_API_KEY, source: "TOGETHER_API_KEY" };
+	}
+	if (env.OPENROUTER_API_KEY) {
+		return { provider: "openrouter", apiKey: env.OPENROUTER_API_KEY, source: "OPENROUTER_API_KEY" };
+	}
+	if (env.TAKUMI_API_KEY) {
+		return { provider: "anthropic", apiKey: env.TAKUMI_API_KEY, source: "TAKUMI_API_KEY" };
+	}
+
+	// ── 3. GitHub CLI → GitHub Models (OpenAI-compatible) ───────────────────
+	const ghToken = tryResolveCliToken("github");
+	if (ghToken) {
+		return {
+			provider: "openai",
+			apiKey: ghToken,
+			model: "gpt-4.1",
+			source: "GitHub CLI (gh auth token)",
+		};
+	}
+
+	// ── 4. Ollama local server ───────────────────────────────────────────────
+	const ollamaModels = await probeOllama();
+	if (ollamaModels.length > 0) {
+		// Prefer llama/mistral/qwen models; otherwise use whatever is installed
+		const preferred =
+			ollamaModels.find((m) => /llama|mistral|qwen|gemma|phi/i.test(m)) ?? ollamaModels[0];
+		return {
+			provider: "ollama",
+			apiKey: "",
+			model: preferred,
+			source: `Ollama (${ollamaModels.length} model${ollamaModels.length > 1 ? "s" : ""} at localhost:11434)`,
+		};
+	}
+
+	return null;
+}
