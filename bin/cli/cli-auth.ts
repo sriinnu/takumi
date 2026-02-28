@@ -221,13 +221,14 @@ export async function autoDetectAuth(): Promise<AutoDetectedAuth | null> {
 	}
 
 	// ── 3. GitHub CLI → GitHub Models (OpenAI-compatible) ───────────────────
+	// The 'github' provider uses models.inference.ai.azure.com with a gh token.
 	const ghToken = tryResolveCliToken("github");
 	if (ghToken) {
 		return {
-			provider: "openai",
+			provider: "github",
 			apiKey: ghToken,
 			model: "gpt-4.1",
-			source: "GitHub CLI (gh auth token)",
+			source: "GitHub CLI (gh auth token → GitHub Models)",
 		};
 	}
 

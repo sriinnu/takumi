@@ -40,6 +40,7 @@ async function chooseProviderAndModel(config: TakumiConfig): Promise<void> {
 			{ value: "anthropic", label: "Claude (Anthropic)" },
 			{ value: "openai", label: "OpenAI (GPT / Codex / o-series)" },
 			{ value: "gemini", label: "Google Gemini" },
+			{ value: "github", label: "GitHub Models (free with gh CLI)" },
 			{ value: "groq", label: "Groq (Fast Llama/Mixtral)" },
 			{ value: "deepseek", label: "DeepSeek" },
 			{ value: "mistral", label: "Mistral AI" },

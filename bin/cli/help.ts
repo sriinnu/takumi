@@ -44,6 +44,7 @@ Providers:
   anthropic (default)    Direct Anthropic API
   openai                 OpenAI (GPT-4.1, etc.)
   gemini                 Google Gemini
+  github                 GitHub Models (free — uses gh auth token)
   groq                   Groq (fast inference)
   deepseek               DeepSeek
   mistral                Mistral AI
