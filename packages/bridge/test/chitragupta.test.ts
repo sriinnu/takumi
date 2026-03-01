@@ -581,4 +581,124 @@ describe("ChitraguptaBridge", () => {
 			expect(result).toBeNull();
 		});
 	});
+
+	// ── Phase 15: Vidhi, Consolidation, Fact Extraction ──────────────────
+
+	describe("Phase 15 features", () => {
+		const MOCK_SOCKET_PATH = "/tmp/test-chitragupta.sock";
+		function createMockSocket() {
+			return {
+				isConnected: true,
+				request: vi.fn(),
+				call: vi.fn(),
+			};
+		}
+
+		it("vidhiList returns vidhis in socket mode", async () => {
+			const mockSocket = createMockSocket();
+			mockSocket.call = vi.fn().mockResolvedValue({
+				vidhis: [
+					{
+						id: "v1",
+						name: "Test Vidhi",
+						pattern: "test*",
+						action: "run test",
+						confidence: 0.9,
+						usageCount: 5,
+						createdAt: "2026-03-01",
+					},
+				],
+			});
+
+			const bridge = new ChitraguptaBridge({ socketPath: MOCK_SOCKET_PATH });
+			// @ts-expect-error — testing internals
+			bridge._socket = mockSocket;
+			// @ts-expect-error — testing internals
+			bridge._socketMode = true;
+
+			const vidhis = await bridge.vidhiList("test-project", 10);
+			expect(vidhis).toHaveLength(1);
+			expect(vidhis[0].name).toBe("Test Vidhi");
+			expect(mockSocket.call).toHaveBeenCalledWith("vidhi.list", { project: "test-project", limit: 10 });
+		});
+
+		it("vidhiMatch returns match in socket mode", async () => {
+			const mockSocket = createMockSocket();
+			mockSocket.call = vi.fn().mockResolvedValue({
+				match: {
+					vidhi: {
+						id: "v1",
+						name: "Test Vidhi",
+						pattern: "test*",
+						action: "run test",
+						confidence: 0.9,
+						usageCount: 5,
+						createdAt: "2026-03-01",
+					},
+					score: 0.85,
+					context: "test context",
+				},
+			});
+
+			const bridge = new ChitraguptaBridge({ socketPath: MOCK_SOCKET_PATH });
+			// @ts-expect-error — testing internals
+			bridge._socket = mockSocket;
+			// @ts-expect-error — testing internals
+			bridge._socketMode = true;
+
+			const match = await bridge.vidhiMatch("test-project", "run test");
+			expect(match).not.toBeNull();
+			expect(match!.score).toBe(0.85);
+			expect(match!.vidhi.name).toBe("Test Vidhi");
+		});
+
+		it("consolidationRun returns result in socket mode", async () => {
+			const mockSocket = createMockSocket();
+			mockSocket.call = vi.fn().mockResolvedValue({
+				sessionCount: 20,
+				vidhisExtracted: 5,
+				factsExtracted: 42,
+				daysSaved: 3,
+				elapsed: 2500,
+			});
+
+			const bridge = new ChitraguptaBridge({ socketPath: MOCK_SOCKET_PATH });
+			// @ts-expect-error — testing internals
+			bridge._socket = mockSocket;
+			// @ts-expect-error — testing internals
+			bridge._socketMode = true;
+
+			const result = await bridge.consolidationRun("test-project", 20);
+			expect(result.sessionCount).toBe(20);
+			expect(result.vidhisExtracted).toBe(5);
+			expect(result.factsExtracted).toBe(42);
+		});
+
+		it("factExtract returns facts in socket mode", async () => {
+			const mockSocket = createMockSocket();
+			mockSocket.call = vi.fn().mockResolvedValue({
+				facts: [
+					{
+						id: "f1",
+						text: "User prefers TypeScript",
+						type: "preference",
+						confidence: 0.95,
+						source: "session",
+						createdAt: "2026-03-01",
+					},
+				],
+			});
+
+			const bridge = new ChitraguptaBridge({ socketPath: MOCK_SOCKET_PATH });
+			// @ts-expect-error — testing internals
+			bridge._socket = mockSocket;
+			// @ts-expect-error — testing internals
+			bridge._socketMode = true;
+
+			const facts = await bridge.factExtract("User prefers TypeScript", "/test/project");
+			expect(facts).toHaveLength(1);
+			expect(facts[0].text).toBe("User prefers TypeScript");
+			expect(facts[0].type).toBe("preference");
+		});
+	});
 });
