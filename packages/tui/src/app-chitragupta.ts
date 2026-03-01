@@ -70,15 +70,15 @@ export function connectChitragupta(
 			try {
 				const cwd = process.cwd();
 				const projectName = cwd.split("/").pop() ?? cwd;
-				const results = await bridge.memorySearch(projectName, 5);
+				const results = await bridge.unifiedRecall(projectName, 5, projectName);
 				if (results.length > 0) {
 					state.chitraguptaMemory.value = results
 						.map(
 							(r, i) =>
-								`${i + 1}. [relevance ${r.relevance.toFixed(2)}${r.source ? ` | ${r.source}` : ""}]\n${r.content}`,
+								`${i + 1}. [score ${r.score.toFixed(2)} | ${r.type}${r.source ? ` | ${r.source}` : ""}]\n${r.content}`,
 						)
 						.join("\n\n");
-					log.info(`Loaded ${results.length} memory entries from Chitragupta`);
+					log.info(`Loaded ${results.length} memory entries from Chitragupta (unified recall)`);
 				}
 			} catch (err) {
 				log.debug(`Chitragupta memory preload failed: ${(err as Error).message}`);

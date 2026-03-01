@@ -11,118 +11,27 @@
  */
 
 import { createLogger } from "@takumi/core";
+import type {
+	AkashaTrace,
+	ChitraguptaBridgeOptions,
+	ChitraguptaHealth,
+	ChitraguptaSessionInfo,
+	DaySearchResult,
+	HandoverSummary,
+	MemoryResult,
+	SessionDetail,
+	UnifiedRecallResult,
+	VasanaTendency,
+} from "./chitragupta-types.js";
 import { DaemonSocketClient, probeSocket, resolveSocketPath } from "./daemon-socket.js";
 import { McpClient, type McpClientOptions } from "./mcp-client.js";
 
 const log = createLogger("chitragupta-bridge");
 
-// ── Return types ─────────────────────────────────────────────────────────────
-
-export interface MemoryResult {
-	content: string;
-	relevance: number;
-	source?: string;
-}
-
-export interface ChitraguptaSessionInfo {
-	id: string;
-	title: string;
-	timestamp: number;
-	turns: number;
-}
-
-export interface SessionDetail {
-	id: string;
-	title: string;
-	turns: Array<{ role: string; content: string; timestamp: number }>;
-}
-
-export interface HandoverSummary {
-	originalRequest: string;
-	filesModified: string[];
-	filesRead: string[];
-	decisions: string[];
-	errors: string[];
-	recentContext: string;
-}
-
-export interface AkashaTrace {
-	content: string;
-	type: string;
-	topics: string[];
-	strength: number;
-}
-
-/**
- * Vasana tendency — a crystallized behavioral pattern extracted by Chitragupta
- * from repeated observations across sessions (BOCPD-detected stability).
- * NOTE: mirrors @chitragupta/tantra VasanaTendencyResult; delete local def when
- * chitragupta publishes the type as a standalone package export.
- */
-export interface VasanaTendency {
-	/** Tendency category/name (e.g. "prefers-functional-style"). */
-	tendency: string;
-	/** Positive, negative, or neutral valence. */
-	valence: string;
-	/** Normalized strength 0.0–1.0 (Thompson-sampled confidence). */
-	strength: number;
-	/** BOCPD stability estimate 0.0–1.0. */
-	stability: number;
-	/** Cross-session predictive accuracy 0.0–1.0. */
-	predictiveAccuracy: number;
-	/** Number of times this tendency was reinforced. */
-	reinforcementCount: number;
-	/** Human-readable description of the behavioral pattern. */
-	description: string;
-}
-
-/**
- * Chitragupta aggregate health snapshot — Triguna-based system state.
- * NOTE: mirrors @chitragupta/tantra HealthStatusResult; delete local def when
- * chitragupta publishes the type as a standalone package export.
- */
-export interface ChitraguptaHealth {
-	/** Triguna state: Sattvic (clarity), Rajasic (energy), Tamasic (inertia). Each 0.0–1.0. */
-	state: { sattva: number; rajas: number; tamas: number };
-	/** Dominant Guna at current time ("sattva" | "rajas" | "tamas"). */
-	dominant: string;
-	/** Change direction per Guna ("rising" | "stable" | "falling"). */
-	trend: { sattva: string; rajas: string; tamas: string };
-	/** Active alerts or anomaly descriptions. */
-	alerts: string[];
-	/** Recent snapshots for trend rendering (newest-last). */
-	history: Array<{
-		timestamp: number;
-		state: { sattva: number; rajas: number; tamas: number };
-		dominant: string;
-	}>;
-}
-
 // ── MCP tool response wrappers ───────────────────────────────────────────────
 
 interface ToolCallResult {
 	content?: Array<{ type: string; text?: string }>;
-}
-
-// ── Bridge options ───────────────────────────────────────────────────────────
-
-export interface ChitraguptaBridgeOptions {
-	/** Path to the chitragupta-mcp binary. Default: "chitragupta-mcp". */
-	command?: string;
-	/** Arguments for the binary. Default: ["--transport", "stdio"]. */
-	args?: string[];
-	/** Project path passed as environment variable. */
-	projectPath?: string;
-	/** Startup timeout in ms. Default: 5000. */
-	startupTimeoutMs?: number;
-	/** Per-request timeout in ms. Default: 10000. */
-	requestTimeoutMs?: number;
-	/**
-	 * Override the daemon Unix socket path.
-	 * Default: platform-resolved path (mirrors @chitragupta/daemon).
-	 * Set to "" to disable socket mode entirely.
-	 */
-	socketPath?: string;
 }
 
 // ── ChitraguptaBridge ────────────────────────────────────────────────────────
@@ -219,6 +128,78 @@ export class ChitraguptaBridge {
 
 		const raw = await this.callTool("chitragupta_memory_search", params);
 		return this.parseResults<MemoryResult[]>(raw) ?? [];
+	}
+
+	/** Unified recall: search across sessions, day files, and memory markdown. */
+	async unifiedRecall(query: string, limit?: number, project?: string): Promise<UnifiedRecallResult[]> {
+		if (this._socketMode && this._socket) {
+			const resp = await this._socket.call<{ results: Array<Record<string, unknown>> }>("memory.unified_recall", {
+				query,
+				limit: limit ?? 5,
+				project: project ?? this.options.projectPath,
+			});
+			return (resp.results ?? []).map((r) => ({
+				content: String(r.content ?? ""),
+				score: Number(r.score ?? 0),
+				source: String(r.source ?? ""),
+				type: String(r.type ?? "session"),
+			}));
+		}
+		// MCP fallback: use legacy memory search
+		const legacy = await this.memorySearch(query, limit);
+		return legacy.map((r) => ({
+			content: r.content,
+			score: r.relevance,
+			source: r.source ?? "",
+			type: "session",
+		}));
+	}
+
+	/** List available day consolidation files. */
+	async dayList(): Promise<string[]> {
+		if (this._socketMode && this._socket) {
+			const resp = await this._socket.call<{ dates: string[] }>("day.list", {});
+			return resp.dates ?? [];
+		}
+		// MCP fallback: no day files available
+		return [];
+	}
+
+	/** Display content of a specific day file. */
+	async dayShow(date: string): Promise<{ date: string; content: string | null }> {
+		if (this._socketMode && this._socket) {
+			const resp = await this._socket.call<{ date: string; content: string | null }>("day.show", { date });
+			return { date: resp.date ?? date, content: resp.content ?? null };
+		}
+		// MCP fallback: no day files available
+		return { date, content: null };
+	}
+
+	/** Search across day consolidation files. */
+	async daySearch(query: string, limit?: number): Promise<DaySearchResult[]> {
+		if (this._socketMode && this._socket) {
+			const resp = await this._socket.call<{ results: Array<Record<string, unknown>> }>("day.search", {
+				query,
+				limit: limit ?? 10,
+			});
+			return (resp.results ?? []).map((r) => ({
+				date: String(r.date ?? ""),
+				content: String(r.content ?? ""),
+				score: Number(r.score ?? 0),
+			}));
+		}
+		// MCP fallback: no day files available
+		return [];
+	}
+
+	/** Load and assemble provider context for a project. */
+	async contextLoad(project: string): Promise<{ assembled: string; itemCount: number }> {
+		if (this._socketMode && this._socket) {
+			const resp = await this._socket.call<{ assembled: string; itemCount: number }>("context.load", { project });
+			return { assembled: resp.assembled ?? "", itemCount: resp.itemCount ?? 0 };
+		}
+		// MCP fallback: no context assembly available
+		return { assembled: "", itemCount: 0 };
 	}
 
 	/** List recent sessions for this project. */
