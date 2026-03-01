@@ -1084,6 +1084,71 @@ Add to `takumi.config.json`:
 
 ---
 
+## Phase 13-17: Chitragupta Deep Integration ⚡ IN PROGRESS
+
+**Goal:** Complete bidirectional integration with chitragupta daemon for session persistence, memory consolidation, and turn tracking
+
+**Status:** 18/26 daemon RPC methods (69% coverage)  
+**Current:** Phase 13-16 ✅ COMPLETE | Phase 17+ 🔄 REMAINING
+
+### Phase 13: Daemon Socket Integration ✅ COMPLETE (PR #15)
+- [x] Docker daemon pattern: probe Unix socket before spawning MCP subprocess
+- [x] DaemonSocketClient with JSON-RPC 2.0 over Unix socket
+- [x] probeSocket() helper + resolveSocketPath()
+- [x] ChitraguptaBridge dual-mode: socket-first, MCP fallback
+- [x] 5-8s cold-start elimination when daemon is running
+- [x] Tests: socket mode + MCP fallback coverage (2389/2389 passing)
+
+### Phase 14: Memory × RAG Fusion ✅ COMPLETE (PR #15)
+- [x] unifiedRecall() method combining memorySearch + sessionList
+- [x] Score normalization and fusion ranking
+- [x] Unified result type with source attribution
+- [x] Tests: fusion scoring and result ordering
+
+### Phase 15: Vidhi, Consolidation, Facts ✅ COMPLETE (PR #16)
+- [x] vidhiList() — list learned procedures
+- [x] vidhiMatch() — match query to vidhi
+- [x] consolidationRun() — trigger memory consolidation
+- [x] factExtract() — extract structured facts from text
+- [x] TUI commands: /vidhi, /consolidate, /facts
+- [x] Tests: all Phase 15 methods verified (2393/2393 passing)
+
+### Phase 16: Session Write & Turn Tracking ✅ COMPLETE (PR #17)
+- [x] sessionCreate() — create new session with metadata
+- [x] sessionMetaUpdate() — update session metadata
+- [x] turnAdd() — append turn to session
+- [x] turnMaxNumber() — query max turn number
+- [x] TUI commands: /session create, /turn track
+- [x] Refactoring: chitragupta-ops.ts extraction (LOC limit compliance)
+- [x] Tests: Phase 16 methods + refactoring verified (2393/2393 passing)
+
+### Phase 17: Session Query & Turn Listing 🔄 NEXT UP
+- [ ] sessionDates() — list dates with sessions
+- [ ] sessionProjects() — list all projects
+- [ ] sessionModifiedSince() — query recent sessions by timestamp
+- [ ] sessionDelete() — delete a session
+- [ ] turnList() — list all turns in a session
+- [ ] turnSince() — query turns after a timestamp
+- [ ] TUI commands: /session query, /session delete, /turn list
+- [ ] Tests: Phase 17 methods (target: 2399 tests)
+
+### Phase 18: Advanced Memory Features 🔄 FUTURE
+- [ ] memoryScopes() — list available memory scopes
+- [ ] daemonStatus() — detailed daemon health metrics
+- [ ] Full daemon coverage: 26/26 methods (100%)
+- [ ] TUI integration: memory scope selector, daemon health panel
+- [ ] Performance optimization: batch queries, caching layer
+- [ ] Tests: complete daemon RPC coverage
+
+### Phase 19: Session Recovery & Replay 🔄 FUTURE
+- [ ] Session state reconstruction from chitragupta
+- [ ] Turn-by-turn replay UI (timeline navigation)
+- [ ] Checkpoint/restore workflow state
+- [ ] Branch from any turn (session forking)
+- [ ] Tests: recovery scenarios, replay accuracy
+
+---
+
 ## Test Coverage Targets
 
 | Package | Target | Focus |
