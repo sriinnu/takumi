@@ -560,7 +560,7 @@ If not installed, Takumi works fine without it (graceful degradation).
 | **Phase 6** — CLI & Polish | Done | 1537 | Markdown rendering, session persistence, auto-connect |
 | **Phase 7** — Multi-Agent | Done | 2095 | Cluster orchestrator, 5 validators, checkpoint, isolation |
 | **Phase 8** — ArXiv Research | Done | 2095 | Ensemble, Reflexion, MoA, ToT, Progressive Refinement, Bandit |
-| **Phase 9** — Global Install + DX | Done | 2301 | `npm install -g takumi`, GitHub Models, session fork, vi mode, `/tree` |
+| **Phase 9** — Global Install + DX | Done | 2343 | `npm install -g takumi`, GitHub Models, session fork, vi mode, `/tree` |
 | **Future** — Stretch Goals | Planned | — | Codebase RAG (AST+CodeBERT), session fork from CLI, plugin API |
 
 ---
