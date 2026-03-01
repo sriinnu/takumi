@@ -4,12 +4,16 @@ export type {
 	ChitraguptaBridgeOptions,
 	ChitraguptaHealth,
 	ChitraguptaSessionInfo,
+	ConsolidationResult,
 	DaySearchResult,
+	ExtractedFact,
 	HandoverSummary,
 	MemoryResult,
 	SessionDetail,
 	UnifiedRecallResult,
 	VasanaTendency,
+	VidhiInfo,
+	VidhiMatch,
 } from "./chitragupta-types.js";
 export { DaemonSocketClient, probeSocket, resolveLogDir, resolvePidPath, resolveSocketPath } from "./daemon-socket.js";
 export type { DarpanaConfig } from "./darpana.js";
