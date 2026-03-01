@@ -427,4 +427,22 @@ export interface TakumiConfig {
 
 	/** Maximum total spend in USD before the session is halted. */
 	maxCostUsd?: number;
+
+	/**
+	 * Chitragupta daemon configuration.
+	 * When set, takumi will attempt socket-mode connection before MCP subprocess.
+	 */
+	chitraguptaDaemon?: {
+		/**
+		 * Override the daemon Unix socket path.
+		 * Default: platform-resolved path (mirrors @chitragupta/daemon).
+		 * Set to "" to disable socket mode entirely.
+		 */
+		socketPath?: string;
+		/**
+		 * Path to chitragupta-daemon dist/entry.js for `takumi daemon start`.
+		 * Falls back to CHITRAGUPTA_DAEMON_ENTRY env var.
+		 */
+		daemonEntry?: string;
+	};
 }

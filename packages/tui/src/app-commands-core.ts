@@ -334,4 +334,83 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 		const relPath = parts[0] ? join(parts[0]) : ".";
 		ctx.addInfoMessage(`\`\`\`\n${relPath}/ (depth ${maxDepth})\n${display}\n\`\`\``);
 	});
+
+	ctx.commands.register("/day", "Temporal memory navigation (/day list|show|search)", async (args) => {
+		const bridge = ctx.state.chitraguptaBridge.value;
+		if (!bridge || !bridge.isConnected) {
+			ctx.addInfoMessage("Chitragupta not connected. Day files require daemon connection.");
+			return;
+		}
+
+		if (!args) {
+			ctx.addInfoMessage(
+				"Usage:\n" +
+					"  /day list             — list available day files\n" +
+					"  /day show YYYY-MM-DD  — display day content\n" +
+					"  /day search <query>   — search temporal memory",
+			);
+			return;
+		}
+
+		const parts = args.trim().split(/\s+/);
+		const subcommand = parts[0];
+
+		if (subcommand === "list") {
+			try {
+				const dates = await bridge.dayList();
+				if (dates.length === 0) {
+					ctx.addInfoMessage("No day consolidation files available.");
+					return;
+				}
+				const list = dates.map((d, i) => `${i + 1}. ${d}`).join("\n");
+				ctx.addInfoMessage(`Available day files (${dates.length}):\n${list}`);
+			} catch (err) {
+				ctx.addInfoMessage(`Failed to list day files: ${(err as Error).message}`);
+			}
+			return;
+		}
+
+		if (subcommand === "show") {
+			const date = parts[1];
+			if (!date) {
+				ctx.addInfoMessage("Usage: /day show YYYY-MM-DD");
+				return;
+			}
+			try {
+				const result = await bridge.dayShow(date);
+				if (!result.content) {
+					ctx.addInfoMessage(`No content found for ${date}`);
+					return;
+				}
+				ctx.addInfoMessage(`Day file: ${result.date}\n\n${result.content}`);
+			} catch (err) {
+				ctx.addInfoMessage(`Failed to show day file: ${(err as Error).message}`);
+			}
+			return;
+		}
+
+		if (subcommand === "search") {
+			const query = parts.slice(1).join(" ");
+			if (!query) {
+				ctx.addInfoMessage("Usage: /day search <query>");
+				return;
+			}
+			try {
+				const results = await bridge.daySearch(query, 10);
+				if (results.length === 0) {
+					ctx.addInfoMessage(`No results found for: ${query}`);
+					return;
+				}
+				const formatted = results
+					.map((r, i) => `${i + 1}. ${r.date} [score ${r.score.toFixed(2)}]\n${r.content}`)
+					.join("\n\n");
+				ctx.addInfoMessage(`Day search results (${results.length}):\n\n${formatted}`);
+			} catch (err) {
+				ctx.addInfoMessage(`Failed to search day files: ${(err as Error).message}`);
+			}
+			return;
+		}
+
+		ctx.addInfoMessage(`Unknown subcommand: ${subcommand}\nUse /day without arguments for usage.`);
+	});
 }

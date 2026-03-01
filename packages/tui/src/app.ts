@@ -145,9 +145,14 @@ export class TakumiApp {
 			return undefined;
 		});
 
-		connectChitragupta(this.state, this.agentRunner, (timer) => {
-			this.vasanaRefreshInterval = timer;
-		});
+		connectChitragupta(
+			this.state,
+			this.agentRunner,
+			(timer) => {
+				this.vasanaRefreshInterval = timer;
+			},
+			this.config.chitraguptaDaemon?.socketPath,
+		);
 	}
 
 	async quit(): Promise<void> {

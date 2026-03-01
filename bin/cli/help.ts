@@ -18,6 +18,7 @@ Subcommands:
   takumi watch [job-id]      Live monitor detached jobs (or one specific job)
   takumi attach <job-id>     Attach to a detached job log stream
   takumi stop <job-id>       Stop a detached background job
+  takumi daemon [action]     Manage the chitragupta daemon (start|stop|status|restart|logs)
 
 Options:
   -h, --help                Show this help message

@@ -2,6 +2,19 @@ import { EventEmitter } from "node:events";
 import { Readable, Writable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// ── Mock node:net — socket probe always fails instantly in tests ──────────────
+
+vi.mock("node:net", () => {
+	const createConnection = vi.fn(() => {
+		const sock = new EventEmitter() as EventEmitter & { destroy: () => void };
+		sock.destroy = vi.fn();
+		// Emit error synchronously so probeSocket resolves false without hanging
+		process.nextTick(() => sock.emit("error", new Error("ENOENT: no daemon in tests")));
+		return sock;
+	});
+	return { default: { createConnection }, createConnection };
+});
+
 // ── Mock child_process ───────────────────────────────────────────────────────
 
 function createMockProcess() {
