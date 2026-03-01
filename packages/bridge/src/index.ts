@@ -9,6 +9,7 @@ export type {
 	VasanaTendency,
 } from "./chitragupta.js";
 export { ChitraguptaBridge } from "./chitragupta.js";
+export { DaemonSocketClient, probeSocket, resolveLogDir, resolvePidPath, resolveSocketPath } from "./daemon-socket.js";
 export type { DarpanaConfig } from "./darpana.js";
 export { DarpanaClient } from "./darpana.js";
 export type { GitLogEntry, GitStatus } from "./git.js";

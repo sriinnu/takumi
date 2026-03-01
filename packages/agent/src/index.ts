@@ -48,6 +48,9 @@ export {
 	estimateTotalPayloadTokens,
 	shouldCompact,
 } from "./context/compact.js";
+// Codebase indexer (Phase 10 — RAG)
+export type { CodebaseIndex, FileEntry, IndexedSymbol, IndexStats } from "./context/indexer.js";
+export { buildIndex, indexStats, loadIndex } from "./context/indexer.js";
 export type { ProjectContext, ProjectInfo } from "./context/project.js";
 export {
 	detectFramework,
@@ -56,8 +59,14 @@ export {
 	detectProject,
 	detectProjectContext,
 } from "./context/project.js";
+// RAG query + formatting (Phase 10)
+export type { RagOptions, RagResult } from "./context/rag.js";
+export { formatRagContext, queryIndex } from "./context/rag.js";
 export type { SoulData } from "./context/soul.js";
 export { formatSoulPrompt, loadSoul } from "./context/soul.js";
+// LLM cost estimation + budget enforcement (Phase 11)
+export type { BudgetGuardOptions, CostEstimate } from "./cost.js";
+export { BudgetExceededError, BudgetGuard, estimateClusterCost, estimateCost, MODEL_PRICING } from "./cost.js";
 export type { ErrorCategory } from "./errors.js";
 // Error types and categorization
 export {

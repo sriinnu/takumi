@@ -31,6 +31,8 @@ export function connectChitragupta(
 	state: AppState,
 	agentRunner: AgentRunner | null,
 	onInterval: (timer: ReturnType<typeof setInterval>) => void,
+	/** Override the daemon socket path (from config.chitraguptaDaemon.socketPath). */
+	socketPath?: string,
 ): void {
 	const mcpConfig = loadMcpConfig();
 	const bridge = new ChitraguptaBridge({
@@ -38,6 +40,7 @@ export function connectChitragupta(
 		args: mcpConfig?.args,
 		projectPath: process.cwd(),
 		startupTimeoutMs: 8_000,
+		socketPath, // undefined → auto-resolve; "" → disable socket mode
 	});
 	state.chitraguptaBridge.value = bridge;
 

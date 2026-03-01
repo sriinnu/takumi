@@ -79,6 +79,7 @@ const DEFAULT_CONFIG: TakumiConfig = {
 		right: ["metrics", "keybinds"],
 	},
 	plugins: [],
+	// maxCostUsd is intentionally undefined — no limit by default
 };
 
 /** Config file search paths, in priority order (first found wins). */
