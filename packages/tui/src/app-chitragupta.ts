@@ -31,6 +31,8 @@ export function connectChitragupta(
 	state: AppState,
 	agentRunner: AgentRunner | null,
 	onInterval: (timer: ReturnType<typeof setInterval>) => void,
+	/** Override the daemon socket path (from config.chitraguptaDaemon.socketPath). */
+	socketPath?: string,
 ): void {
 	const mcpConfig = loadMcpConfig();
 	const bridge = new ChitraguptaBridge({
@@ -38,6 +40,7 @@ export function connectChitragupta(
 		args: mcpConfig?.args,
 		projectPath: process.cwd(),
 		startupTimeoutMs: 8_000,
+		socketPath, // undefined → auto-resolve; "" → disable socket mode
 	});
 	state.chitraguptaBridge.value = bridge;
 
@@ -67,15 +70,15 @@ export function connectChitragupta(
 			try {
 				const cwd = process.cwd();
 				const projectName = cwd.split("/").pop() ?? cwd;
-				const results = await bridge.memorySearch(projectName, 5);
+				const results = await bridge.unifiedRecall(projectName, 5, projectName);
 				if (results.length > 0) {
 					state.chitraguptaMemory.value = results
 						.map(
 							(r, i) =>
-								`${i + 1}. [relevance ${r.relevance.toFixed(2)}${r.source ? ` | ${r.source}` : ""}]\n${r.content}`,
+								`${i + 1}. [score ${r.score.toFixed(2)} | ${r.type}${r.source ? ` | ${r.source}` : ""}]\n${r.content}`,
 						)
 						.join("\n\n");
-					log.info(`Loaded ${results.length} memory entries from Chitragupta`);
+					log.info(`Loaded ${results.length} memory entries from Chitragupta (unified recall)`);
 				}
 			} catch (err) {
 				log.debug(`Chitragupta memory preload failed: ${(err as Error).message}`);
