@@ -9,6 +9,8 @@ import { fetchIssueContext, readStdin, runOneShot } from "./cli/one-shot.js";
 import { buildSingleProvider, canSkipApiKey, createProvider } from "./cli/provider.js";
 import { autoDetectAuth } from "./cli/cli-auth.js";
 import { cmdDelete, cmdExport, cmdList, cmdLogs, cmdStatus } from "./cli/session-commands.js";
+import { cmdDaemon } from "./cli/daemon.js";
+import { cmdDaemon } from "./cli/daemon.js";
 import { printSplash } from "./cli/splash.js";
 
 const VERSION = "0.1.0";
@@ -207,6 +209,9 @@ async function main(): Promise<void> {
 					process.exit(1);
 				}
 				await cmdStop(args.subcommandArg);
+				return;
+			case "daemon":
+				await cmdDaemon(args.subcommandArg ?? "status");
 				return;
 		}
 	}
