@@ -335,82 +335,113 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 		ctx.addInfoMessage(`\`\`\`\n${relPath}/ (depth ${maxDepth})\n${display}\n\`\`\``);
 	});
 
-	ctx.commands.register("/day", "Temporal memory navigation (/day list|show|search)", async (args) => {
+	ctx.commands.register("/day", "Temporal memory navigation", async (args) => {
 		const bridge = ctx.state.chitraguptaBridge.value;
-		if (!bridge || !bridge.isConnected) {
-			ctx.addInfoMessage("Chitragupta not connected. Day files require daemon connection.");
-			return;
-		}
-
+		if (!bridge?.isConnected) return ctx.addInfoMessage("Chitragupta not connected");
 		if (!args) {
-			ctx.addInfoMessage(
-				"Usage:\n" +
-					"  /day list             — list available day files\n" +
-					"  /day show YYYY-MM-DD  — display day content\n" +
-					"  /day search <query>   — search temporal memory",
+			return ctx.addInfoMessage(
+				"Usage:\n  /day list             — list days\n  /day show YYYY-MM-DD  — show day\n  /day search <query>   — search days",
 			);
-			return;
 		}
-
 		const parts = args.trim().split(/\s+/);
-		const subcommand = parts[0];
+		const sub = parts[0];
 
-		if (subcommand === "list") {
+		if (sub === "list") {
 			try {
 				const dates = await bridge.dayList();
-				if (dates.length === 0) {
-					ctx.addInfoMessage("No day consolidation files available.");
-					return;
-				}
-				const list = dates.map((d, i) => `${i + 1}. ${d}`).join("\n");
-				ctx.addInfoMessage(`Available day files (${dates.length}):\n${list}`);
+				if (dates.length === 0) return ctx.addInfoMessage("No day files");
+				ctx.addInfoMessage(`Day files (${dates.length}):\n${dates.map((d, i) => `${i + 1}. ${d}`).join("\n")}`);
 			} catch (err) {
-				ctx.addInfoMessage(`Failed to list day files: ${(err as Error).message}`);
+				ctx.addInfoMessage(`Failed: ${(err as Error).message}`);
 			}
 			return;
 		}
-
-		if (subcommand === "show") {
+		if (sub === "show") {
 			const date = parts[1];
-			if (!date) {
-				ctx.addInfoMessage("Usage: /day show YYYY-MM-DD");
-				return;
-			}
+			if (!date) return ctx.addInfoMessage("Usage: /day show YYYY-MM-DD");
 			try {
 				const result = await bridge.dayShow(date);
-				if (!result.content) {
-					ctx.addInfoMessage(`No content found for ${date}`);
-					return;
-				}
-				ctx.addInfoMessage(`Day file: ${result.date}\n\n${result.content}`);
+				if (!result.content) return ctx.addInfoMessage(`No content for ${date}`);
+				ctx.addInfoMessage(`Day: ${result.date}\n\n${result.content}`);
 			} catch (err) {
-				ctx.addInfoMessage(`Failed to show day file: ${(err as Error).message}`);
+				ctx.addInfoMessage(`Failed: ${(err as Error).message}`);
 			}
 			return;
 		}
-
-		if (subcommand === "search") {
+		if (sub === "search") {
 			const query = parts.slice(1).join(" ");
-			if (!query) {
-				ctx.addInfoMessage("Usage: /day search <query>");
-				return;
-			}
+			if (!query) return ctx.addInfoMessage("Usage: /day search <query>");
 			try {
 				const results = await bridge.daySearch(query, 10);
-				if (results.length === 0) {
-					ctx.addInfoMessage(`No results found for: ${query}`);
-					return;
-				}
-				const formatted = results
-					.map((r, i) => `${i + 1}. ${r.date} [score ${r.score.toFixed(2)}]\n${r.content}`)
-					.join("\n\n");
-				ctx.addInfoMessage(`Day search results (${results.length}):\n\n${formatted}`);
+				if (results.length === 0) return ctx.addInfoMessage(`No results for: ${query}`);
+				const fmt = results.map((r, i) => `${i + 1}. ${r.date} [${r.score.toFixed(2)}]\n${r.content}`).join("\n\n");
+				ctx.addInfoMessage(`Results (${results.length}):\n\n${fmt}`);
 			} catch (err) {
-				ctx.addInfoMessage(`Failed to search day files: ${(err as Error).message}`);
+				ctx.addInfoMessage(`Failed: ${(err as Error).message}`);
 			}
 			return;
 		}
+		ctx.addInfoMessage(`Unknown: ${sub}\nUse /day for usage.`);
+	});
 
-		ctx.addInfoMessage(`Unknown subcommand: ${subcommand}\nUse /day without arguments for usage.`);
+	ctx.commands.register("/vidhi", "List or match learned procedures", async (args) => {
+		const bridge = ctx.state.chitraguptaBridge.value;
+		if (!bridge?.isConnected) return ctx.addInfoMessage("Chitragupta not connected");
+		const project = process.cwd();
+
+		if (!args || args === "list") {
+			const vidhis = await bridge.vidhiList(project, 20);
+			if (vidhis.length === 0) return ctx.addInfoMessage("No vidhis — run /consolidate first");
+			const lines = vidhis.map(
+				(v) =>
+					`• **${v.name}** (${v.confidence.toFixed(2)} conf, ${v.usageCount} uses)\n  \`${v.pattern}\` → ${v.action}`,
+			);
+			return ctx.addInfoMessage(`## Vidhis (${vidhis.length})\n\n${lines.join("\n\n")}`);
+		}
+		if (args.startsWith("match ")) {
+			const query = args.slice(6).trim();
+			if (!query) return ctx.addInfoMessage("Usage: `/vidhi match <query>`");
+			const match = await bridge.vidhiMatch(project, query);
+			if (!match) return ctx.addInfoMessage(`No match for: "${query}"`);
+			return ctx.addInfoMessage(
+				`## Match (${match.score.toFixed(2)})\n**${match.vidhi.name}**: \`${match.vidhi.pattern}\` → ${match.vidhi.action}\n\n${match.context}`,
+			);
+		}
+		ctx.addInfoMessage("Usage: `/vidhi list` or `/vidhi match <query>`");
+	});
+
+	ctx.commands.register("/consolidate", "Run memory consolidation", async (args) => {
+		const bridge = ctx.state.chitraguptaBridge.value;
+		if (!bridge?.isConnected) return ctx.addInfoMessage("Chitragupta not connected");
+		const project = process.cwd();
+		let count = 20;
+		if (args) {
+			const n = Number.parseInt(args, 10);
+			if (!Number.isNaN(n) && n > 0 && n <= 100) count = n;
+		}
+		ctx.addInfoMessage(`Running consolidation (${count} sessions)...`);
+		try {
+			const r = await bridge.consolidationRun(project, count);
+			ctx.addInfoMessage(
+				`## Done\n• ${r.sessionCount} sessions\n• ${r.vidhisExtracted} vidhis\n• ${r.factsExtracted} facts\n• ${r.daysSaved} days\n• ${(r.elapsed / 1000).toFixed(1)}s`,
+			);
+		} catch (err) {
+			ctx.addInfoMessage(`❌ ${(err as Error).message}`);
+		}
+	});
+
+	ctx.commands.register("/facts", "Extract structured facts", async (args) => {
+		if (!args) return ctx.addInfoMessage("Usage: `/facts <text>`");
+		const bridge = ctx.state.chitraguptaBridge.value;
+		if (!bridge?.isConnected) return ctx.addInfoMessage("Chitragupta not connected");
+		ctx.addInfoMessage("Extracting...");
+		try {
+			const facts = await bridge.factExtract(args, process.cwd());
+			if (facts.length === 0) return ctx.addInfoMessage("No facts extracted");
+			const lines = facts.map((f) => `• **${f.type}** (${(f.confidence * 100).toFixed(0)}%)\n  ${f.text}`);
+			ctx.addInfoMessage(`## Facts (${facts.length})\n\n${lines.join("\n\n")}`);
+		} catch (err) {
+			ctx.addInfoMessage(`❌ ${(err as Error).message}`);
+		}
 	});
 }

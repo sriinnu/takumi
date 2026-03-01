@@ -95,6 +95,43 @@ export interface ChitraguptaHealth {
 	}>;
 }
 
+/** Vidhi (learned procedure) metadata */
+export interface VidhiInfo {
+	id: string;
+	name: string;
+	pattern: string;
+	action: string;
+	confidence: number;
+	usageCount: number;
+	createdAt: string;
+}
+
+/** Vidhi match result */
+export interface VidhiMatch {
+	vidhi: VidhiInfo;
+	score: number;
+	context: string;
+}
+
+/** Consolidation run result */
+export interface ConsolidationResult {
+	sessionCount: number;
+	vidhisExtracted: number;
+	factsExtracted: number;
+	daysSaved: number;
+	elapsed: number;
+}
+
+/** Extracted fact */
+export interface ExtractedFact {
+	id: string;
+	text: string;
+	type: string;
+	confidence: number;
+	source: string;
+	createdAt: string;
+}
+
 export interface ChitraguptaBridgeOptions {
 	/** Path to the chitragupta-mcp binary. Default: "chitragupta-mcp". */
 	command?: string;
