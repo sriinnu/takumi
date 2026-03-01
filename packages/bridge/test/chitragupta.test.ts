@@ -701,4 +701,123 @@ describe("ChitraguptaBridge", () => {
 			expect(facts[0].type).toBe("preference");
 		});
 	});
+
+	describe("Phase 16 — Session Write & Turn Tracking", () => {
+		const MOCK_SOCKET_PATH = "/tmp/test-chitragupta.sock";
+		function createMockSocket() {
+			return {
+				isConnected: true,
+				request: vi.fn(),
+				call: vi.fn(),
+			};
+		}
+
+		it("sessionCreate creates session in socket mode", async () => {
+			const mockSocket = createMockSocket();
+			mockSocket.call = vi.fn().mockResolvedValue({
+				id: "sess-123",
+				created: true,
+			});
+
+			const bridge = new ChitraguptaBridge({ socketPath: MOCK_SOCKET_PATH });
+			// @ts-expect-error — testing internals
+			bridge._socket = mockSocket;
+			// @ts-expect-error — testing internals
+			bridge._socketMode = true;
+
+			const result = await bridge.sessionCreate({
+				project: "/test/project",
+				title: "Test Session",
+				agent: "takumi",
+				model: "claude-sonnet-4",
+			});
+
+			expect(result.id).toBe("sess-123");
+			expect(result.created).toBe(true);
+			expect(mockSocket.call).toHaveBeenCalledWith("session.create", {
+				project: "/test/project",
+				title: "Test Session",
+				agent: "takumi",
+				model: "claude-sonnet-4",
+			});
+		});
+
+		it("sessionMetaUpdate updates metadata in socket mode", async () => {
+			const mockSocket = createMockSocket();
+			mockSocket.call = vi.fn().mockResolvedValue({
+				updated: true,
+			});
+
+			const bridge = new ChitraguptaBridge({ socketPath: MOCK_SOCKET_PATH });
+			// @ts-expect-error — testing internals
+			bridge._socket = mockSocket;
+			// @ts-expect-error — testing internals
+			bridge._socketMode = true;
+
+			const result = await bridge.sessionMetaUpdate("sess-123", {
+				title: "Updated Title",
+				completed: true,
+				costUsd: 0.05,
+			});
+
+			expect(result.updated).toBe(true);
+			expect(mockSocket.call).toHaveBeenCalledWith("session.meta.update", {
+				id: "sess-123",
+				updates: {
+					title: "Updated Title",
+					completed: true,
+					costUsd: 0.05,
+				},
+			});
+		});
+
+		it("turnAdd adds turn in socket mode", async () => {
+			const mockSocket = createMockSocket();
+			mockSocket.call = vi.fn().mockResolvedValue({
+				added: true,
+			});
+
+			const bridge = new ChitraguptaBridge({ socketPath: MOCK_SOCKET_PATH });
+			// @ts-expect-error — testing internals
+			bridge._socket = mockSocket;
+			// @ts-expect-error — testing internals
+			bridge._socketMode = true;
+
+			const turn = {
+				number: 1,
+				role: "user" as const,
+				content: "Hello, world!",
+				timestamp: Date.now(),
+			};
+
+			const result = await bridge.turnAdd("sess-123", "/test/project", turn);
+
+			expect(result.added).toBe(true);
+			expect(mockSocket.call).toHaveBeenCalledWith("turn.add", {
+				sessionId: "sess-123",
+				project: "/test/project",
+				turn,
+			});
+		});
+
+		it("turnMaxNumber returns max turn in socket mode", async () => {
+			const mockSocket = createMockSocket();
+			mockSocket.call = vi.fn().mockResolvedValue({
+				maxTurn: 42,
+			});
+
+			const bridge = new ChitraguptaBridge({ socketPath: MOCK_SOCKET_PATH });
+			// @ts-expect-error — testing internals
+			bridge._socket = mockSocket;
+			// @ts-expect-error — testing internals
+			bridge._socketMode = true;
+
+			const maxTurn = await bridge.turnMaxNumber("sess-123");
+
+			expect(maxTurn).toBe(42);
+			expect(mockSocket.call).toHaveBeenCalledWith("turn.max_number", {
+				sessionId: "sess-123",
+			});
+		});
+	});
 });
