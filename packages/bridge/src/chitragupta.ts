@@ -16,12 +16,16 @@ import type {
 	ChitraguptaBridgeOptions,
 	ChitraguptaHealth,
 	ChitraguptaSessionInfo,
+	ConsolidationResult,
 	DaySearchResult,
+	ExtractedFact,
 	HandoverSummary,
 	MemoryResult,
 	SessionDetail,
 	UnifiedRecallResult,
 	VasanaTendency,
+	VidhiInfo,
+	VidhiMatch,
 } from "./chitragupta-types.js";
 import { DaemonSocketClient, probeSocket, resolveSocketPath } from "./daemon-socket.js";
 import { McpClient, type McpClientOptions } from "./mcp-client.js";
@@ -352,6 +356,48 @@ export class ChitraguptaBridge {
 		}
 		const raw = await this.callTool("health_status", {});
 		return this.parseResults<ChitraguptaHealth>(raw);
+	}
+	/** List learned procedures (vidhis) for a project. */
+	async vidhiList(project: string, limit = 20): Promise<VidhiInfo[]> {
+		if (this._socketMode && this._socket) {
+			const result = await this._socket.call<{ vidhis: VidhiInfo[] }>("vidhi.list", { project, limit });
+			return result.vidhis;
+		}
+		const result = await this.callTool("vidhi_list", { project, limit });
+		const content = result.content?.[0]?.text;
+		if (!content) throw new Error("No vidhis returned");
+		return JSON.parse(content).vidhis as VidhiInfo[];
+	}
+	/** Match a learned procedure (vidhi) against a query. */
+	async vidhiMatch(project: string, query: string): Promise<VidhiMatch | null> {
+		if (this._socketMode && this._socket) {
+			const result = await this._socket.call<{ match: VidhiMatch | null }>("vidhi.match", { project, query });
+			return result.match;
+		}
+		const result = await this.callTool("vidhi_match", { project, query });
+		const content = result.content?.[0]?.text;
+		return content ? (JSON.parse(content).match as VidhiMatch | null) : null;
+	}
+	/** Run memory consolidation for a project. */
+	async consolidationRun(project: string, sessionCount = 20): Promise<ConsolidationResult> {
+		if (this._socketMode && this._socket) {
+			return await this._socket.call<ConsolidationResult>("consolidation.run", { project, sessionCount });
+		}
+		const result = await this.callTool("consolidation_run", { project, session_count: sessionCount });
+		const content = result.content?.[0]?.text;
+		if (!content) throw new Error("Consolidation failed");
+		return JSON.parse(content) as ConsolidationResult;
+	}
+	/** Extract structured facts from text. */
+	async factExtract(text: string, projectPath?: string): Promise<ExtractedFact[]> {
+		if (this._socketMode && this._socket) {
+			const result = await this._socket.call<{ facts: ExtractedFact[] }>("fact.extract", { text, projectPath });
+			return result.facts;
+		}
+		const result = await this.callTool("fact_extract", { text, project_path: projectPath });
+		const content = result.content?.[0]?.text;
+		if (!content) throw new Error("Fact extraction failed");
+		return JSON.parse(content).facts as ExtractedFact[];
 	}
 
 	/** Check connection status. */
