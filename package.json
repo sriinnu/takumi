@@ -54,6 +54,7 @@
 		"check:loc": "node scripts/guard-loc.mjs",
 		"check": "pnpm run check:loc && biome check --write --error-on-warnings .",
 		"takumi": "tsx bin/takumi.ts",
+		"eval": "tsx scripts/eval.ts",
 		"prepare": "husky"
 	},
 	"dependencies": {

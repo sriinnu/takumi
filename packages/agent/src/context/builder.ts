@@ -44,6 +44,9 @@ export interface SystemPromptOptions {
 
 	/** Maximum tokens for the system prompt (truncates if exceeded). */
 	maxTokens?: number;
+
+	/** RAG context from codebase indexer (injected between project context and instructions). */
+	ragContext?: string;
 }
 
 // ── Default identity ─────────────────────────────────────────────────────────
@@ -83,6 +86,7 @@ const DEFAULT_GUIDELINES = [
  */
 export function buildSystemPrompt(options: SystemPromptOptions): string {
 	const { tools, soul, projectContext, customInstructions, model, maxTokens } = options;
+	// ragContext is accessed via options.ragContext below
 
 	const sections: string[] = [];
 
@@ -159,6 +163,13 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
 			sections.push("## Coding Conventions\n");
 			sections.push(projectContext.conventions);
 		}
+	}
+
+	// ── 3b. RAG Context ─────────────────────────────────────────────────────
+
+	if (options.ragContext) {
+		sections.push("");
+		sections.push(options.ragContext);
 	}
 
 	// ── 4. Instructions (guidelines) ─────────────────────────────────────────

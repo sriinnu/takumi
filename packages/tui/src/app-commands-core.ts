@@ -260,6 +260,46 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 		);
 	});
 
+	ctx.commands.register("/index", "Index codebase for RAG context (/index [--rebuild])", async (args) => {
+		const force = args?.trim() === "--rebuild";
+		const { buildIndex, indexStats } = await import("@takumi/agent");
+		ctx.addInfoMessage(`Indexing codebase${force ? " (forced rebuild)" : ""}...`);
+		try {
+			const index = await buildIndex(process.cwd(), force);
+			const stats = indexStats(index);
+			ctx.addInfoMessage(
+				`Index built: ${stats.files} files, ${stats.symbols} symbols\nBuilt at: ${stats.builtAt.toLocaleString()}`,
+			);
+		} catch (err) {
+			ctx.addInfoMessage(`Indexing failed: ${(err as Error).message}`);
+		}
+	});
+
+	ctx.commands.register("/budget", "Show or set spend limit (/budget [amount])", async (args) => {
+		const spent = ctx.state.totalCost.value;
+		const { loadConfig } = await import("@takumi/core");
+		const cfg = loadConfig();
+		const limit = cfg.maxCostUsd;
+
+		if (!args) {
+			const limitStr = limit != null ? `$${limit.toFixed(4)}` : "unlimited";
+			const usedPct = limit != null && limit > 0 ? ` (${((spent / limit) * 100).toFixed(1)}% used)` : "";
+			ctx.addInfoMessage(
+				`Budget:\n  Spent : $${spent.toFixed(4)}\n  Limit : ${limitStr}${usedPct}\n\nUse /budget <amount> to set a limit (e.g. /budget 1.00).`,
+			);
+			return;
+		}
+
+		const parsed = parseFloat(args.trim());
+		if (Number.isNaN(parsed) || parsed <= 0) {
+			ctx.addInfoMessage(`Invalid amount: "${args.trim()}" — must be a positive number (e.g. /budget 2.50)`);
+			return;
+		}
+		// Persist to runtime config — effective for the current session
+		cfg.maxCostUsd = parsed;
+		ctx.addInfoMessage(`Budget limit set to $${parsed.toFixed(4)} for this session.`);
+	});
+
 	ctx.commands.register("/tree", "Print directory tree (/tree [path] [depth])", async (args) => {
 		const parts = args.trim().split(/\s+/).filter(Boolean);
 		const { join, resolve, basename } = await import("node:path");
