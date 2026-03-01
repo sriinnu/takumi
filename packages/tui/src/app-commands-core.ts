@@ -236,4 +236,62 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 		}
 		ctx.addInfoMessage("Usage: /think [on|off|budget <tokens>]");
 	});
+
+	ctx.commands.register("/fork", "Fork the current session into a new branch", async (_args) => {
+		const currentId = ctx.state.sessionId.value;
+		if (!currentId) {
+			ctx.addInfoMessage("No active session to fork. Start chatting first or use /session save.");
+			return;
+		}
+		const { forkSession, saveSession } = await import("@takumi/core");
+		// Save current state first so the fork captures latest messages
+		try {
+			await saveSession(ctx.buildSessionData());
+		} catch {}
+		const forked = await forkSession(currentId);
+		if (!forked) {
+			ctx.addInfoMessage(`Fork failed: session "${currentId}" not found on disk. Try /session save first.`);
+			return;
+		}
+		ctx.state.sessionId.value = forked.id;
+		ctx.startAutoSaver();
+		ctx.addInfoMessage(
+			`Session forked.\n  Source : ${currentId}\n  New    : ${forked.id}\n\nYou are now on the forked session. The original is unchanged.`,
+		);
+	});
+
+	ctx.commands.register("/tree", "Print directory tree (/tree [path] [depth])", async (args) => {
+		const parts = args.trim().split(/\s+/).filter(Boolean);
+		const { join, resolve, basename } = await import("node:path");
+		const root = process.cwd();
+		const target = parts[0] ? resolve(root, parts[0]) : root;
+		const maxDepth = Math.min(parts[1] ? parseInt(parts[1], 10) || 3 : 3, 6);
+
+		const { scanDirectory, loadGitignore } = await import("./panels/file-tree-helpers.js");
+		let patterns: string[] = [];
+		try {
+			patterns = await loadGitignore(root);
+		} catch {}
+
+		const nodes = await scanDirectory(target, maxDepth, patterns);
+
+		const lines: string[] = [`${basename(target)}/`];
+		function render(list: typeof nodes, prefix: string): void {
+			for (let i = 0; i < list.length; i++) {
+				const node = list[i];
+				const isLast = i === list.length - 1;
+				const connector = isLast ? "\u2514\u2500 " : "\u251C\u2500 ";
+				const icon = node.isDirectory ? "\u25B8 " : "  ";
+				lines.push(`${prefix}${connector}${icon}${node.name}${node.isDirectory ? "/" : ""}`);
+				if (node.isDirectory && node.children?.length) {
+					render(node.children, prefix + (isLast ? "   " : "\u2502  "));
+				}
+			}
+		}
+		render(nodes, "");
+
+		const display = lines.join("\n");
+		const relPath = parts[0] ? join(parts[0]) : ".";
+		ctx.addInfoMessage(`\`\`\`\n${relPath}/ (depth ${maxDepth})\n${display}\n\`\`\``);
+	});
 }
