@@ -142,6 +142,32 @@ export async function listSessions(limit?: number, sessionsDir?: string): Promis
 }
 
 /**
+ * Fork an existing session into a new session with a fresh ID.
+ *
+ * The new session inherits all messages, model, and token usage from the
+ * source, but gets a new ID and `createdAt` timestamp. Both sessions are
+ * saved to disk — the source is unchanged.
+ *
+ * @returns The new forked SessionData, or null if the source is not found.
+ */
+export async function forkSession(sourceId: string, newId?: string, sessionsDir?: string): Promise<SessionData | null> {
+	const source = await loadSession(sourceId, sessionsDir);
+	if (!source) return null;
+	const now = Date.now();
+	const forked: SessionData = {
+		...source,
+		id: newId ?? generateSessionId(),
+		title: `Fork of ${source.title || source.id}`,
+		createdAt: now,
+		updatedAt: now,
+		// deep-copy messages so mutations on one session don't affect the other
+		messages: source.messages.map((m) => ({ ...m, content: [...m.content] })),
+	};
+	await saveSession(forked, sessionsDir);
+	return forked;
+}
+
+/**
  * Delete a session from disk.
  * Silently succeeds if the file does not exist.
  */

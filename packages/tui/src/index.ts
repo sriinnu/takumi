@@ -69,3 +69,6 @@ export type { LogEntry, LogLevel } from "./views/logs.js";
 export { LogsView } from "./views/logs.js";
 // Views
 export { RootView } from "./views/root.js";
+export type { VimModeType } from "./vim.js";
+// Vim
+export { VimMode } from "./vim.js";

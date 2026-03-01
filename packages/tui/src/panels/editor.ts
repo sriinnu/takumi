@@ -10,6 +10,8 @@ import { Component, Input as InputComponent } from "@takumi/render";
 import type { SlashCommandRegistry } from "../commands.js";
 import type { CompletionItem } from "../completion.js";
 import { CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "../completion.js";
+import type { EditorOp } from "../vim.js";
+import { VimMode } from "../vim.js";
 
 export interface EditorPanelProps {
 	onSubmit: (text: string) => void;
@@ -25,6 +27,8 @@ export class EditorPanel extends Component {
 	private engine: CompletionEngine;
 	/** Debounce timer for async file completions (@ prefix). */
 	private completionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+	readonly vimMode = new VimMode();
 
 	constructor(props: EditorPanelProps) {
 		super();
@@ -72,42 +76,79 @@ export class EditorPanel extends Component {
 		this.input.setValue(value);
 	}
 
-	/** Handle key events, with completion popup interception. */
+	/** Handle key events, with completion popup interception and vim modal input. */
 	handleKey(event: KeyEvent): boolean {
-		// If popup is visible, intercept navigation keys
+		// Completion popup takes priority: intercept confirm / navigation / close
 		if (this.completion.isVisible.value) {
-			// Tab or Enter while popup is visible: confirm selection
 			if (event.raw === KEY_CODES.TAB || event.raw === KEY_CODES.ENTER) {
 				const item = this.completion.confirm();
 				if (item) {
 					this.applyCompletion(item);
 					return true;
 				}
-				// If no item (shouldn't happen), fall through
 			}
-
-			// Up/Down/Escape: let popup handle
 			if (this.completion.handleKey(event)) {
+				this.markDirty();
+				return true;
+			}
+			// Escape: close popup without toggling vim mode
+			if (event.raw === KEY_CODES.ESCAPE) {
+				this.completion.hide();
 				this.markDirty();
 				return true;
 			}
 		}
 
 		// Tab with popup hidden: trigger completion
-		if (event.raw === KEY_CODES.TAB) {
+		if (event.raw === KEY_CODES.TAB && !this.completion.isVisible.value) {
 			this.triggerCompletion();
 			return true;
 		}
 
-		// Escape when popup is visible (already handled above, but be safe)
-		if (event.raw === KEY_CODES.ESCAPE && this.completion.isVisible.value) {
-			this.completion.hide();
+		// Vi modal input — intercepts in NORMAL mode, and Escape in INSERT mode
+		const op = this.vimMode.process(event.raw, this.input.getValue());
+		if (op.op !== "passthrough") {
 			this.markDirty();
-			return true;
+			return this.applyEditorOp(op);
 		}
 
-		// Pass to the underlying input
+		// INSERT mode passthrough
 		return this.input.handleKey(event);
+	}
+
+	/** Apply a VimMode EditorOp to the underlying InputComponent. */
+	private applyEditorOp(op: EditorOp): boolean {
+		const ke = (raw: string): KeyEvent => ({ raw, key: raw, ctrl: false, alt: false, shift: false, meta: false });
+		const moveTo = (col: number): void => {
+			this.input.handleKey(ke(KEY_CODES.CTRL_A));
+			for (let i = 0; i < col; i++) this.input.handleKey(ke(KEY_CODES.RIGHT));
+		};
+		switch (op.op) {
+			case "noop":
+				return true;
+			case "setMode":
+				moveTo(this.vimMode.cursor);
+				return true;
+			case "setCursor":
+				moveTo(op.col);
+				return true;
+			case "setText":
+				this.input.setValue(op.text);
+				moveTo(op.cursor);
+				return true;
+			case "submit":
+				this.onSubmit(this.input.getValue());
+				this.input.clear();
+				this.vimMode.reset();
+				return true;
+			default:
+				return false;
+		}
+	}
+
+	/** Reset vim to INSERT mode (call after /clear or session change). */
+	resetVim(): void {
+		this.vimMode.reset();
 	}
 
 	/** Trigger completion based on current input. */
@@ -193,9 +234,12 @@ export class EditorPanel extends Component {
 	}
 
 	render(screen: Screen, rect: Rect): void {
-		// Draw separator line
-		const separator = "\u2500".repeat(rect.width);
-		screen.writeText(rect.y, rect.x, separator, { fg: 8, dim: true });
+		// Draw separator line with vim mode indicator (e.g. " [N] ───")
+		const label = this.vimMode.label;
+		const bar = label + "\u2500".repeat(Math.max(0, rect.width - label.length));
+		const labelColor = this.vimMode.mode === "NORMAL" ? 11 : 8; // yellow for NORMAL
+		screen.writeText(rect.y, rect.x, label, { fg: labelColor, bold: this.vimMode.mode === "NORMAL" });
+		screen.writeText(rect.y, rect.x + label.length, bar.slice(label.length), { fg: 8, dim: true });
 
 		// Draw input on the line(s) below
 		if (rect.height > 1) {
