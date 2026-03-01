@@ -17,6 +17,7 @@ export type { AutoSaver, SessionData, SessionSummary } from "./sessions.js";
 export {
 	createAutoSaver,
 	deleteSession,
+	forkSession,
 	generateSessionId,
 	listSessions,
 	loadSession,

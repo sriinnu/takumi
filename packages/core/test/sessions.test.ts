@@ -5,6 +5,7 @@ import type { SessionData } from "@takumi/core";
 import {
 	createAutoSaver,
 	deleteSession,
+	forkSession,
 	generateSessionId,
 	listSessions,
 	loadSession,
@@ -328,5 +329,105 @@ describe("createAutoSaver", () => {
 		expect(loaded).not.toBeNull();
 		// updatedAt should have been updated to roughly Date.now()
 		expect(loaded!.updatedAt).toBeGreaterThanOrEqual(beforeSave);
+	});
+});
+
+describe("forkSession", () => {
+	let tmpDir: string;
+
+	beforeEach(async () => {
+		tmpDir = await mkdtemp(join(tmpdir(), "takumi-fork-test-"));
+	});
+
+	afterEach(async () => {
+		await rm(tmpDir, { recursive: true, force: true });
+	});
+
+	it("returns null when source session does not exist", async () => {
+		const result = await forkSession("no-such-session-id", undefined, tmpDir);
+		expect(result).toBeNull();
+	});
+
+	it("creates a new session with a different id", async () => {
+		const source = makeSession({ id: "source-fork-1" });
+		await saveSession(source, tmpDir);
+
+		const forked = await forkSession("source-fork-1", undefined, tmpDir);
+		expect(forked).not.toBeNull();
+		expect(forked!.id).not.toBe("source-fork-1");
+	});
+
+	it("uses the provided custom id for the fork", async () => {
+		const source = makeSession({ id: "source-fork-2" });
+		await saveSession(source, tmpDir);
+
+		const forked = await forkSession("source-fork-2", "custom-fork-id", tmpDir);
+		expect(forked).not.toBeNull();
+		expect(forked!.id).toBe("custom-fork-id");
+	});
+
+	it("deep-copies the messages array so mutations do not affect source", async () => {
+		const source = makeSession({ id: "source-fork-3" });
+		await saveSession(source, tmpDir);
+
+		const forked = await forkSession("source-fork-3", undefined, tmpDir);
+		expect(forked).not.toBeNull();
+		expect(forked!.messages).toHaveLength(source.messages.length);
+
+		// Mutate the fork's messages — source on disk must be unaffected
+		forked!.messages.push({
+			id: "extra",
+			role: "user",
+			content: [{ type: "text", text: "Extra" }],
+			timestamp: 9999,
+		});
+		const reloaded = await loadSession("source-fork-3", tmpDir);
+		expect(reloaded!.messages).toHaveLength(source.messages.length);
+	});
+
+	it("persists the forked session to disk", async () => {
+		const source = makeSession({ id: "source-fork-4" });
+		await saveSession(source, tmpDir);
+
+		const forked = await forkSession("source-fork-4", undefined, tmpDir);
+		expect(forked).not.toBeNull();
+
+		const loaded = await loadSession(forked!.id, tmpDir);
+		expect(loaded).not.toBeNull();
+		expect(loaded!.id).toBe(forked!.id);
+	});
+
+	it("title of fork references the source title", async () => {
+		const source = makeSession({ id: "source-fork-5", title: "My Chat" });
+		await saveSession(source, tmpDir);
+
+		const forked = await forkSession("source-fork-5", undefined, tmpDir);
+		expect(forked).not.toBeNull();
+		expect(forked!.title).toContain("My Chat");
+	});
+
+	it("source session is unchanged after forking", async () => {
+		const source = makeSession({ id: "source-fork-6" });
+		await saveSession(source, tmpDir);
+
+		await forkSession("source-fork-6", undefined, tmpDir);
+
+		const reloaded = await loadSession("source-fork-6", tmpDir);
+		expect(reloaded).not.toBeNull();
+		expect(reloaded!.id).toBe("source-fork-6");
+		expect(reloaded!.messages).toHaveLength(source.messages.length);
+	});
+
+	it("both source and fork appear in listSessions", async () => {
+		const source = makeSession({ id: "source-fork-7" });
+		await saveSession(source, tmpDir);
+
+		const forked = await forkSession("source-fork-7", undefined, tmpDir);
+		expect(forked).not.toBeNull();
+
+		const sessions = await listSessions(undefined, tmpDir);
+		const ids = sessions.map((s) => s.id);
+		expect(ids).toContain("source-fork-7");
+		expect(ids).toContain(forked!.id);
 	});
 });
