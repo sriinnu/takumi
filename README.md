@@ -70,10 +70,18 @@ It integrates natively with [Chitragupta](https://github.com/sriinnu/chitragupta
 ### Prerequisites
 
 - **Node.js** 22+ (LTS)
-- **pnpm** 9+
 - An LLM API key (Anthropic, OpenAI, Gemini, etc.) **or** a local Ollama instance
 
-### Install
+### Global install (recommended)
+
+```bash
+npm install -g takumi
+takumi --help
+```
+
+That's it. No clone, no build. Takumi auto-detects your API key from any CLI tool already on the machine (`gh`, `gcloud`, `claude`, `codex`, Ollama).
+
+### From source (developers)
 
 ```bash
 # Clone
@@ -86,7 +94,10 @@ pnpm install
 # Build all packages
 pnpm build
 
-# Run
+# Bundle CLI binary
+pnpm bundle
+
+# Run via source
 pnpm takumi
 ```
 
@@ -96,16 +107,17 @@ Takumi supports **Zero-Config Authentication**. If you have the GitHub CLI (`gh`
 
 ```bash
 # Option 1: Zero-Config (if gh, gcloud, or claude CLI is authenticated)
-pnpm takumi -y
+takumi
 
-# Option 2: Direct Anthropic API key
-ANTHROPIC_API_KEY=sk-ant-... pnpm takumi
+# Option 2: GitHub Models — completely free with a GitHub account
+gh auth login       # one-time setup
+takumi              # auto-detects gh token, uses GitHub Models
 
-# Option 3: Via Darpana proxy (supports any provider)
-OPENAI_API_KEY=sk-... pnpm takumi --proxy http://localhost:8082
+# Option 3: Direct API key
+ANTHROPIC_API_KEY=sk-ant-... takumi
 
 # Option 4: Local Ollama (no key needed)
-pnpm takumi --proxy http://localhost:8082 --model local/llama3
+takumi              # auto-detects running Ollama instance
 ```
 
 ### One-Shot Mode (no TUI)
@@ -489,6 +501,23 @@ You'll get a full-screen terminal UI. Type a message and press Enter. The agent 
 | `Ctrl+C` | Cancel running agent / quit |
 | Mouse wheel | Scroll messages |
 
+### Vi Input Mode
+
+The message editor supports Vi modal input. The mode indicator `[N]` / `[I]` appears at the left of the separator bar.
+
+| Key (NORMAL) | Action |
+|---|---|
+| `i` / `a` | Enter INSERT before / after cursor |
+| `A` / `I` | Enter INSERT at end / start of line |
+| `Esc` | Return to NORMAL mode |
+| `h` / `l` | Move cursor left / right |
+| `w` / `b` | Jump to next / previous word |
+| `0` / `$` | Start / end of line |
+| `x` | Delete character under cursor |
+| `dd` | Clear entire line |
+| `dw` | Delete to end of current word |
+| `Enter` | Submit message |
+
 ### Quick Smoke Test (No API Key Needed)
 
 ```bash
@@ -531,7 +560,8 @@ If not installed, Takumi works fine without it (graceful degradation).
 | **Phase 6** — CLI & Polish | Done | 1537 | Markdown rendering, session persistence, auto-connect |
 | **Phase 7** — Multi-Agent | Done | 2095 | Cluster orchestrator, 5 validators, checkpoint, isolation |
 | **Phase 8** — ArXiv Research | Done | 2095 | Ensemble, Reflexion, MoA, ToT, Progressive Refinement, Bandit |
-| **Future** — Stretch Goals | Planned | — | Codebase RAG (AST+CodeBERT), vim mode, session fork |
+| **Phase 9** — Global Install + DX | Done | 2301 | `npm install -g takumi`, GitHub Models, session fork, vi mode, `/tree` |
+| **Future** — Stretch Goals | Planned | — | Codebase RAG (AST+CodeBERT), session fork from CLI, plugin API |
 
 ---
 
