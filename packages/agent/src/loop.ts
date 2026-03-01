@@ -18,6 +18,8 @@ import {
 	type PayloadCompactOptions,
 	shouldCompact,
 } from "./context/compact.js";
+import type { BudgetGuard } from "./cost.js";
+import { BudgetExceededError } from "./cost.js";
 import { buildSystemPrompt, buildToolResult, buildUserMessage } from "./message.js";
 import { type RetryOptions, withRetry } from "./retry.js";
 import type { ToolRegistry } from "./tools/registry.js";
@@ -54,6 +56,9 @@ export interface AgentLoopOptions {
 
 	/** Maximum context window size in tokens (for compaction). */
 	maxContextTokens?: number;
+
+	/** Optional spend-limit enforcer. Throws BudgetExceededError when the limit is crossed. */
+	budget?: BudgetGuard;
 }
 
 export interface MessagePayload {
@@ -182,6 +187,19 @@ export async function* agentLoop(
 						_usage = event.usage;
 						// Track cumulative tokens for compaction decisions
 						cumulativeTokens = event.usage.inputTokens + event.usage.outputTokens;
+						// Budget enforcement — throws BudgetExceededError if limit exceeded
+						if (options.budget) {
+							try {
+								options.budget.record(event.usage.inputTokens, event.usage.outputTokens);
+							} catch (budgetErr) {
+								if (budgetErr instanceof BudgetExceededError) {
+									yield { type: "error", error: budgetErr };
+									yield { type: "stop", reason: "error" };
+									return;
+								}
+								throw budgetErr;
+							}
+						}
 						break;
 					case "error":
 						yield { type: "stop", reason: "error" };

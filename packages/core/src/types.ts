@@ -424,4 +424,7 @@ export interface TakumiConfig {
 
 	/** Plugins configuration */
 	plugins?: PluginConfig[];
+
+	/** Maximum total spend in USD before the session is halted. */
+	maxCostUsd?: number;
 }
