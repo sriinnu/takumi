@@ -11,6 +11,7 @@
  */
 
 import { createLogger } from "@takumi/core";
+import * as ops from "./chitragupta-ops.js";
 import type {
 	AkashaTrace,
 	ChitraguptaBridgeOptions,
@@ -21,7 +22,12 @@ import type {
 	ExtractedFact,
 	HandoverSummary,
 	MemoryResult,
+	SessionCreateOptions,
+	SessionCreateResult,
 	SessionDetail,
+	SessionMetaUpdates,
+	Turn,
+	TurnAddResult,
 	UnifiedRecallResult,
 	VasanaTendency,
 	VidhiInfo,
@@ -161,49 +167,22 @@ export class ChitraguptaBridge {
 
 	/** List available day consolidation files. */
 	async dayList(): Promise<string[]> {
-		if (this._socketMode && this._socket) {
-			const resp = await this._socket.call<{ dates: string[] }>("day.list", {});
-			return resp.dates ?? [];
-		}
-		// MCP fallback: no day files available
-		return [];
+		return ops.dayList(this._socket, this._socketMode);
 	}
 
 	/** Display content of a specific day file. */
 	async dayShow(date: string): Promise<{ date: string; content: string | null }> {
-		if (this._socketMode && this._socket) {
-			const resp = await this._socket.call<{ date: string; content: string | null }>("day.show", { date });
-			return { date: resp.date ?? date, content: resp.content ?? null };
-		}
-		// MCP fallback: no day files available
-		return { date, content: null };
+		return ops.dayShow(this._socket, this._socketMode, date);
 	}
 
 	/** Search across day consolidation files. */
 	async daySearch(query: string, limit?: number): Promise<DaySearchResult[]> {
-		if (this._socketMode && this._socket) {
-			const resp = await this._socket.call<{ results: Array<Record<string, unknown>> }>("day.search", {
-				query,
-				limit: limit ?? 10,
-			});
-			return (resp.results ?? []).map((r) => ({
-				date: String(r.date ?? ""),
-				content: String(r.content ?? ""),
-				score: Number(r.score ?? 0),
-			}));
-		}
-		// MCP fallback: no day files available
-		return [];
+		return ops.daySearch(this._socket, this._socketMode, query, limit);
 	}
 
 	/** Load and assemble provider context for a project. */
 	async contextLoad(project: string): Promise<{ assembled: string; itemCount: number }> {
-		if (this._socketMode && this._socket) {
-			const resp = await this._socket.call<{ assembled: string; itemCount: number }>("context.load", { project });
-			return { assembled: resp.assembled ?? "", itemCount: resp.itemCount ?? 0 };
-		}
-		// MCP fallback: no context assembly available
-		return { assembled: "", itemCount: 0 };
+		return ops.contextLoad(this._socket, this._socketMode, project);
 	}
 
 	/** List recent sessions for this project. */
@@ -359,24 +338,11 @@ export class ChitraguptaBridge {
 	}
 	/** List learned procedures (vidhis) for a project. */
 	async vidhiList(project: string, limit = 20): Promise<VidhiInfo[]> {
-		if (this._socketMode && this._socket) {
-			const result = await this._socket.call<{ vidhis: VidhiInfo[] }>("vidhi.list", { project, limit });
-			return result.vidhis;
-		}
-		const result = await this.callTool("vidhi_list", { project, limit });
-		const content = result.content?.[0]?.text;
-		if (!content) throw new Error("No vidhis returned");
-		return JSON.parse(content).vidhis as VidhiInfo[];
+		return ops.vidhiList(this._socket, this._socketMode, this.callTool.bind(this), project, limit);
 	}
 	/** Match a learned procedure (vidhi) against a query. */
 	async vidhiMatch(project: string, query: string): Promise<VidhiMatch | null> {
-		if (this._socketMode && this._socket) {
-			const result = await this._socket.call<{ match: VidhiMatch | null }>("vidhi.match", { project, query });
-			return result.match;
-		}
-		const result = await this.callTool("vidhi_match", { project, query });
-		const content = result.content?.[0]?.text;
-		return content ? (JSON.parse(content).match as VidhiMatch | null) : null;
+		return ops.vidhiMatch(this._socket, this._socketMode, this.callTool.bind(this), project, query);
 	}
 	/** Run memory consolidation for a project. */
 	async consolidationRun(project: string, sessionCount = 20): Promise<ConsolidationResult> {
@@ -390,14 +356,29 @@ export class ChitraguptaBridge {
 	}
 	/** Extract structured facts from text. */
 	async factExtract(text: string, projectPath?: string): Promise<ExtractedFact[]> {
-		if (this._socketMode && this._socket) {
-			const result = await this._socket.call<{ facts: ExtractedFact[] }>("fact.extract", { text, projectPath });
-			return result.facts;
-		}
-		const result = await this.callTool("fact_extract", { text, project_path: projectPath });
-		const content = result.content?.[0]?.text;
-		if (!content) throw new Error("Fact extraction failed");
-		return JSON.parse(content).facts as ExtractedFact[];
+		return ops.factExtract(this._socket, this._socketMode, this.callTool.bind(this), text, projectPath);
+	}
+
+	// ── Phase 16: Session Write & Turn Tracking ─────────────────────────────
+
+	/** Create a new session. */
+	async sessionCreate(opts: SessionCreateOptions): Promise<SessionCreateResult> {
+		return ops.sessionCreate(this._socket, this._socketMode, this.client, opts);
+	}
+
+	/** Update session metadata. */
+	async sessionMetaUpdate(sessionId: string, updates: SessionMetaUpdates): Promise<{ updated: boolean }> {
+		return ops.sessionMetaUpdate(this._socket, this._socketMode, this.client, sessionId, updates);
+	}
+
+	/** Add a turn to a session. */
+	async turnAdd(sessionId: string, project: string, turn: Turn): Promise<TurnAddResult> {
+		return ops.turnAdd(this._socket, this._socketMode, this.client, sessionId, project, turn);
+	}
+
+	/** Get the maximum turn number for a session. */
+	async turnMaxNumber(sessionId: string): Promise<number> {
+		return ops.turnMaxNumber(this._socket, this._socketMode, this.client, sessionId);
 	}
 
 	/** Check connection status. */

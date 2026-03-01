@@ -150,3 +150,66 @@ export interface ChitraguptaBridgeOptions {
 	 */
 	socketPath?: string;
 }
+
+/** Session creation options */
+export interface SessionCreateOptions {
+	project: string;
+	title?: string;
+	agent?: string;
+	model?: string;
+	provider?: string;
+	branch?: string;
+}
+
+/** Session creation result */
+export interface SessionCreateResult {
+	id: string;
+	created: boolean;
+}
+
+/** Session metadata updates */
+export interface SessionMetaUpdates {
+	title?: string;
+	tags?: string[];
+	model?: string;
+	provider?: string;
+	costUsd?: number;
+	durationMs?: number;
+	completed?: boolean;
+	[key: string]: unknown;
+}
+
+/** Turn data structure */
+export interface Turn {
+	number: number;
+	role: "user" | "assistant" | "system";
+	content: string;
+	timestamp?: number;
+	model?: string;
+	tokens?: {
+		prompt?: number;
+		completion?: number;
+		total?: number;
+	};
+	costUsd?: number;
+	toolCalls?: Array<{
+		id: string;
+		name: string;
+		input: Record<string, unknown>;
+	}>;
+	toolResults?: Array<{
+		id: string;
+		name: string;
+		output: string;
+	}>;
+}
+
+/** Turn add result */
+export interface TurnAddResult {
+	added: boolean;
+}
+
+/** Max turn number result */
+export interface MaxTurnResult {
+	maxTurn: number;
+}
