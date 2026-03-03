@@ -53,8 +53,16 @@ Providers:
   openrouter             OpenRouter (multi-provider)
   ollama                 Local Ollama (no key needed)
 
+Authentication (priority order):
+  1. CLI tools (preferred):    claude, gh, gcloud, codex
+  2. Environment variables:    ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.
+  3. Ollama local server:      localhost:11434 (auto-detected)
+
 Examples:
-  ANTHROPIC_API_KEY=... pnpm takumi
+  pnpm takumi                                    # Uses Claude CLI if installed
+  claude login                                   # Authenticate with Claude CLI
+  gh auth login                                  # Authenticate with GitHub CLI
+  ANTHROPIC_API_KEY=... pnpm takumi              # Fallback: use API key
   OPENAI_API_KEY=... pnpm takumi --provider openai --model gpt-4.1
   pnpm takumi "Fix tests" -d                    # Run in background
   pnpm takumi jobs                               # Show detached jobs

@@ -1,5 +1,5 @@
 import { compactHistory } from "@takumi/agent";
-import { gitDiff } from "@takumi/bridge";
+import { gitDiff, reconstructFromDaemon } from "@takumi/bridge";
 import type { Message } from "@takumi/core";
 import type { AppCommandContext } from "./app-command-context.js";
 import { registerChitraguptaCommands } from "./app-commands-chitragupta.js";
@@ -334,6 +334,59 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 		const display = lines.join("\n");
 		const relPath = parts[0] ? join(parts[0]) : ".";
 		ctx.addInfoMessage(`\`\`\`\n${relPath}/ (depth ${maxDepth})\n${display}\n\`\`\``);
+	});
+
+	ctx.commands.register("/replay", "Replay a past session (/replay <session-id> | /replay exit)", async (args) => {
+		if (!args) {
+			ctx.addInfoMessage(
+				"Usage: /replay <session-id>  — load session for step-through replay\n       /replay exit          — leave replay mode",
+			);
+			return;
+		}
+
+		if (args.trim() === "exit") {
+			if (!ctx.state.replayMode.value) {
+				ctx.addInfoMessage("Not currently in replay mode.");
+				return;
+			}
+			ctx.state.replayMode.value = false;
+			ctx.state.replayIndex.value = 0;
+			ctx.state.replayTurns.value = [];
+			ctx.state.replaySessionId.value = "";
+			ctx.addInfoMessage("Exited replay mode.");
+			return;
+		}
+
+		const sessionId = args.trim();
+		const bridge = ctx.state.chitraguptaBridge.value;
+		if (!bridge) {
+			ctx.addInfoMessage("Chitragupta bridge is not connected. Cannot replay from daemon.");
+			return;
+		}
+
+		ctx.addInfoMessage(`Loading session ${sessionId} from daemon...`);
+		try {
+			const recovered = await reconstructFromDaemon(bridge, sessionId);
+			if (!recovered) {
+				ctx.addInfoMessage(`Session "${sessionId}" not found on daemon.`);
+				return;
+			}
+			if (recovered.messages.length === 0) {
+				ctx.addInfoMessage(`Session "${sessionId}" has no messages to replay.`);
+				return;
+			}
+			ctx.state.replayMode.value = true;
+			ctx.state.replayTurns.value = recovered.messages;
+			ctx.state.replayIndex.value = 0;
+			ctx.state.replaySessionId.value = sessionId;
+			const total = recovered.messages.length;
+			ctx.addInfoMessage(
+				`Replay mode: turn 1 of ${total} \u2014 use \u2190/\u2192 to navigate\n` +
+					`Session: ${sessionId}  (${recovered.turnCount} turns, created ${new Date(recovered.createdAt).toLocaleString()})`,
+			);
+		} catch (err) {
+			ctx.addInfoMessage(`Replay failed: ${(err as Error).message}`);
+		}
 	});
 
 	// Register chitragupta-related commands (Phase 15 & 16)

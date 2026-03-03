@@ -51,7 +51,12 @@ export type { LineSegment, RenderedLine } from "./panels/message-list.js";
 export { getToolArgSummary, MessageListPanel, truncateArg } from "./panels/message-list.js";
 export { SidebarPanel } from "./panels/sidebar.js";
 export { StatusBarPanel } from "./panels/status-bar.js";
+export type { TimelinePanelProps } from "./panels/timeline.js";
+export { TimelinePanel } from "./panels/timeline.js";
 export { ToolOutputPanel } from "./panels/tool-output.js";
+export type { ReplayKeyContext } from "./replay-keybinds.js";
+// Replay
+export { handleReplayKey } from "./replay-keybinds.js";
 export type { SpinnerLine, ToolSpinnerEntry } from "./spinner.js";
 // Spinner
 export { TOOL_SPINNER_FRAMES, ToolSpinner } from "./spinner.js";
