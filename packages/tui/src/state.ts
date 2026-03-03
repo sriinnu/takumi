@@ -153,6 +153,10 @@ export class AppState {
 	/** Max context window size for current model. */
 	readonly contextWindow: Signal<number> = signal(200000);
 
+	// ── Consolidation (auto-triggered on near_limit pressure) ─────────────────
+	/** Whether a consolidation run is currently in progress. */
+	readonly consolidationInProgress: Signal<boolean> = signal(false);
+
 	// ── Dialog instances ──────────────────────────────────────────────────────
 	/**
 	 * Validation results dialog — opened by CodingAgent when multi-agent
@@ -293,5 +297,6 @@ export class AppState {
 		this.contextPressure.value = "normal";
 		this.contextTokens.value = 0;
 		this.contextWindow.value = 200000;
+		this.consolidationInProgress.value = false;
 	}
 }

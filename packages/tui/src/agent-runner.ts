@@ -24,6 +24,8 @@ export class AgentRunner {
 	private abortController: AbortController | null = null;
 	private spinnerTimer: ReturnType<typeof setInterval> | null = null;
 	private toolStartTimes = new Map<string, number>();
+	/** Prevents multiple consolidation triggers within a single submission. */
+	private consolidationTriggered = false;
 	private sendMessageFn: (
 		messages: MessagePayload[],
 		system: string,
@@ -115,6 +117,25 @@ export class AgentRunner {
 					this.state.contextPressure.value = pressure.pressure;
 					this.state.contextTokens.value = pressure.tokens;
 					this.state.contextWindow.value = pressure.contextWindow;
+
+					// Auto-consolidation: trigger once per submit when pressure is near_limit (95%+)
+					if (pressure.pressure === "near_limit" && !this.consolidationTriggered) {
+						this.consolidationTriggered = true;
+						const bridge = this.state.chitraguptaBridge.value;
+						if (bridge?.isConnected) {
+							const project = process.cwd().split("/").pop() ?? "unknown";
+							log.info(`Auto-consolidation triggered (pressure: ${pressure.percent.toFixed(1)}%)`);
+							this.state.consolidationInProgress.value = true;
+							void bridge
+								.consolidationRun(project)
+								.catch((err) => {
+									log.debug(`Auto-consolidation failed: ${(err as Error).message}`);
+								})
+								.finally(() => {
+									this.state.consolidationInProgress.value = false;
+								});
+						}
+					}
 				} else if (event.type === "tool_use") {
 					this.state.activeTool.value = event.name;
 					this.state.agentPhase.value = `Running ${event.name}...`;
@@ -157,6 +178,16 @@ export class AgentRunner {
 				assistantMsg.content.push({ type: "text", text: fullText });
 
 				this.state.addMessage(assistantMsg);
+
+				// Auto-deposit to Akasha after successful work
+				const bridge = this.state.chitraguptaBridge.value;
+				if (bridge?.isConnected && fullText.length > 100) {
+					void bridge
+						.akashaDeposit(fullText.slice(0, 2000), "agent_response", [process.cwd().split("/").pop() ?? "unknown"])
+						.catch(() => {
+							/* best-effort */
+						});
+				}
 			}
 		} catch (err) {
 			log.error("Agent loop error", err);
@@ -168,6 +199,7 @@ export class AgentRunner {
 			this.state.agentPhase.value = "idle";
 			this.stopSpinnerTimer();
 			this.abortController = null;
+			this.consolidationTriggered = false;
 		}
 	}
 
