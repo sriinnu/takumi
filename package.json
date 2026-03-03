@@ -19,7 +19,8 @@
 		"url": "https://github.com/sriinnu/takumi.git"
 	},
 	"bin": {
-		"takumi": "dist/takumi.cjs"
+		"takumi": "dist/takumi.cjs",
+		"takumi-telemetry-snapshot": "./bin/telemetry-snapshot.ts"
 	},
 	"files": [
 		"dist/",

@@ -23,18 +23,25 @@ export async function buildSingleProvider(
 	const env = process.env;
 
 	if (providerName === "anthropic") {
+		// Priority: CLI tools → env vars (pi-mono ecosystem standard)
 		const key =
 			config.apiKey ||
+			tryResolveCliToken("anthropic") ||
 			env.ANTHROPIC_API_KEY ||
 			env.CLAUDE_CODE_OAUTH_TOKEN ||
-			env.TAKUMI_API_KEY ||
-			tryResolveCliToken("anthropic");
+			env.TAKUMI_API_KEY;
 		if (!key) return null;
 		return new agent.DirectProvider({ ...config, apiKey: key });
 	}
 
 	if (providerName === "gemini") {
-		const key = config.apiKey || env.GEMINI_API_KEY || env.GOOGLE_API_KEY || env.TAKUMI_API_KEY || tryResolveCliToken("gemini");
+		// Priority: CLI tools → env vars
+		const key =
+			config.apiKey ||
+			tryResolveCliToken("gemini") ||
+			env.GEMINI_API_KEY ||
+			env.GOOGLE_API_KEY ||
+			env.TAKUMI_API_KEY;
 		if (!key) return null;
 		return new agent.GeminiProvider({
 			...config,
@@ -55,13 +62,14 @@ export async function buildSingleProvider(
 	};
 
 	const envVar = keyMap[providerName];
+	// Priority: CLI tools → env vars (pi-mono ecosystem standard)
 	const key =
 		config.apiKey ||
-		(envVar ? env[envVar] : undefined) ||
-		env.TAKUMI_API_KEY ||
 		(providerName === "openai" ? tryResolveCliToken("codex") : undefined) ||
 		(providerName === "github" ? tryResolveCliToken("github") : undefined) ||
-		tryResolveCliToken(providerName);
+		tryResolveCliToken(providerName) ||
+		(envVar ? env[envVar] : undefined) ||
+		env.TAKUMI_API_KEY;
 	if (!key && providerName !== "ollama") return null;
 
 	return new agent.OpenAIProvider({

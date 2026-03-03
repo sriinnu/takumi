@@ -26,9 +26,19 @@
 
 ## What is Takumi?
 
-Takumi is a terminal-based AI coding agent built from the ground up in TypeScript. Unlike tools built on React + Ink, Takumi uses its own rendering engine (**Kagami**), signal-based reactivity (**Myaku**), and agent loop (**Shigoto**) to achieve sub-16ms keystroke-to-display latency with under 50MB memory footprint.
+Takumi is a terminal-based AI coding agent built from the ground up in TypeScript. Unlike tools built on React + Ink, Takumi uses its own rendering engine (**Kagami 鏡**), signal-based reactivity, and multi-agent orchestration to achieve sub-16ms keystroke-to-display latency with under 50MB memory footprint.
 
-It integrates natively with [Chitragupta](https://github.com/sriinnu/chitragupta) for memory, sessions, and knowledge graphs, and uses [Darpana](https://github.com/sriinnu/chitragupta/tree/main/packages/darpana) as an LLM proxy to work with any provider (OpenAI, Gemini, Groq, Ollama, Anthropic, and more).
+It integrates with **[Chitragupta](https://github.com/yugenlab/chitragupta)** — a complete AI agent platform (`AUriva/chitragupta`) with 17 packages covering memory (Akasha), procedures (Vidhi), tendencies (Vasana), and orchestration (Niyanta). Takumi is the terminal UI layer on top of Chitragupta's cognitive engine.
+
+**Architecture:**
+```
+Takumi TUI (this repo) → @takumi/bridge → @yugenlab/chitragupta (npm) → daemon/MCP
+     ↓                                                ↓
+ Kagami renderer                            Smriti (memory system)
+ Terminal panels                            Akasha (knowledge graph)
+ Chat interface                             Vidhi (learned procedures)
+                                           Vasana (behavioral patterns)
+```
 
 ### Why not React + Ink?
 

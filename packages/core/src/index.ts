@@ -1,5 +1,14 @@
 export { DEFAULT_CONFIG, detectProviderFromModel, loadConfig, PROVIDER_ENDPOINTS } from "./config.js";
-export { ANSI, KEY_CODES, LIMITS } from "./constants.js";
+export {
+	ANSI,
+	KEY_CODES,
+	LIMITS,
+	TELEMETRY_CLOSE_PERCENT,
+	TELEMETRY_DIR,
+	TELEMETRY_HEARTBEAT_MS,
+	TELEMETRY_NEAR_PERCENT,
+	TELEMETRY_STALE_MS,
+} from "./constants.js";
 
 export {
 	AgentError as AgentErrorClass,
@@ -23,6 +32,7 @@ export {
 	loadSession,
 	saveSession,
 } from "./sessions.js";
+export type { SideAgentConfig, SideAgentEvent, SideAgentInfo, SideAgentState } from "./side-agent-types.js";
 export type {
 	AgentDone,
 	AgentError,
