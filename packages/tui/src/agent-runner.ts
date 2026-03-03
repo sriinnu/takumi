@@ -273,6 +273,7 @@ export class AgentRunner {
 		if (this.spinnerTimer) return;
 		this.spinnerTimer = setInterval(() => {
 			if (this.state.toolSpinner.isRunning) {
+				this.state.toolSpinner.theme = this.state.theme.value;
 				this.state.toolSpinner.tick();
 			}
 		}, 80);
