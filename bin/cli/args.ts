@@ -87,6 +87,12 @@ export function parseArgs(argv: string[]): CliArgs {
 			case "--detach":
 				args.detach = true;
 				break;
+			case "--stream":
+				const format = argv[++i];
+				if (format === "ndjson" || format === "text") {
+					args.stream = format;
+				}
+				break;
 			case "--issue":
 			case "-i":
 				args.issue = argv[++i];

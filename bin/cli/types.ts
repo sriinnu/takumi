@@ -24,6 +24,7 @@ export interface CliArgs {
 	detach: boolean;
 	issue?: string;
 	yes: boolean;
+	stream?: "text" | "ndjson";
 }
 
 export interface DetachedJobRecord {
