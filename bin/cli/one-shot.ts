@@ -33,7 +33,12 @@ export async function readStdin(): Promise<string> {
 	return Buffer.concat(chunks).toString("utf-8").trim();
 }
 
-export async function runOneShot(config: TakumiConfig, prompt: string, fallbackName?: string): Promise<void> {
+export async function runOneShot(
+	config: TakumiConfig,
+	prompt: string,
+	fallbackName?: string,
+	streamFormat: "text" | "ndjson" = "text",
+): Promise<void> {
 	const { ToolRegistry, registerBuiltinTools, agentLoop, buildContext } = await import("@takumi/agent");
 	const provider = await createProvider(config, fallbackName);
 	const failures: string[] = [];
@@ -59,6 +64,21 @@ export async function runOneShot(config: TakumiConfig, prompt: string, fallbackN
 	});
 
 	for await (const event of loop) {
+		if (streamFormat === "ndjson") {
+			const safeEvent = { ...event };
+			if (event.type === "error" && event.error instanceof Error) {
+				safeEvent.error = { name: event.error.name, message: event.error.message, stack: event.error.stack };
+			}
+			process.stdout.write(JSON.stringify(safeEvent) + "\n");
+			// Also push failures to avoid losing reflection
+			if (event.type === "tool_result" && event.isError) {
+				failures.push(`${event.name}: ${event.output.slice(0, 280).replace(/\s+/g, " ")}`);
+			} else if (event.type === "error") {
+				failures.push(`agent_error: ${event.error.message.slice(0, 280)}`);
+			}
+			continue;
+		}
+
 		switch (event.type) {
 			case "text_delta":
 				process.stdout.write(event.text);
@@ -67,22 +87,23 @@ export async function runOneShot(config: TakumiConfig, prompt: string, fallbackN
 				process.stderr.write(`\n[${event.name}] `);
 				break;
 			case "tool_result":
-					if (event.isError) {
-						const finding = `${event.name}: ${event.output.slice(0, 280).replace(/\s+/g, " ")}`;
-						failures.push(finding);
-						process.stderr.write(`error: ${event.output.slice(0, 200)}\n`);
-					} else {
-						process.stderr.write("done\n");
-					}
+				if (event.isError) {
+					const finding = `${event.name}: ${event.output.slice(0, 280).replace(/\s+/g, " ")}`;
+					failures.push(finding);
+					process.stderr.write(`error: ${event.output.slice(0, 200)}\n`);
+				} else {
+					process.stderr.write("done\n");
+				}
 				break;
 			case "error":
-					failures.push(`agent_error: ${event.error.message.slice(0, 280)}`);
+				failures.push(`agent_error: ${event.error.message.slice(0, 280)}`);
 				process.stderr.write(`\nError: ${event.error.message}\n`);
 				break;
 		}
 	}
-	process.stdout.write("\n");
-
+	if (streamFormat === "text") {
+		process.stdout.write("\n");
+	}
 	if (failures.length > 0) {
 		await saveReflexion(prompt, failures).catch(() => undefined);
 	}
