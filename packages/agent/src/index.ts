@@ -110,6 +110,8 @@ export { PermissionEngine } from "./safety/permissions.js";
 export { DANGEROUS_PATTERNS, SAFE_COMMANDS, validateCommand } from "./safety/sandbox.js";
 // SSE stream parser
 export { parseSSEStream } from "./stream.js";
+// Telemetry helpers (Phase 20)
+export { calculateContextPressure, estimateMessagesTokens, renderLastAssistantHtml } from "./telemetry.js";
 export { akashaDepositDefinition, akashaTracesDefinition, createAkashaHandlers } from "./tools/akasha.js";
 export { askDefinition, createAskHandler } from "./tools/ask.js";
 export { bashDefinition, bashHandler } from "./tools/bash.js";
@@ -125,4 +127,16 @@ export { readDefinition, readHandler } from "./tools/read.js";
 export type { ToolHandler } from "./tools/registry.js";
 // Tool registry
 export { ToolRegistry } from "./tools/registry.js";
+export type { SideAgentToolDeps } from "./tools/side-agent.js";
+export {
+	agentCheckDefinition,
+	agentSendDefinition,
+	agentStartDefinition,
+	agentWaitAnyDefinition,
+	createAgentCheckHandler,
+	createAgentSendHandler,
+	createAgentStartHandler,
+	createAgentWaitAnyHandler,
+	registerSideAgentTools,
+} from "./tools/side-agent.js";
 export { writeDefinition, writeHandler } from "./tools/write.js";

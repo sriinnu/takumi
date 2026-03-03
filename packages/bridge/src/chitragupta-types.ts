@@ -28,6 +28,13 @@ export interface ChitraguptaSessionInfo {
 	turns: number;
 }
 
+/** Project info from sessionProjects() */
+export interface ChitraguptaProjectInfo {
+	project: string;
+	sessionCount: number;
+	lastActive: string;
+}
+
 export interface SessionDetail {
 	id: string;
 	title: string;
@@ -212,4 +219,152 @@ export interface TurnAddResult {
 /** Max turn number result */
 export interface MaxTurnResult {
 	maxTurn: number;
+}
+
+/** Memory scope information (Phase 18) */
+export interface MemoryScope {
+	type: "global" | "project";
+	path?: string; // Present for project-scoped memories (hex hash)
+}
+
+/** Daemon status and health metrics (Phase 18) */
+export interface DaemonStatus {
+	counts: {
+		turns: number;
+		sessions: number;
+		rules: number;
+		vidhis: number;
+		samskaras: number;
+		vasanas: number;
+		akashaTraces: number;
+	};
+	timestamp: number;
+}
+
+// ── Phase 20: Telemetry v2 Schema ────────────────────────────────────────────
+
+export interface TelemetryProcess {
+	pid: number;
+	ppid: number | null;
+	uptime: number; // seconds since process start
+	heartbeatAt: number; // Unix timestamp ms
+	startedAt: number;
+}
+
+export interface TelemetrySystem {
+	host: string;
+	user: string;
+	platform: NodeJS.Platform;
+	arch: string;
+	nodeVersion: string;
+}
+
+export interface TelemetryWorkspace {
+	cwd: string;
+	git: {
+		branch?: string;
+		commit?: string;
+		dirty?: boolean;
+		remote?: string;
+	};
+}
+
+export interface TelemetrySession {
+	id: string;
+	file: string;
+	name: string;
+}
+
+export interface TelemetryModel {
+	provider: string;
+	id: string;
+	name: string;
+	thinkingLevel?: number;
+}
+
+export interface TelemetryState {
+	activity: "working" | "waiting_input" | "idle" | "error";
+	idle: boolean;
+	idleSince?: number;
+}
+
+export interface TelemetryContext {
+	tokens: number;
+	contextWindow: number;
+	remainingTokens: number;
+	percent: number;
+	pressure: "normal" | "approaching_limit" | "near_limit" | "at_limit";
+	closeToLimit: boolean; // >= 85%
+	nearLimit: boolean; // >= 95%
+}
+
+export interface TelemetryRouting {
+	tty: string;
+	mux: "tmux" | "zellij" | null;
+	muxSession: string | null;
+	muxWindowId: string | null;
+	terminalApp: string | null;
+}
+
+export interface TelemetryCapabilities {
+	hasUI: boolean;
+	hasTools: boolean;
+	hasMemory: boolean;
+}
+
+export interface TelemetryExtensions {
+	telemetry: string | null;
+	bridge: string | null;
+}
+
+export interface TelemetryMessages {
+	lastAssistantText?: string;
+	lastAssistantHtml?: string;
+	lastAssistantUpdatedAt?: number;
+}
+
+export interface AgentTelemetry {
+	schemaVersion: 2;
+	process: TelemetryProcess;
+	system: TelemetrySystem;
+	workspace: TelemetryWorkspace;
+	session: TelemetrySession;
+	model: TelemetryModel;
+	state: TelemetryState;
+	context: TelemetryContext;
+	routing: TelemetryRouting;
+	capabilities: TelemetryCapabilities;
+	extensions: TelemetryExtensions;
+	messages?: TelemetryMessages;
+	lastEvent: string;
+}
+
+export interface TelemetrySnapshot {
+	schemaVersion: 2;
+	timestamp: number;
+	aggregate: "working" | "waiting_input" | "idle" | "mixed";
+	counts: {
+		total: number;
+		working: number;
+		waiting_input: number;
+		idle: number;
+		error: number;
+	};
+	context: {
+		total: number;
+		normal: number;
+		approachingLimit: number;
+		nearLimit: number;
+		atLimit: number;
+	};
+	sessions: Record<
+		string,
+		{
+			sessionId: string;
+			instances: number;
+			statuses: string[];
+		}
+	>;
+	instancesByPid: Record<number, AgentTelemetry>;
+	instances: AgentTelemetry[];
 }

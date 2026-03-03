@@ -24,7 +24,12 @@ export { createIsolationContext } from "./isolation.js";
 export type { OrchestratorOptions } from "./orchestrator.js";
 // ── Orchestrator ──────────────────────────────────────────────────────────────
 export { ClusterOrchestrator } from "./orchestrator.js";
-
+// ── Side Agent Registry ───────────────────────────────────────────────────────
+export type { SideAgentListener } from "./side-agent-registry.js";
+export { SideAgentRegistry } from "./side-agent-registry.js";
+// ── Tmux Orchestrator ─────────────────────────────────────────────────────────
+export type { TmuxWindow } from "./tmux-orchestrator.js";
+export { TmuxOrchestrator } from "./tmux-orchestrator.js";
 // ── Tree-of-Thoughts ─────────────────────────────────────────────────────────
 export type { ThoughtNode, ToTConfig, ToTResult } from "./tot-planner.js";
 export { totPlan } from "./tot-planner.js";
@@ -53,3 +58,7 @@ export {
 	ClusterPhase,
 	ValidationDecision,
 } from "./types.js";
+
+// ── Worktree Pool ─────────────────────────────────────────────────────────────
+export type { WorktreePoolOptions, WorktreeSlot } from "./worktree-pool.js";
+export { WorktreePoolManager } from "./worktree-pool.js";

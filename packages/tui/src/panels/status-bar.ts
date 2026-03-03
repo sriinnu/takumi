@@ -35,6 +35,9 @@ export class StatusBarPanel extends Component {
 			const _deposits = this.state.akashaDeposits.value;
 			const _meshSize = this.state.akashaMeshSize.value;
 			const _lastActivity = this.state.akashaLastActivity.value;
+			// Context pressure signals (Phase 20.4)
+			const _contextPercent = this.state.contextPercent.value;
+			const _contextPressure = this.state.contextPressure.value;
 			this.markDirty();
 			return undefined;
 		});
@@ -97,6 +100,33 @@ export class StatusBarPanel extends Component {
 					const cost = this.state.totalCost.value;
 					const metricsText = tokens > 0 ? ` ${tokens.toLocaleString()}t | $${cost.toFixed(3)} ` : "";
 					return { text: metricsText, fg: 8, bg: 236, dim: true };
+				}
+				case "context": {
+					const percent = this.state.contextPercent.value;
+					const pressure = this.state.contextPressure.value;
+
+					// Only show if context tracking is active (percent > 0)
+					if (percent === 0) return { text: "", fg: 7, bg: 236 };
+
+					// Icon and color based on pressure level
+					const icon =
+						{
+							normal: "✓",
+							approaching_limit: "⚠",
+							near_limit: "◆",
+							at_limit: "⬤",
+						}[pressure] || "·";
+
+					const fg =
+						{
+							normal: 2, // green
+							approaching_limit: 3, // yellow
+							near_limit: 214, // orange
+							at_limit: 1, // red
+						}[pressure] || 8;
+
+					const text = ` ${icon} ${Math.round(percent)}% `;
+					return { text, fg, bg: 236, bold: pressure !== "normal" };
 				}
 				case "keybinds":
 					return { text: " Ctrl+C quit  Ctrl+K cmd  Ctrl+L clear ", fg: 8, bg: 236, dim: true };
