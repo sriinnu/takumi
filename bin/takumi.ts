@@ -303,7 +303,7 @@ async function main(): Promise<void> {
 			console.error("Error: No prompt provided. Pass a message as a positional argument or pipe to stdin.");
 			process.exit(1);
 		}
-		await runOneShot(config, issueContext + finalPrompt, args.fallback);
+		await runOneShot(config, issueContext + finalPrompt, args.fallback, args.stream);
 		return;
 	}
 
