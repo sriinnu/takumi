@@ -3,7 +3,13 @@
  * Handles message submission, streaming, and state updates.
  */
 
-import { agentLoop, type MessagePayload, PermissionEngine, type ToolRegistry } from "@takumi/agent";
+import {
+	agentLoop,
+	calculateContextPressure,
+	type MessagePayload,
+	PermissionEngine,
+	type ToolRegistry,
+} from "@takumi/agent";
 import type { AgentEvent, Message, PermissionDecision, TakumiConfig, ToolDefinition } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import type { AppState } from "./state.js";
@@ -102,6 +108,13 @@ export class AgentRunner {
 					this.state.agentPhase.value = "Thinking...";
 				} else if (event.type === "usage_update") {
 					this.state.updateUsage(event.usage);
+					// Phase 20.4: Calculate and propagate context pressure
+					const ctxWindow = this.state.contextWindow.value;
+					const pressure = calculateContextPressure(this.history, ctxWindow);
+					this.state.contextPercent.value = pressure.percent;
+					this.state.contextPressure.value = pressure.pressure;
+					this.state.contextTokens.value = pressure.tokens;
+					this.state.contextWindow.value = pressure.contextWindow;
 				} else if (event.type === "tool_use") {
 					this.state.activeTool.value = event.name;
 					this.state.agentPhase.value = `Running ${event.name}...`;

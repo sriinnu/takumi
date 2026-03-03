@@ -1,3 +1,6 @@
+import os from "node:os";
+import path from "node:path";
+
 // ── Key codes ─────────────────────────────────────────────────────────────────
 
 export const KEY_CODES = {
@@ -166,3 +169,21 @@ export const LIMITS = {
 	/** Minimum terminal height required */
 	MIN_TERMINAL_HEIGHT: 10,
 } as const;
+
+// ── Telemetry (Phase 20) ──────────────────────────────────────────────────────
+
+/** Telemetry directory for per-instance heartbeat files */
+export const TELEMETRY_DIR =
+	process.env.TAKUMI_TELEMETRY_DIR || path.join(os.homedir(), ".takumi", "telemetry", "instances");
+
+/** Heartbeat emission interval (ms) */
+export const TELEMETRY_HEARTBEAT_MS = 1500;
+
+/** Context pressure threshold: "approaching_limit" (85%) */
+export const TELEMETRY_CLOSE_PERCENT = 85;
+
+/** Context pressure threshold: "near_limit" (95%) */
+export const TELEMETRY_NEAR_PERCENT = 95;
+
+/** Staleness threshold for telemetry snapshot (ms) */
+export const TELEMETRY_STALE_MS = 10000;

@@ -23,6 +23,7 @@ export class RenderScheduler {
 	private screen: Screen;
 	private root: Component | null = null;
 	private scheduled = false;
+	private priorityScheduled = false;
 	private running = false;
 	private timer: ReturnType<typeof setTimeout> | null = null;
 	private frameInterval: number;
@@ -64,6 +65,21 @@ export class RenderScheduler {
 				this.renderFrame();
 			}, delay);
 		}
+	}
+
+	/**
+	 * Schedule an immediate priority render (bypasses frame rate limiting).
+	 * Use for interactive events like keystrokes where latency matters.
+	 */
+	schedulePriorityRender(): void {
+		if (this.priorityScheduled || !this.running) return;
+		this.priorityScheduled = true;
+
+		setImmediate(() => {
+			this.priorityScheduled = false;
+			this.lastFrameTime = Date.now();
+			this.renderFrame();
+		});
 	}
 
 	/** Perform a single render frame. */

@@ -10,6 +10,42 @@
   - strict TypeScript, no `any`
   - evidence-backed completion claims (build/tests/diffs)
 
+### Naming Philosophy
+
+**Takumi (This Project):** Japanese-inspired names for TUI components
+- `Takumi` (匠) — master craftsman (app name)
+- `Kagami` (鏡) — mirror/reflection (renderer engine, `@takumi/render`)
+
+**Chitragupta (External Dependency):** Vedic AI agent platform at `AUriva/chitragupta`
+- `Chitragupta` (चित्रगुप्त) — divine record keeper (core platform, 17 packages, 11,453 tests)
+- Vedic module names (owned by Chitragupta, not Takumi):
+  - `Akasha` (आकाश) — cosmic memory
+  - `Vidhi` (विधि) — learned procedures
+  - `Vasana` (वासना) — behavioral tendencies
+  - `Smriti` (स्मृति) — remembrance/memory system
+  - `Niyanta` (नियन्ता) — director/orchestrator
+  - `Dharma` (धर्म) — policy engine
+  - `Vayu` (वायु) — workflow engine
+  - `Tantra` (तन्त्र) — MCP manager
+  - See: `@yugenlab/chitragupta` (npm package v0.1.16)
+
+**Integration:**
+- Takumi imports `@yugenlab/chitragupta` via `@takumi/bridge` package
+- Bridge exposes Chitragupta's APIs (memory, sessions, turns, consolidation)
+- Takumi CLI → Bridge → Chitragupta daemon (Unix socket) or MCP subprocess
+
+**User-Facing (External):** Realistic, descriptive names
+- "Session" not "Akasha record"
+- "Memory" not "Smriti deposit"
+- "Strategy" not "Vidhi procedure"
+- CLI: `takumi` (not Sanskrit script)
+- Docs: Plain English (internal names in parentheses for context)
+
+**Rationale:** 
+- Takumi = thin TUI layer with Japanese aesthetic
+- Chitragupta = thick AI platform with Vedic architecture
+- Users see plain English, developers see symbolic names
+
 ---
 
 ## 🎯 PRIORITY: ArXiv Research Enhancements (Phase 8)
@@ -1146,6 +1182,245 @@ Add to `takumi.config.json`:
 - [ ] Checkpoint/restore workflow state
 - [ ] Branch from any turn (session forking)
 - [ ] Tests: recovery scenarios, replay accuracy
+
+---
+
+## Phase 20-22: Pi Ecosystem Integration ⚡ PLANNING
+
+**Goal:** Full pi-telemetry v2 compatibility, side-agent orchestration, and HTTP bridge for remote access
+
+**Status:** Phase 20 🎯 READY TO START (Phase 13-16 complete)  
+**Rationale:** Ecosystem interoperability enables external tools (pi-statusbar), remote monitoring, and hybrid orchestration patterns
+
+**See Also:** `docs/PI_ECOSYSTEM_ANALYSIS.md` (comprehensive analysis of pi-mono, pi-statusbar, pi-telemetry, pi-side-agents, pi-design-deck)  
+**See Also:** `docs/PHASE_14_PLAN.md` (renamed to PHASE_20_PLAN.md) — detailed implementation guide
+
+### Phase 20: Telemetry & Observability 🎯 NEXT UP (1-2 weeks)
+
+**Goal:** pi-telemetry v2 schema alignment + real-time heartbeats + context pressure awareness
+
+**Why:** Enables pi-statusbar consumption, remote monitoring, proactive consolidation
+
+#### 20.1 Schema Alignment (3-4 days) ⚡ **START HERE**
+- [ ] Add pi-telemetry v2 interfaces to `packages/bridge/src/chitragupta-types.ts`
+  - `TelemetryProcess`, `TelemetrySystem`, `TelemetryWorkspace`, `TelemetrySession`
+  - `TelemetryModel`, `TelemetryState`, `TelemetryContext`, `TelemetryRouting`
+  - `TelemetryCapabilities`, `TelemetryExtensions`, `TelemetryMessages`
+  - `AgentTelemetry` (per-instance), `TelemetrySnapshot` (aggregated)
+- [ ] Add telemetry constants to `packages/core/src/constants.ts`
+  - `TELEMETRY_DIR`, `TELEMETRY_HEARTBEAT_MS`, `TELEMETRY_CLOSE_PERCENT`, `TELEMETRY_NEAR_PERCENT`, `TELEMETRY_STALE_MS`
+- [ ] Implement helpers in `packages/agent/src/loop.ts`
+  - `calculateContextPressure(messages, contextWindow)` → 4 pressure levels
+  - `estimateTokens(messages)` with model-aware calculation
+  - `renderLastAssistantHtml(content)` for safe HTML rendering
+- [ ] Tests: context pressure calculation (all 4 levels), token estimation
+- [ ] Target: 2405+ tests passing
+
+#### 20.2 Heartbeat Emission (2-3 days)
+- [ ] Extend `ChitraguptaBridge` with telemetry methods
+  - `telemetryHeartbeat(data)` → atomic file write to `~/.takumi/telemetry/instances/<pid>.json`
+  - `telemetryCleanup(pid)` → remove file on graceful shutdown
+  - `telemetrySnapshot(staleMs)` → aggregate all active instances
+- [ ] Integrate into agent loop lifecycle events
+  - `agent_start` → full telemetry record
+  - Every 1.5s → heartbeat with updated timestamps
+  - `turn_start` → activity="working"
+  - `turn_end` → activity="waiting_input", last message
+  - `shutdown` → cleanup telemetry file
+- [ ] Tests: heartbeat file creation, cleanup, snapshot aggregation, stale filtering
+- [ ] Target: 2415+ tests passing
+
+#### 20.3 Snapshot CLI Tool (1 day)
+- [ ] Create `bin/telemetry-snapshot.ts` CLI tool
+  - Usage: `takumi-telemetry-snapshot [--pretty] [--stale-ms N]`
+  - Output: TelemetrySnapshot JSON (pi-telemetry v2 compatible)
+- [ ] Add to package.json bin entries
+- [ ] Tests: CLI execution, JSON schema validation, jq piping
+- [ ] Verify: pi-statusbar can consume Takumi telemetry (if available)
+
+#### 20.4 Context Pressure UI (2 days)
+- [ ] Status bar integration in `packages/tui/src/status-bar.ts`
+  - Context percentage indicator with color coding (green/yellow/orange/red)
+  - Visual warnings at 85%/95%/100% thresholds
+  - Click to show context details dialog
+- [ ] Auto-consolidation trigger in `packages/agent/src/loop.ts`
+  - Trigger at 95% threshold (configurable)
+  - Reload messages after consolidation
+  - UI banner on success/failure
+- [ ] Tests: status bar rendering, auto-consolidation trigger
+- [ ] Target: 2425+ tests passing
+
+**Phase 20 Complete When:**
+- ✅ All pi-telemetry v2 interfaces defined and tested
+- ✅ Heartbeats emitted at correct lifecycle events
+- ✅ Snapshot CLI working and externally consumable
+- ✅ Context pressure UI integrated with auto-consolidation
+- ✅ 2425+ tests passing (all existing + new telemetry tests)
+
+---
+
+### Phase 21: Side Agent Integration 🔄 FUTURE (2-3 weeks)
+
+**Goal:** Hybrid orchestration — keep Takumi's blind validators, add pi-side-agents pattern for work parallelization
+
+**Why:** Validators in parallel threads (fast) + work agents in tmux/worktrees (isolated)
+
+#### 21.1 Architecture Decision
+- [ ] Document hybrid orchestration model (vs pi-side-agents single-child approach)
+- [ ] Config schema: `orchestration.validatorIsolation: "thread" | "worktree"`
+- [ ] Decision: Keep Takumi's multi-agent cluster for reasoning, add side-agents for parallelization
+
+#### 21.2 Side Agent Implementation (7-10 days)
+- [ ] Create `packages/side-agent/` package
+  - `WorktreePoolManager` — allocate/reuse worktree slots
+  - `TmuxOrchestrator` — create/manage tmux windows
+  - `SideAgentRegistry` — file-backed state (`.takumi/side-agents/registry.json`)
+  - `SideAgentCommands` — `/takumi-agent` command + tool API
+  - `StatusLine` integration — show active side agents with tmux window refs
+- [ ] Lifecycle scripts
+  - `.takumi/side-agent-start.sh` — initialize worktree
+  - `.takumi/side-agent-finish.sh` — rebase + merge with lock
+- [ ] Tool API
+  - `takumi_agent_start(model?, description)` → spawn side agent
+  - `takumi_agent_check(id)` → status + backlog tail
+  - `takumi_agent_wait_any(ids[], states?)` → block until state change
+  - `takumi_agent_send(id, prompt)` → send message to child agent
+- [ ] Tests: worktree allocation, tmux lifecycle, registry CRUD, merge conflict handling
+
+#### 21.3 Validator Isolation Mode (3-4 days)
+- [ ] Optional worktree isolation for validators
+  - Config: `orchestration.worktreeValidation.enabled`
+  - When enabled: spawn validators as side agents
+  - Trade-off: true isolation vs performance overhead
+- [ ] Use cases: high-stakes validation, security audits, contamination prevention
+- [ ] Tests: validator worktree lifecycle, results collection
+
+**Phase 21 Complete When:**
+- ✅ Side agent package fully implemented and tested
+- ✅ Hybrid orchestration pattern documented
+- ✅ Optional validator isolation mode working
+- ✅ Tool API functional with tmux integration
+- ✅ 2500+ tests passing (all existing + side-agent tests)
+
+---
+
+### Phase 22: HTTP Bridge & Remote Access 🔄 FUTURE (1-2 weeks)
+
+**Goal:** External tools (mobile, web) can monitor/steer Takumi agents via HTTP API
+
+**Why:** Remote monitoring, mobile apps, web dashboards, pi-statusbar compatibility
+
+#### 22.1 HTTP Bridge Server (5-7 days)
+- [ ] Create `packages/bridge/src/http-bridge.ts`
+  - Fastify server with bearer token auth
+  - CORS + rate limiting
+  - HTTPS optional (self-signed cert)
+- [ ] Endpoints
+  - `GET /status` → telemetry snapshot
+  - `GET /watch?timeout_ms=30000&fingerprint=...` → long-poll for changes
+  - `GET /latest/<pid>` → last assistant message (HTML + text)
+  - `POST /send` → send message to agent (rate limited)
+- [ ] Security
+  - Bearer token for non-loopback requests
+  - CIDR allowlist (default: 127.0.0.1/8)
+  - **NO** `/jump` endpoint (security risk)
+- [ ] Tests: endpoint functionality, auth, rate limiting, CIDR validation
+
+#### 22.2 Mobile/Web Client Support (informational)
+- [ ] Documentation: HTTP API guide for external clients
+- [ ] Example: pi-statusbar integration guide
+- [ ] Future: Takumi-specific mobile app (iOS/Android)
+
+**Phase 22 Complete When:**
+- ✅ HTTP bridge server running and tested
+- ✅ All security measures implemented (auth, CIDR, rate limit)
+- ✅ pi-statusbar can monitor Takumi agents via HTTP bridge
+- ✅ API documentation complete
+- ✅ 2550+ tests passing (all existing + HTTP bridge tests)
+
+---
+
+### Phase 23: Input Latency Optimization 🔴 **CRITICAL UX** (1 day)
+
+**Goal:** Sub-16ms keystroke-to-screen latency for fast typing
+
+**Why:** User reported "keystrokes took like forever" — typing lag is unacceptable for TUI
+
+**Priority:** 🔴 **CRITICAL** — Bad typing experience = unusable product
+
+#### 23.1 Priority Render Queue (1 day) ⚡ **START HERE**
+- [ ] Add `schedulePriorityRender()` to `RenderScheduler`
+  - Bypass frame rate limiting for input events
+  - Use `setImmediate()` for immediate render
+  - Keep frame limiting for background updates
+- [ ] Wire to `Editor.act()` for all keystroke events
+- [ ] Add `priorityFrameCount` metric to stats
+- [ ] Tests: rapid typing stress test (20+ chars/sec)
+- [ ] Verify <5ms keystroke latency with `performance.now()`
+- [ ] Verify CPU usage acceptable (<10% for typing)
+- [ ] Target: 2565+ tests passing
+
+**Files Modified:**
+- `packages/render/src/reconciler.ts` (+20 lines)
+- `packages/tui/src/editor.ts` (+1 line)
+- `packages/render/test/priority-render.test.ts` (new, +50 lines)
+
+**Phase 23 Complete When:**
+- ✅ Keystroke-to-screen latency <5ms (measured)
+- ✅ No visual artifacts (characters appear in order)
+- ✅ All existing tests pass + new tests
+- ✅ User confirms typing feels instant
+
+**See Also:** `docs/PERFORMANCE_INPUT_LATENCY.md` (detailed analysis + profiling guide)
+
+---
+
+### Phase 24: Provider Strategy Alignment 🔄 **IMPORTANT** (2-3 days)
+
+**Goal:** Align with pi-mono philosophy — CLI auth primary, API keys final fallback
+
+**Why:** pi-mono uses `claude`, `gh`, `gcloud`, `ollama` CLIs **first**, environment variables **last**
+
+**Current State:** Takumi checks env vars first (ANTHROPIC_API_KEY, etc.), CLI tools as fallback ❌
+
+**Target State:** CLI tools first, env vars as final fallback (matches pi-mono) ✅
+
+#### 24.1 Provider Priority Reordering (1 day)
+- [ ] Reverse priority in `bin/cli/cli-auth.ts`
+  - **New priority:** CLI tools (claude, gh, gcloud) → OAuth → API keys (env vars)
+  - **Old priority:** API keys (env vars) → CLI tools ❌
+- [ ] Update `tryResolveCliToken()` to be primary path
+- [ ] Add explicit "no API key needed" messaging
+- [ ] Update docs: "Takumi uses your existing CLI auth"
+
+#### 24.2 CLI Tool Detection Improvements (1-2 days)
+- [ ] Add `ollama` CLI detection (pi-mono supports local models)
+- [ ] Add `lm` CLI detection (inference.net)
+- [ ] Improve error messages: "Run `claude login` to authenticate"
+- [ ] Fallback chain logging (debug mode)
+
+#### 24.3 Documentation Updates (half day)
+- [ ] Update README: "Zero configuration with CLI tools"
+- [ ] Add setup guide: Installing `claude`, `gh`, `gcloud` CLIs
+- [ ] Clarify: API keys optional, CLI auth preferred
+
+**Philosophy Alignment:**
+
+| Aspect | pi-mono | Takumi (Old) | Takumi (New) |
+|--------|---------|--------------|-------|
+| **Primary Auth** | CLI tools | Env vars | ✅ CLI tools |
+| **API Keys** | Final fallback | Primary | ✅ Final fallback |
+| **Local Models** | ollama CLI | N/A | ✅ ollama CLI |
+| **Zero Config** | ✅ Yes | ❌ No | ✅ Yes |
+
+**Phase 24 Complete When:**
+- ✅ CLI tools checked before env vars
+- ✅ ollama CLI support added
+- ✅ Error messages guide users to CLI setup
+- ✅ Documentation updated with zero-config narrative
+- ✅ All tests pass (2575+ tests)
+
+**See Also:** `bin/cli/cli-auth.ts` (lines 50-150) — current implementation
 
 ---
 

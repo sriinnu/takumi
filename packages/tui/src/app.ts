@@ -11,6 +11,7 @@ import { parseKeyEvent, parseMouseEvent } from "./app-input.js";
 import type { CodingAgent } from "./coding-agent.js";
 import { SlashCommandRegistry } from "./commands.js";
 import { KeyBindingRegistry } from "./keybinds.js";
+import { handleReplayKey } from "./replay-keybinds.js";
 import { AppState } from "./state.js";
 import type { ChatView } from "./views/chat.js";
 import { RootView } from "./views/root.js";
@@ -202,9 +203,13 @@ export class TakumiApp {
 			void this.quit();
 			return;
 		}
+		if (this.state.replayMode.value && handleReplayKey(event, this.replayKeyContext())) {
+			this.scheduler?.schedulePriorityRender();
+			return;
+		}
 		if (this.keybinds.handle(event)) return;
 		this.rootView.handleKey(event);
-		this.scheduler?.forceRender();
+		this.scheduler?.schedulePriorityRender();
 	}
 
 	private handleMouse(event: { type: string; x: number; wheelDelta: number }): void {
@@ -267,6 +272,14 @@ export class TakumiApp {
 		if (!this.autoSaver) {
 			this.autoSaver = createAutoSaver(this.state.sessionId.value, () => this.buildSessionData());
 		}
+	}
+
+	private replayKeyContext() {
+		return {
+			state: this.state,
+			addInfoMessage: (text: string) => this.addInfoMessage(text),
+			scheduleRender: () => this.scheduler?.scheduleRender(),
+		};
 	}
 
 	private registerDefaultKeybinds(): void {
