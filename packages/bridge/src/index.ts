@@ -54,8 +54,11 @@ export {
 	gitWorktreeRemove,
 	isGitRepo,
 } from "./git.js";
+export type { HttpBridgeConfig } from "./http-bridge.js";
+export { HttpBridgeServer } from "./http-bridge.js";
 export type { McpClientOptions } from "./mcp-client.js";
 export { McpClient } from "./mcp-client.js";
 export type { RecoveredSession } from "./session-recovery.js";
 export { forkSessionAtTurn, reconstructFromDaemon } from "./session-recovery.js";
+export { telemetryCleanup, telemetryHeartbeat, telemetrySnapshot } from "./telemetry.js";
 export { messageToTurn, turnsToMessages, turnToMessage } from "./turn-mapper.js";

@@ -30,7 +30,7 @@ export interface SideAgentToolDeps {
 
 const DEFAULT_WAIT_STATES: SideAgentState[] = ["done", "failed", "crashed", "waiting_user"];
 const DEFAULT_CAPTURE_LINES = 50;
-const WAIT_POLL_MS = 250;
+const _WAIT_POLL_MS = 250;
 const WAIT_TIMEOUT_MS = 300_000; // 5 minutes
 
 // ── takumi_agent_start ────────────────────────────────────────────────────────
