@@ -133,6 +133,26 @@ export class AppState {
 	 */
 	readonly clusterCommand: Signal<ClusterCommandEvent | null> = signal<ClusterCommandEvent | null>(null);
 
+	// ── Replay (Phase 19) ─────────────────────────────────────────────────────
+	/** Whether the UI is in session replay mode. */
+	readonly replayMode: Signal<boolean> = signal(false);
+	/** Current turn index during replay navigation. */
+	readonly replayIndex: Signal<number> = signal(0);
+	/** Full list of messages loaded for replay. */
+	readonly replayTurns: Signal<Message[]> = signal<Message[]>([]);
+	/** Session ID of the session being replayed. */
+	readonly replaySessionId: Signal<string> = signal("");
+
+	// ── Context pressure (Phase 20.4) ─────────────────────────────────────────
+	/** Current context window usage percentage (0-100+). */
+	readonly contextPercent: Signal<number> = signal(0);
+	/** Context pressure level: normal | approaching_limit | near_limit | at_limit. */
+	readonly contextPressure: Signal<string> = signal("normal");
+	/** Total tokens in context window. */
+	readonly contextTokens: Signal<number> = signal(0);
+	/** Max context window size for current model. */
+	readonly contextWindow: Signal<number> = signal(200000);
+
 	// ── Dialog instances ──────────────────────────────────────────────────────
 	/**
 	 * Validation results dialog — opened by CodingAgent when multi-agent
@@ -265,5 +285,13 @@ export class AppState {
 		this.akashaDeposits.value = 0;
 		this.akashaMeshSize.value = 1;
 		this.akashaLastActivity.value = 0;
+		this.replayMode.value = false;
+		this.replayIndex.value = 0;
+		this.replayTurns.value = [];
+		this.replaySessionId.value = "";
+		this.contextPercent.value = 0;
+		this.contextPressure.value = "normal";
+		this.contextTokens.value = 0;
+		this.contextWindow.value = 200000;
 	}
 }

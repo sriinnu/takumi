@@ -1,19 +1,35 @@
 export { ChitraguptaBridge } from "./chitragupta.js";
 export type {
+	AgentTelemetry,
 	AkashaTrace,
 	ChitraguptaBridgeOptions,
 	ChitraguptaHealth,
+	ChitraguptaProjectInfo,
 	ChitraguptaSessionInfo,
 	ConsolidationResult,
+	DaemonStatus,
 	DaySearchResult,
 	ExtractedFact,
 	HandoverSummary,
 	MaxTurnResult,
 	MemoryResult,
+	MemoryScope,
 	SessionCreateOptions,
 	SessionCreateResult,
 	SessionDetail,
 	SessionMetaUpdates,
+	TelemetryCapabilities,
+	TelemetryContext,
+	TelemetryExtensions,
+	TelemetryMessages,
+	TelemetryModel,
+	TelemetryProcess,
+	TelemetryRouting,
+	TelemetrySession,
+	TelemetrySnapshot,
+	TelemetryState,
+	TelemetrySystem,
+	TelemetryWorkspace,
 	Turn,
 	TurnAddResult,
 	UnifiedRecallResult,
@@ -40,3 +56,6 @@ export {
 } from "./git.js";
 export type { McpClientOptions } from "./mcp-client.js";
 export { McpClient } from "./mcp-client.js";
+export type { RecoveredSession } from "./session-recovery.js";
+export { forkSessionAtTurn, reconstructFromDaemon } from "./session-recovery.js";
+export { messageToTurn, turnsToMessages, turnToMessage } from "./turn-mapper.js";

@@ -4,9 +4,13 @@
  */
 
 import type {
+	ChitraguptaProjectInfo,
+	ChitraguptaSessionInfo,
 	ConsolidationResult,
+	DaemonStatus,
 	ExtractedFact,
 	MaxTurnResult,
+	MemoryScope,
 	SessionCreateOptions,
 	SessionCreateResult,
 	SessionMetaUpdates,
@@ -264,4 +268,142 @@ export async function contextLoad(
 	}
 	// MCP fallback: no context loading available
 	return { assembled: "", itemCount: 0 };
+}
+
+/** List all dates that have sessions. */
+export async function sessionDates(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	callTool: CallToolFn,
+	project?: string,
+): Promise<string[]> {
+	if (socketMode && socket) {
+		const result = await socket.call<{ dates: string[] }>("session.dates", { project });
+		return result.dates;
+	}
+	const result = await callTool("session_dates", project ? { project } : {});
+	const content = result.content?.[0]?.text;
+	if (!content) return [];
+	return JSON.parse(content).dates as string[];
+}
+
+/** List all projects that have sessions. */
+export async function sessionProjects(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	callTool: CallToolFn,
+): Promise<ChitraguptaProjectInfo[]> {
+	if (socketMode && socket) {
+		const result = await socket.call<{ projects: ChitraguptaProjectInfo[] }>("session.projects", {});
+		return result.projects;
+	}
+	const result = await callTool("session_projects", {});
+	const content = result.content?.[0]?.text;
+	if (!content) return [];
+	return JSON.parse(content).projects as ChitraguptaProjectInfo[];
+}
+
+/** Query sessions modified since a timestamp. */
+export async function sessionModifiedSince(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	callTool: CallToolFn,
+	timestamp: number,
+	project?: string,
+): Promise<ChitraguptaSessionInfo[]> {
+	if (socketMode && socket) {
+		const result = await socket.call<{ sessions: ChitraguptaSessionInfo[] }>("session.modified_since", {
+			timestamp,
+			project,
+		});
+		return result.sessions;
+	}
+	const result = await callTool("session_modified_since", { timestamp, project });
+	const content = result.content?.[0]?.text;
+	if (!content) return [];
+	return JSON.parse(content).sessions as ChitraguptaSessionInfo[];
+}
+
+/** Delete a session by ID. */
+export async function sessionDelete(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	callTool: CallToolFn,
+	sessionId: string,
+): Promise<{ deleted: boolean }> {
+	if (socketMode && socket) {
+		const result = await socket.call<{ deleted: boolean }>("session.delete", { id: sessionId });
+		return result;
+	}
+	const result = await callTool("session_delete", { id: sessionId });
+	const content = result.content?.[0]?.text;
+	if (!content) return { deleted: false };
+	return JSON.parse(content) as { deleted: boolean };
+}
+
+/** List all turns in a session. */
+export async function turnList(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	callTool: CallToolFn,
+	sessionId: string,
+): Promise<Turn[]> {
+	if (socketMode && socket) {
+		const result = await socket.call<{ turns: Turn[] }>("turn.list", { session_id: sessionId });
+		return result.turns;
+	}
+	const result = await callTool("turn_list", { session_id: sessionId });
+	const content = result.content?.[0]?.text;
+	if (!content) return [];
+	return JSON.parse(content).turns as Turn[];
+}
+
+/** Query turns created since a timestamp. */
+export async function turnSince(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	callTool: CallToolFn,
+	timestamp: number,
+	sessionId?: string,
+): Promise<Turn[]> {
+	if (socketMode && socket) {
+		const result = await socket.call<{ turns: Turn[] }>("turn.since", { timestamp, sessionId });
+		return result.turns;
+	}
+	const result = await callTool("turn_since", { timestamp, session_id: sessionId });
+	const content = result.content?.[0]?.text;
+	if (!content) return [];
+	return JSON.parse(content).turns as Turn[];
+}
+
+/** List available memory scopes (Phase 18). */
+export async function memoryScopes(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	callTool: CallToolFn,
+): Promise<MemoryScope[]> {
+	if (socketMode && socket) {
+		const result = await socket.call<{ scopes: MemoryScope[] }>("memory.scopes", {});
+		return result.scopes;
+	}
+	const result = await callTool("memory_scopes", {});
+	const content = result.content?.[0]?.text;
+	if (!content) return [];
+	return JSON.parse(content).scopes as MemoryScope[];
+}
+
+/** Get detailed daemon status and health metrics (Phase 18). */
+export async function daemonStatus(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	callTool: CallToolFn,
+): Promise<DaemonStatus | null> {
+	if (socketMode && socket) {
+		const result = await socket.call<DaemonStatus>("daemon.status", {});
+		return result;
+	}
+	const result = await callTool("daemon_status", {});
+	const content = result.content?.[0]?.text;
+	if (!content) return null;
+	return JSON.parse(content) as DaemonStatus;
 }
