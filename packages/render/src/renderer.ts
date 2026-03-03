@@ -163,7 +163,10 @@ export class Renderer {
 	scheduleRender(): void {
 		this.scheduler.scheduleRender();
 	}
-
+	/** Request an immediate priority render (bypasses frame rate limiting). */
+	schedulePriorityRender(): void {
+		this.scheduler.schedulePriorityRender();
+	}
 	/** Force an immediate synchronous render. */
 	forceRender(): void {
 		this.scheduler.forceRender();

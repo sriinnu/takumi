@@ -12,7 +12,6 @@ export interface Cell {
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
-
 export interface Rect {
 	x: number;
 	y: number;
@@ -31,7 +30,6 @@ export interface Position {
 }
 
 // ── Input events ──────────────────────────────────────────────────────────────
-
 export interface KeyEvent {
 	key: string;
 	ctrl: boolean;
@@ -427,6 +425,9 @@ export interface TakumiConfig {
 
 	/** Maximum total spend in USD before the session is halted. */
 	maxCostUsd?: number;
+
+	/** Side agent configuration (Phase 21). */
+	sideAgent?: import("./side-agent-types.js").SideAgentConfig;
 
 	/**
 	 * Chitragupta daemon configuration.
