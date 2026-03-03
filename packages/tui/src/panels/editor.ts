@@ -34,7 +34,7 @@ export class EditorPanel extends Component {
 		super();
 		this.onSubmit = props.onSubmit;
 		this.input = new InputComponent({
-			prefix: "> ",
+			prefix: "⛩  ",
 			placeholder: props.placeholder ?? "Message Takumi... (Ctrl+C to quit)",
 			onSubmit: (value) => {
 				this.onSubmit(value);

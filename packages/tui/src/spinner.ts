@@ -6,6 +6,9 @@
 
 // ── Spinner frames ───────────────────────────────────────────────────────────
 
+const AURORA_FRAMES = ["⛩", "𑁍"];
+const NEBULA_FRAMES = ["𑁍", "⛩"];
+
 const BRAILLE_FRAMES = [
 	"\u280B",
 	"\u2819",
@@ -46,6 +49,7 @@ export interface SpinnerLine {
 export class ToolSpinner {
 	private tools = new Map<string, ToolSpinnerEntry>();
 	private frameIndex = 0;
+	public theme: string = "aurora";
 	private completedTools = new Map<string, ToolSpinnerEntry>();
 
 	/**
@@ -83,10 +87,12 @@ export class ToolSpinner {
 		// Check active tools
 		const active = this.tools.get(toolId);
 		if (active) {
-			const frame = BRAILLE_FRAMES[this.frameIndex % BRAILLE_FRAMES.length];
+			const frames = this.theme === "nebula" ? NEBULA_FRAMES : AURORA_FRAMES;
+			// Tick is ~80ms, so divide by 5 to animate every ~400ms
+			const frame = frames[Math.floor(this.frameIndex / 5) % frames.length];
 			const argSummary = truncateArgs(active.args, 40);
 			const elapsed = formatDuration(Date.now() - active.startTime);
-			const text = `${frame} ${active.toolName}  ${argSummary}${elapsed ? `  ${elapsed}` : ""}`;
+			const text = `${frame}  ${active.toolName}  ${argSummary}${elapsed ? `  ${elapsed}` : ""}`;
 			return { text, fg: 3, dim: false }; // yellow
 		}
 
@@ -113,7 +119,7 @@ export class ToolSpinner {
 	 * Advance animation frame. Call every ~80ms.
 	 */
 	tick(): void {
-		this.frameIndex = (this.frameIndex + 1) % BRAILLE_FRAMES.length;
+		this.frameIndex = (this.frameIndex + 1) % 1000;
 	}
 
 	/**
