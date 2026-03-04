@@ -1,5 +1,8 @@
 // Agent loop
 
+// Phase 39 — Agent Checkpoint / Resume
+export type { Checkpoint, CheckpointManagerConfig } from "./checkpoint.js";
+export { AgentCheckpointManager } from "./checkpoint.js";
 export type {
 	AgentSlot,
 	AgentTopology,
@@ -35,6 +38,15 @@ export {
 	ClusterPhase,
 	ValidationDecision,
 } from "./cluster/index.js";
+// Phase 41 — Adaptive System Prompt
+export type {
+	AdaptivePromptConfig,
+	AdaptResult,
+	PromptSection,
+	TaskType as AdaptiveTaskType,
+	ToolUsageProfile,
+} from "./context/adaptive-prompt.js";
+export { AdaptivePromptManager, classifyTask } from "./context/adaptive-prompt.js";
 export type { TokenBudget } from "./context/budget.js";
 export { allocateTokenBudget, estimateTokens, truncateToTokenBudget } from "./context/budget.js";
 export type { ContextOptions, SystemPromptOptions } from "./context/builder.js";
@@ -79,6 +91,9 @@ export { formatSoulPrompt, loadSoul } from "./context/soul.js";
 // LLM cost estimation + budget enforcement (Phase 11)
 export type { BudgetGuardOptions, CostEstimate } from "./cost.js";
 export { BudgetExceededError, BudgetGuard, estimateClusterCost, estimateCost, MODEL_PRICING } from "./cost.js";
+// Phase 38 — Streaming Cost Tracker
+export type { AlertLevel, CostSnapshot, CostTrackerConfig, TurnCost } from "./cost-tracker.js";
+export { CostTracker } from "./cost-tracker.js";
 export type { ErrorCategory } from "./errors.js";
 // Error types and categorization
 export {
@@ -168,6 +183,9 @@ export {
 	createAgentWaitAnyHandler,
 	registerSideAgentTools,
 } from "./tools/side-agent.js";
+// Phase 40 — Tool Result Cache
+export type { CacheEntry as ToolCacheEntry, ToolCacheConfig, ToolCacheStats } from "./tools/tool-cache.js";
+export { ToolResultCache } from "./tools/tool-cache.js";
 // Phase 27 — Speculative worktrees
 export {
 	worktreeCreateDefinition,
