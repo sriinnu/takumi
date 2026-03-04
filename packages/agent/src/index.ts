@@ -51,6 +51,9 @@ export {
 // Codebase indexer (Phase 10 — RAG)
 export type { CodebaseIndex, FileEntry, IndexedSymbol, IndexStats } from "./context/indexer.js";
 export { buildIndex, indexStats, loadIndex } from "./context/indexer.js";
+// Phase 33 — Agent Memory Hooks
+export type { ExtractionEvent, Lesson, MemoryHooksConfig } from "./context/memory-hooks.js";
+export { MemoryHooks } from "./context/memory-hooks.js";
 export type { ProjectContext, ProjectInfo } from "./context/project.js";
 export {
 	detectFramework,
@@ -59,12 +62,18 @@ export {
 	detectProject,
 	detectProjectContext,
 } from "./context/project.js";
+// Phase 34 — Prompt Cache Layer
+export type { CacheEntry, CacheStats, PromptCacheConfig } from "./context/prompt-cache.js";
+export { PromptCache } from "./context/prompt-cache.js";
 // RAG query + formatting (Phase 10)
 export type { RagOptions, RagResult } from "./context/rag.js";
 export { formatRagContext, queryIndex } from "./context/rag.js";
 // Phase 29 — Context Ripple DAG
 export type { DagNode, RippleResult } from "./context/ripple-dag.js";
 export { RippleDag } from "./context/ripple-dag.js";
+// Phase 30 — Smart Context Window
+export type { ContextItem, PackResult, ScoredItem, SmartContextConfig } from "./context/smart-context.js";
+export { SmartContextWindow } from "./context/smart-context.js";
 export type { SoulData } from "./context/soul.js";
 export { formatSoulPrompt, loadSoul } from "./context/soul.js";
 // LLM cost estimation + budget enforcement (Phase 11)
@@ -88,7 +97,7 @@ export { agentLoop } from "./loop.js";
 export { buildSystemPrompt, buildToolResult, buildUserMessage } from "./message.js";
 export type { ModelRecommendation, ModelTier, ProviderFamily, RouterRole } from "./model-router.js";
 // Smart model router
-export { inferProvider, MODEL_TIERS, ModelRouter } from "./model-router.js";
+export { inferProvider, MODEL_TIERS, ModelRouter, syncModelTiersFromKosha } from "./model-router.js";
 // Providers
 export { DarpanaProvider } from "./providers/darpana.js";
 export { DirectProvider } from "./providers/direct.js";
@@ -130,6 +139,12 @@ export {
 } from "./tools/ast-patch.js";
 export { bashDefinition, bashHandler } from "./tools/bash.js";
 export { registerBuiltinTools } from "./tools/builtin.js";
+// Phase 31 — Tool Compose Pipelines
+export type { PipelineResult, PipelineSpec, PipelineStep, StepResult } from "./tools/compose.js";
+export { composeDefinition, createComposeHandler, executePipeline } from "./tools/compose.js";
+// Phase 32 — Semantic Diff Review
+export type { DiffFinding, DiffReviewConfig, DiffReviewResult, FindingSeverity } from "./tools/diff-review.js";
+export { reviewDiff } from "./tools/diff-review.js";
 export { editDefinition, editHandler } from "./tools/edit.js";
 export { globDefinition, globHandler } from "./tools/glob.js";
 export { grepDefinition, grepHandler } from "./tools/grep.js";

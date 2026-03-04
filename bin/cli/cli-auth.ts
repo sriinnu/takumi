@@ -2,6 +2,8 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { koshaAutoDetect } from "./kosha-bridge.js";
+import type { KoshaDetectedAuth } from "./kosha-bridge.js";
 
 /** Read and JSON-parse a file, returning undefined on any error. */
 function readJsonSafe(path: string): any | undefined {
@@ -160,13 +162,40 @@ export interface AutoDetectedAuth {
  * Tries every available credential source in priority order and returns the
  * first one that yields a usable key/token. Returns null if nothing is found.
  *
- * Priority:
- *   1. CLI credential files  (Claude, Gemini, Codex) — fast, no subprocess
- *   2. Environment variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
- *   3. GitHub CLI (gh auth token) → GitHub Models endpoint
- *   4. Ollama local server   (async network probe, done last)
+ * **Primary path**: delegates to **kosha-discovery** which scans CLI tools,
+ * env vars, config files, and local runtimes for every supported provider.
+ *
+ * **Fallback**: if kosha fails (e.g. network timeout during Ollama probe),
+ * the legacy hand-rolled detection chain runs as a safety net.
+ *
+ * Priority (via kosha):
+ *   1. CLI credential files → env vars → config → OAuth → local
  */
 export async function autoDetectAuth(): Promise<AutoDetectedAuth | null> {
+	// ── Primary: kosha-discovery ─────────────────────────────────────────────
+	try {
+		const detected = await koshaAutoDetect();
+		if (detected) {
+			return {
+				provider: detected.provider,
+				apiKey: detected.apiKey,
+				model: detected.model,
+				source: detected.source,
+			};
+		}
+	} catch {
+		// kosha failed — fall through to legacy detection
+	}
+
+	// ── Fallback: legacy detection chain ─────────────────────────────────────
+	return legacyAutoDetect();
+}
+
+/**
+ * Legacy auto-detect — the original hand-rolled credential detection.
+ * Kept as a fallback if kosha-discovery is unavailable or fails.
+ */
+async function legacyAutoDetect(): Promise<AutoDetectedAuth | null> {
 	const env = process.env;
 
 	// ── 1. CLI credential files ──────────────────────────────────────────────
@@ -221,7 +250,6 @@ export async function autoDetectAuth(): Promise<AutoDetectedAuth | null> {
 	}
 
 	// ── 3. GitHub CLI → GitHub Models (OpenAI-compatible) ───────────────────
-	// The 'github' provider uses models.inference.ai.azure.com with a gh token.
 	const ghToken = tryResolveCliToken("github");
 	if (ghToken) {
 		return {
@@ -235,7 +263,6 @@ export async function autoDetectAuth(): Promise<AutoDetectedAuth | null> {
 	// ── 4. Ollama local server ───────────────────────────────────────────────
 	const ollamaModels = await probeOllama();
 	if (ollamaModels.length > 0) {
-		// Prefer llama/mistral/qwen models; otherwise use whatever is installed
 		const preferred =
 			ollamaModels.find((m) => /llama|mistral|qwen|gemma|phi/i.test(m)) ?? ollamaModels[0];
 		return {
