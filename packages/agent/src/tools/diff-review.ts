@@ -17,7 +17,9 @@
  */
 
 import { execSync } from "node:child_process";
+import type { ToolDefinition } from "@takumi/core";
 import { createLogger } from "@takumi/core";
+import type { ToolHandler } from "./registry.js";
 
 const log = createLogger("diff-review");
 
@@ -263,3 +265,42 @@ export function reviewDiff(config: DiffReviewConfig): DiffReviewResult {
 
 	return { findings, filesReviewed: filesSet.size, passed, summary };
 }
+
+// ── Tool registration ────────────────────────────────────────────────────────
+
+export const diffReviewDefinition: ToolDefinition = {
+	name: "diff_review",
+	description:
+		"Run a semantic self-review on the current git diff. " +
+		"Catches leftover debug statements, `any` types, TODOs, large deletions, and LOC violations. " +
+		"Use this before committing to ensure diff quality.",
+	inputSchema: {
+		type: "object",
+		properties: {
+			diff_target: {
+				type: "string",
+				description: 'What to review: "staged", "unstaged", or "head" (default: "staged")',
+				enum: ["staged", "unstaged", "head"],
+			},
+			cwd: {
+				type: "string",
+				description: "Working directory (defaults to process.cwd())",
+			},
+		},
+		required: [],
+	},
+	requiresPermission: false,
+	category: "read",
+};
+
+export const diffReviewHandler: ToolHandler = async (input) => {
+	const cwd = (input.cwd as string) || process.cwd();
+	const diffTarget = (input.diff_target as "staged" | "unstaged" | "head") || "staged";
+
+	try {
+		const result = reviewDiff({ cwd, diffTarget });
+		return { output: result.summary, isError: !result.passed };
+	} catch (err) {
+		return { output: `Diff review failed: ${(err as Error).message}`, isError: true };
+	}
+};

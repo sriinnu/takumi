@@ -1453,22 +1453,51 @@ Add to `takumi.config.json`:
 - [x] Integrate `--stream=ndjson` format to `takumi exec`.
 - [x] Stream structured loop events from agent loop without breaking CLI text mode.
 
-## Phase 26: Subconscious Daemon ("Guardian Angel" Mode)
-- [ ] Lightweight daemon mode (`takumi daemon`) running in background.
-- [ ] File-system watcher: Observe TS/TSX saves.
-- [ ] Auto-trigger non-blocking LLM calls (e.g. for generating unit tests or JSDoc in background).
-- [ ] IPC notification mechanism to tell Kagami TUI: "Suggestions available."
+## Phase 26: Subconscious Daemon ("Guardian Angel" Mode) ✅
+- [x] Lightweight daemon mode (`takumi daemon`) running in background.
+- [x] File-system watcher: Observe TS/TSX saves.
+- [x] Auto-trigger non-blocking LLM calls (suggestion types defined, test-coverage heuristic).
+- [x] IPC notification mechanism (DaemonSocketClient JSON-RPC 2.0).
 
-## Phase 27: Speculative Execution via Ephemeral Worktrees
-- [ ] Introduce a tool that can branch into a `git worktree` in `/tmp/`.
-- [ ] Run speculative commands (`tsc`, `vitest`) on the worktree in parallel.
-- [ ] Tool to fast-forward successful branches into active working directory.
+## Phase 27: Speculative Execution via Ephemeral Worktrees ✅
+- [x] Introduce a tool that can branch into a `git worktree` in `/tmp/`.
+- [x] Run speculative commands (`tsc`, `vitest`) on the worktree in parallel.
+- [x] Tool to fast-forward successful branches into active working directory.
 
-## Phase 28: AST-Aware File Patching Tool
-- [ ] Move away from regex/full-file string replacements.
-- [ ] Introduce AST-level modification tools (`modify_function_ast`, `update_export`).
-- [ ] Use `ts-morph` or `typescript` compiler API to ensure structural integrity locally.
+## Phase 28: AST-Aware File Patching Tool ✅
+- [x] Move away from regex/full-file string replacements (declaration-level granularity).
+- [x] Introduce AST-level modification tools (`ast_grep`, `ast_patch`).
+- [x] Brace-counting heuristic parser (ts-morph upgrade deferred — works for TS/TSX).
 
-## Phase 29: Context Ripple DAG (Dependency Graphing)
-- [ ] Extract import/export graphs dynamically.
-- [ ] Automatically enqueue dependent files when an exported interface changes.
+## Phase 29: Context Ripple DAG (Dependency Graphing) ✅
+- [x] Extract import/export graphs dynamically.
+- [x] Automatically enqueue dependent files when an exported interface changes.
+
+## Phase 30: Smart Context Window ✅
+- [x] Composite scoring: recency + ripple depth + edit frequency + pinned weight.
+- [x] Greedy token-budget packing with section headers.
+- [x] Wired into `buildSystemPrompt()` via `smartContext` option.
+
+## Phase 31: Tool Compose Pipelines ✅
+- [x] Multi-step tool chaining with `$prev` substitution.
+- [x] Registered as `compose` tool in builtin registry.
+
+## Phase 32: Semantic Diff Review ✅
+- [x] Detects console.log, debugger, `any`, TODO/FIXME, large deletions, LOC violations.
+- [x] Registered as `diff_review` tool — agent can self-review before committing.
+
+## Phase 33: Agent Memory Hooks ✅
+- [x] Episodic lesson extraction (tool errors, user corrections, config discovery).
+- [x] Confidence-weighted recall with recency boost.
+- [x] Wired into agent loop — lessons injected into system prompt, errors trigger extraction.
+
+## Phase 34: Prompt Cache Layer ✅
+- [x] SHA-256 dedup with whitespace normalization.
+- [x] LRU in-memory cache with TTL expiry.
+- [x] Wired into agent loop — cache check before LLM call, store after response.
+
+## Phase 35: Kosha-Discovery Integration ✅
+- [x] kosha-discovery bridge (lazy singleton, CLI-first credential priority).
+- [x] cli-auth: kosha-first with legacy fallback chain.
+- [x] Dynamic provider/model selection with auth status hints.
+- [x] syncModelTiersFromKosha for runtime model tier updates.

@@ -144,7 +144,7 @@ export type { PipelineResult, PipelineSpec, PipelineStep, StepResult } from "./t
 export { composeDefinition, createComposeHandler, executePipeline } from "./tools/compose.js";
 // Phase 32 — Semantic Diff Review
 export type { DiffFinding, DiffReviewConfig, DiffReviewResult, FindingSeverity } from "./tools/diff-review.js";
-export { reviewDiff } from "./tools/diff-review.js";
+export { diffReviewDefinition, diffReviewHandler, reviewDiff } from "./tools/diff-review.js";
 export { editDefinition, editHandler } from "./tools/edit.js";
 export { globDefinition, globHandler } from "./tools/glob.js";
 export { grepDefinition, grepHandler } from "./tools/grep.js";
