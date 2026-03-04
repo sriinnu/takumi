@@ -81,7 +81,7 @@ describe("RenderScheduler priority rendering", () => {
 	});
 
 	it("should not schedule priority render if not running", () => {
-		const _root = new MockComponent();
+		const root = new MockComponent();
 		// DON'T start scheduler
 
 		scheduler.schedulePriorityRender();
