@@ -10,10 +10,9 @@
  * already running in the background.
  */
 
-import fs from "node:fs/promises";
-import path from "node:path";
 import { createLogger, TELEMETRY_DIR } from "@takumi/core";
 import * as ops from "./chitragupta-ops.js";
+import * as queries from "./chitragupta-queries.js";
 import type {
 	AgentTelemetry,
 	AkashaTrace,
@@ -42,6 +41,7 @@ import type {
 } from "./chitragupta-types.js";
 import { DaemonSocketClient, probeSocket, resolveSocketPath } from "./daemon-socket.js";
 import { McpClient, type McpClientOptions } from "./mcp-client.js";
+import { telemetryCleanup, telemetryHeartbeat, telemetrySnapshot } from "./telemetry.js";
 
 const log = createLogger("chitragupta-bridge");
 
@@ -128,49 +128,29 @@ export class ChitraguptaBridge {
 
 	/** Search project memory via GraphRAG or daemon FTS5. */
 	async memorySearch(query: string, limit?: number): Promise<MemoryResult[]> {
-		if (this._socketMode && this._socket) {
-			const resp = await this._socket.call<{ results: Array<Record<string, unknown>> }>("memory.recall", {
-				query,
-				limit: limit ?? 5,
-				project: this.options.projectPath,
-			});
-			return (resp.results ?? []).map((r, i) => ({
-				content: String(r.content ?? ""),
-				relevance: +(1 - i / Math.max(resp.results.length, 1)).toFixed(3),
-				source: String(r.session_id ?? ""),
-			}));
-		}
-
-		const params: Record<string, unknown> = { query };
-		if (limit !== undefined) params.limit = limit;
-
-		const raw = await this.callTool("chitragupta_memory_search", params);
-		return this.parseResults<MemoryResult[]>(raw) ?? [];
+		return queries.memorySearch(
+			this._socket,
+			this._socketMode,
+			this.callTool.bind(this),
+			this.parseResults.bind(this),
+			query,
+			limit,
+			this.options.projectPath,
+		);
 	}
 
 	/** Unified recall: search across sessions, day files, and memory markdown. */
 	async unifiedRecall(query: string, limit?: number, project?: string): Promise<UnifiedRecallResult[]> {
-		if (this._socketMode && this._socket) {
-			const resp = await this._socket.call<{ results: Array<Record<string, unknown>> }>("memory.unified_recall", {
-				query,
-				limit: limit ?? 5,
-				project: project ?? this.options.projectPath,
-			});
-			return (resp.results ?? []).map((r) => ({
-				content: String(r.content ?? ""),
-				score: Number(r.score ?? 0),
-				source: String(r.source ?? ""),
-				type: String(r.type ?? "session"),
-			}));
-		}
-		// MCP fallback: use legacy memory search
-		const legacy = await this.memorySearch(query, limit);
-		return legacy.map((r) => ({
-			content: r.content,
-			score: r.relevance,
-			source: r.source ?? "",
-			type: "session",
-		}));
+		return queries.unifiedRecall(
+			this._socket,
+			this._socketMode,
+			this.callTool.bind(this),
+			this.parseResults.bind(this),
+			query,
+			limit,
+			project,
+			this.options.projectPath,
+		);
 	}
 
 	/** List available day consolidation files. */
@@ -195,55 +175,26 @@ export class ChitraguptaBridge {
 
 	/** List recent sessions for this project. */
 	async sessionList(limit?: number): Promise<ChitraguptaSessionInfo[]> {
-		if (this._socketMode && this._socket) {
-			const resp = await this._socket.call<{ sessions: Array<Record<string, unknown>> }>("session.list", {
-				project: this.options.projectPath,
-			});
-			const slice = limit ? (resp.sessions ?? []).slice(0, limit) : (resp.sessions ?? []);
-			return slice.map((s) => {
-				const m = (s.meta ?? s) as Record<string, unknown>;
-				return {
-					id: String(m.id ?? ""),
-					title: String(m.title ?? "Untitled"),
-					timestamp: Number(m.updatedAt ?? m.createdAt ?? 0),
-					turns: Number(m.turnCount ?? 0),
-				};
-			});
-		}
-
-		const params: Record<string, unknown> = {};
-		if (limit !== undefined) params.limit = limit;
-
-		const raw = await this.callTool("chitragupta_session_list", params);
-		return this.parseResults<ChitraguptaSessionInfo[]>(raw) ?? [];
+		return queries.sessionList(
+			this._socket,
+			this._socketMode,
+			this.callTool.bind(this),
+			this.parseResults.bind(this),
+			this.options.projectPath,
+			limit,
+		);
 	}
 
 	/** Show the full contents of a specific session. */
 	async sessionShow(sessionId: string): Promise<SessionDetail> {
-		if (this._socketMode && this._socket) {
-			try {
-				const resp = await this._socket.call<Record<string, unknown>>("session.show", {
-					id: sessionId,
-					project: this.options.projectPath ?? "",
-				});
-				const m = (resp.meta ?? resp) as Record<string, unknown>;
-				const rawTurns = (resp.turns ?? []) as Array<Record<string, unknown>>;
-				return {
-					id: String(m.id ?? sessionId),
-					title: String(m.title ?? "Untitled"),
-					turns: rawTurns.map((t) => ({
-						role: String(t.role ?? "user"),
-						content: String(t.content ?? ""),
-						timestamp: Number(t.timestamp ?? t.createdAt ?? 0),
-					})),
-				};
-			} catch {
-				return { id: sessionId, title: "", turns: [] };
-			}
-		}
-
-		const raw = await this.callTool("chitragupta_session_show", { sessionId });
-		return this.parseResults<SessionDetail>(raw) ?? { id: sessionId, title: "", turns: [] };
+		return queries.sessionShow(
+			this._socket,
+			this._socketMode,
+			this.callTool.bind(this),
+			this.parseResults.bind(this),
+			sessionId,
+			this.options.projectPath,
+		);
 	}
 
 	/** Get a work-state handover summary for context continuity. */
@@ -323,26 +274,7 @@ export class ChitraguptaBridge {
 	 * In socket mode returns a stub derived from daemon process stats.
 	 */
 	async healthStatus(): Promise<ChitraguptaHealth | null> {
-		if (this._socketMode && this._socket) {
-			try {
-				const resp = await this._socket.call<Record<string, unknown>>("daemon.health");
-				const conns = Number(resp.connections ?? 0);
-				const rajas = Math.min(0.8, conns / 5);
-				const sattva = Number(resp.uptime ?? 0) > 3600 ? 0.75 : 0.55;
-				const tamas = Math.max(0, 1 - sattva - rajas);
-				return {
-					state: { sattva, rajas, tamas },
-					dominant: rajas > 0.4 ? "rajas" : "sattva",
-					trend: { sattva: "stable", rajas: "stable", tamas: "stable" },
-					alerts: [],
-					history: [],
-				};
-			} catch {
-				return null;
-			}
-		}
-		const raw = await this.callTool("health_status", {});
-		return this.parseResults<ChitraguptaHealth>(raw);
+		return queries.healthStatus(this._socket, this._socketMode, this.callTool.bind(this), this.parseResults.bind(this));
 	}
 	/** List learned procedures (vidhis) for a project. */
 	async vidhiList(project: string, limit = 20): Promise<VidhiInfo[]> {
@@ -391,8 +323,7 @@ export class ChitraguptaBridge {
 
 	/** Check connection status. */
 	get isConnected(): boolean {
-		if (this._socketMode) return this._socket?.isConnected ?? false;
-		return this.client.isConnected;
+		return this._socketMode ? (this._socket?.isConnected ?? false) : this.client.isConnected;
 	}
 
 	/** True when connected directly to the daemon socket (not via MCP subprocess). */
@@ -459,22 +390,7 @@ export class ChitraguptaBridge {
 	 * @param telemetryDir - Optional override for telemetry directory (for testing)
 	 */
 	async telemetryHeartbeat(data: Partial<AgentTelemetry>, telemetryDir = TELEMETRY_DIR): Promise<void> {
-		// Merge with cached data
-		this.telemetryCache = {
-			...this.telemetryCache,
-			...data,
-			schemaVersion: 2,
-		};
-
-		const telemetryFile = path.join(telemetryDir, `${process.pid}.json`);
-
-		// Ensure directory exists
-		await fs.mkdir(telemetryDir, { recursive: true });
-
-		// Atomic write (temp file + rename)
-		const tempFile = `${telemetryFile}.tmp`;
-		await fs.writeFile(tempFile, JSON.stringify(this.telemetryCache, null, 2));
-		await fs.rename(tempFile, telemetryFile);
+		this.telemetryCache = await telemetryHeartbeat(this.telemetryCache, data, telemetryDir);
 	}
 
 	/**
@@ -485,16 +401,7 @@ export class ChitraguptaBridge {
 	 * @param telemetryDir - Optional override for telemetry directory (for testing)
 	 */
 	async telemetryCleanup(pid = process.pid, telemetryDir = TELEMETRY_DIR): Promise<void> {
-		const telemetryFile = path.join(telemetryDir, `${pid}.json`);
-
-		try {
-			await fs.unlink(telemetryFile);
-		} catch (err) {
-			// Ignore if file doesn't exist
-			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-				throw err;
-			}
-		}
+		await telemetryCleanup(pid, telemetryDir);
 	}
 
 	/**
@@ -506,95 +413,7 @@ export class ChitraguptaBridge {
 	 * @returns TelemetrySnapshot with aggregated stats
 	 */
 	async telemetrySnapshot(staleMs = 10000, telemetryDir = TELEMETRY_DIR): Promise<TelemetrySnapshot> {
-		const now = Date.now();
-		const instances: AgentTelemetry[] = [];
-
-		// Read all telemetry files
-		try {
-			const files = await fs.readdir(telemetryDir);
-
-			for (const file of files) {
-				if (!file.endsWith(".json")) continue;
-
-				try {
-					const content = await fs.readFile(path.join(telemetryDir, file), "utf-8");
-					const data = JSON.parse(content) as AgentTelemetry;
-
-					// Validate minimum required structure for aggregation
-					if (
-						typeof data.process?.heartbeatAt !== "number" ||
-						typeof data.state?.activity !== "string" ||
-						typeof data.context?.pressure !== "string" ||
-						typeof data.session?.id !== "string"
-					) {
-						continue;
-					}
-
-					// Skip stale instances (no heartbeat in staleMs)
-					if (now - data.process.heartbeatAt > staleMs) continue;
-
-					instances.push(data);
-				} catch {}
-			}
-		} catch (err) {
-			// Directory doesn't exist or not readable - return empty snapshot
-			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-				log.warn(`Failed to read telemetry directory: ${(err as Error).message}`);
-			}
-		}
-
-		// Aggregate activity counts
-		const counts = {
-			total: instances.length,
-			working: instances.filter((i) => i.state.activity === "working").length,
-			waiting_input: instances.filter((i) => i.state.activity === "waiting_input").length,
-			idle: instances.filter((i) => i.state.activity === "idle").length,
-			error: instances.filter((i) => i.state.activity === "error").length,
-		};
-
-		// Aggregate context pressure
-		const context = {
-			total: instances.length,
-			normal: instances.filter((i) => i.context.pressure === "normal").length,
-			approachingLimit: instances.filter((i) => i.context.pressure === "approaching_limit").length,
-			nearLimit: instances.filter((i) => i.context.pressure === "near_limit").length,
-			atLimit: instances.filter((i) => i.context.pressure === "at_limit").length,
-		};
-
-		// Group by session
-		const sessions: Record<string, { sessionId: string; instances: number; statuses: string[] }> = {};
-		instances.forEach((inst) => {
-			if (!sessions[inst.session.id]) {
-				sessions[inst.session.id] = {
-					sessionId: inst.session.id,
-					instances: 0,
-					statuses: [],
-				};
-			}
-			sessions[inst.session.id].instances++;
-			sessions[inst.session.id].statuses.push(inst.state.activity);
-		});
-
-		// Determine aggregate activity
-		const aggregate: TelemetrySnapshot["aggregate"] =
-			counts.working > 0 && counts.waiting_input > 0
-				? "mixed"
-				: counts.working > 0
-					? "working"
-					: counts.waiting_input > 0
-						? "waiting_input"
-						: "idle";
-
-		return {
-			schemaVersion: 2,
-			timestamp: now,
-			aggregate,
-			counts,
-			context,
-			sessions,
-			instancesByPid: Object.fromEntries(instances.map((i) => [i.process.pid, i])),
-			instances,
-		};
+		return await telemetrySnapshot(staleMs, telemetryDir);
 	}
 
 	// ── Internal helpers ──────────────────────────────────────────────────

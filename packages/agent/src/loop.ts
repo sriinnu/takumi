@@ -18,6 +18,8 @@ import {
 	type PayloadCompactOptions,
 	shouldCompact,
 } from "./context/compact.js";
+import type { MemoryHooks } from "./context/memory-hooks.js";
+import type { PromptCache } from "./context/prompt-cache.js";
 import type { BudgetGuard } from "./cost.js";
 import { BudgetExceededError } from "./cost.js";
 import { buildSystemPrompt, buildToolResult, buildUserMessage } from "./message.js";
@@ -59,6 +61,15 @@ export interface AgentLoopOptions {
 
 	/** Optional spend-limit enforcer. Throws BudgetExceededError when the limit is crossed. */
 	budget?: BudgetGuard;
+
+	/** Optional prompt cache — deduplicates identical LLM requests (Phase 34). */
+	promptCache?: PromptCache;
+
+	/** Optional memory hooks — extracts lessons from tool patterns (Phase 33). */
+	memoryHooks?: MemoryHooks;
+
+	/** Model name (needed for prompt cache keying). */
+	model?: string;
 }
 
 export interface MessagePayload {
@@ -96,6 +107,16 @@ export async function* agentLoop(
 
 	const toolDefs = tools.getDefinitions();
 	const system = systemPrompt ?? buildSystemPrompt(toolDefs);
+
+	// Phase 33 — inject recalled lessons into system prompt
+	let enrichedSystem = system;
+	if (options.memoryHooks) {
+		const lessons = options.memoryHooks.recall("", 5);
+		const lessonBlock = options.memoryHooks.formatForPrompt(lessons);
+		if (lessonBlock) {
+			enrichedSystem = `${system}\n\n${lessonBlock}`;
+		}
+	}
 	// Push the new user message directly onto the caller's history array.
 	// This ensures that after agentLoop returns, `history` contains the full
 	// turn including all intermediate tool-call / tool-result pairs — not just
@@ -141,6 +162,28 @@ export async function* agentLoop(
 		const pendingToolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
 		let stopReason: string | undefined;
 		let _usage: Usage | undefined;
+
+		// Phase 34 — Check prompt cache before LLM call (only for non-tool-result turns)
+		const cacheKey =
+			options.promptCache && turn === 1
+				? options.promptCache.computeKey(
+						options.model ?? "unknown",
+						enrichedSystem,
+						messages.map((m) => JSON.stringify(m.content)),
+					)
+				: null;
+
+		if (cacheKey && options.promptCache) {
+			const cached = options.promptCache.get(cacheKey);
+			if (cached) {
+				log.info("Prompt cache hit — skipping LLM call");
+				fullText = cached;
+				yield { type: "text_delta", text: cached };
+				const assistantContent: any[] = [{ type: "text", text: cached }];
+				messages.push({ role: "assistant", content: assistantContent });
+				return;
+			}
+		}
 
 		// Stream events from the LLM (with retry wrapper)
 		try {
@@ -231,6 +274,12 @@ export async function* agentLoop(
 		}
 		messages.push({ role: "assistant", content: assistantContent });
 
+		// Phase 34 — Store response in prompt cache
+		if (cacheKey && options.promptCache && fullText && pendingToolCalls.length === 0) {
+			const estTokens = Math.ceil(fullText.length / 4);
+			options.promptCache.set(cacheKey, fullText, options.model ?? "unknown", estTokens);
+		}
+
 		// If no tool calls, we're done
 		if (pendingToolCalls.length === 0) {
 			return;
@@ -255,6 +304,14 @@ export async function* agentLoop(
 				output: result.output,
 				isError: result.isError,
 			};
+
+			// Phase 33 — Extract lessons from tool error→success patterns
+			if (options.memoryHooks && result.isError) {
+				options.memoryHooks.extract({
+					type: "tool_error_then_success",
+					details: `tool "${name}" failed: ${typeof result.output === "string" ? result.output.slice(0, 120) : "error"}`,
+				});
+			}
 		}
 
 		// Add tool results to message history

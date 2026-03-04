@@ -37,6 +37,9 @@
 		"README.md"
 	],
 	"dependencies": {
-		"@takumi/core": "workspace:*"
+		"@fastify/cors": "^11.2.0",
+		"@fastify/rate-limit": "^10.3.0",
+		"@takumi/core": "workspace:*",
+		"fastify": "^5.7.4"
 	}
 }
