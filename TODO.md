@@ -1446,3 +1446,29 @@ Add to `takumi.config.json`:
 | **M3: Tools Work** | Week 6 | Agent can read/write/edit files with permission prompts |
 | **M4: Production MVP** | Week 8 | Full TUI with sidebar, status, sessions, slash commands |
 | **M5: Polish** | Week 9 | Themes, mouse, advanced editor, coding agent mode |
+
+---
+
+## Phase 25: Headless CLI Pipeline (Option C+)
+- [x] Integrate `--stream=ndjson` format to `takumi exec`.
+- [x] Stream structured loop events from agent loop without breaking CLI text mode.
+
+## Phase 26: Subconscious Daemon ("Guardian Angel" Mode)
+- [ ] Lightweight daemon mode (`takumi daemon`) running in background.
+- [ ] File-system watcher: Observe TS/TSX saves.
+- [ ] Auto-trigger non-blocking LLM calls (e.g. for generating unit tests or JSDoc in background).
+- [ ] IPC notification mechanism to tell Kagami TUI: "Suggestions available."
+
+## Phase 27: Speculative Execution via Ephemeral Worktrees
+- [ ] Introduce a tool that can branch into a `git worktree` in `/tmp/`.
+- [ ] Run speculative commands (`tsc`, `vitest`) on the worktree in parallel.
+- [ ] Tool to fast-forward successful branches into active working directory.
+
+## Phase 28: AST-Aware File Patching Tool
+- [ ] Move away from regex/full-file string replacements.
+- [ ] Introduce AST-level modification tools (`modify_function_ast`, `update_export`).
+- [ ] Use `ts-morph` or `typescript` compiler API to ensure structural integrity locally.
+
+## Phase 29: Context Ripple DAG (Dependency Graphing)
+- [ ] Extract import/export graphs dynamically.
+- [ ] Automatically enqueue dependent files when an exported interface changes.

@@ -62,6 +62,9 @@ export {
 // RAG query + formatting (Phase 10)
 export type { RagOptions, RagResult } from "./context/rag.js";
 export { formatRagContext, queryIndex } from "./context/rag.js";
+// Phase 29 — Context Ripple DAG
+export type { DagNode, RippleResult } from "./context/ripple-dag.js";
+export { RippleDag } from "./context/ripple-dag.js";
 export type { SoulData } from "./context/soul.js";
 export { formatSoulPrompt, loadSoul } from "./context/soul.js";
 // LLM cost estimation + budget enforcement (Phase 11)
@@ -76,6 +79,9 @@ export {
 	isRetryable,
 	ProviderUnavailableError,
 } from "./errors.js";
+// Phase 26 — Guardian daemon
+export type { GuardianConfig, GuardianEvent, GuardianSuggestion } from "./guardian.js";
+export { Guardian } from "./guardian.js";
 export type { AgentLoopOptions, MessagePayload } from "./loop.js";
 export { agentLoop } from "./loop.js";
 // Message building
@@ -114,6 +120,14 @@ export { parseSSEStream } from "./stream.js";
 export { calculateContextPressure, estimateMessagesTokens, renderLastAssistantHtml } from "./telemetry.js";
 export { akashaDepositDefinition, akashaTracesDefinition, createAkashaHandlers } from "./tools/akasha.js";
 export { askDefinition, createAskHandler } from "./tools/ask.js";
+// Phase 28 — AST-aware patching
+export {
+	astGrepDefinition,
+	astGrepHandler,
+	astPatchDefinition,
+	astPatchHandler,
+	extractDeclarations,
+} from "./tools/ast-patch.js";
 export { bashDefinition, bashHandler } from "./tools/bash.js";
 export { registerBuiltinTools } from "./tools/builtin.js";
 export { editDefinition, editHandler } from "./tools/edit.js";
@@ -139,4 +153,15 @@ export {
 	createAgentWaitAnyHandler,
 	registerSideAgentTools,
 } from "./tools/side-agent.js";
+// Phase 27 — Speculative worktrees
+export {
+	worktreeCreateDefinition,
+	worktreeCreateHandler,
+	worktreeDestroyDefinition,
+	worktreeDestroyHandler,
+	worktreeExecDefinition,
+	worktreeExecHandler,
+	worktreeMergeDefinition,
+	worktreeMergeHandler,
+} from "./tools/worktree.js";
 export { writeDefinition, writeHandler } from "./tools/write.js";
