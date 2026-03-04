@@ -5,6 +5,7 @@
 import { astGrepDefinition, astGrepHandler, astPatchDefinition, astPatchHandler } from "./ast-patch.js";
 import { bashDefinition, bashHandler } from "./bash.js";
 import { composeDefinition, createComposeHandler } from "./compose.js";
+import { diffReviewDefinition, diffReviewHandler } from "./diff-review.js";
 import { editDefinition, editHandler } from "./edit.js";
 import { globDefinition, globHandler } from "./glob.js";
 import { grepDefinition, grepHandler } from "./grep.js";
@@ -42,4 +43,7 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
 
 	// Phase 31 — Tool compose pipelines
 	registry.register(composeDefinition, createComposeHandler(registry));
+
+	// Phase 32 — Semantic diff review (callable as tool)
+	registry.register(diffReviewDefinition, diffReviewHandler);
 }
