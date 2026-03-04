@@ -8,6 +8,9 @@ import type { AppState } from "./state.js";
 
 const log = createLogger("app");
 
+/** Timestamp (epoch ms) captured when the Chitragupta bridge first connects. */
+let startedAt = 0;
+
 function loadMcpConfig(): { command: string; args: string[] } | null {
 	try {
 		const mcpPath = join(process.cwd(), ".vscode", "mcp.json");
@@ -48,6 +51,7 @@ export function connectChitragupta(
 		.connect()
 		.then(async () => {
 			state.chitraguptaConnected.value = true;
+			startedAt = Date.now();
 			log.info("Chitragupta bridge connected");
 
 			if (agentRunner) {
@@ -102,7 +106,42 @@ export function connectChitragupta(
 				log.debug(`Chitragupta health check failed: ${(err as Error).message}`);
 			}
 
-			const timer = setInterval(async () => {
+			// Telemetry heartbeat — emits process + context status every 1.5s
+			const heartbeatTimer = setInterval(async () => {
+				const b = state.chitraguptaBridge.value;
+				if (!b?.isConnected) return;
+				try {
+					await b.telemetryHeartbeat({
+						process: {
+							pid: process.pid,
+							ppid: process.ppid ?? 0,
+							uptime: process.uptime(),
+							heartbeatAt: Date.now(),
+							startedAt,
+						} as never,
+						state: {
+							activity: state.isStreaming.value ? "working" : "waiting_input",
+							idle: !state.isStreaming.value,
+						} as never,
+						context: {
+							tokens: state.contextTokens.value,
+							contextWindow: state.contextWindow.value,
+							remainingTokens: state.contextWindow.value - state.contextTokens.value,
+							percent: state.contextPercent.value,
+							pressure: state.contextPressure.value as never,
+							closeToLimit: state.contextPercent.value >= 85,
+							nearLimit: state.contextPercent.value >= 95,
+						} as never,
+						lastEvent: "heartbeat",
+					});
+				} catch (err) {
+					log.debug(`Telemetry heartbeat failed: ${(err as Error).message}`);
+				}
+			}, 1_500);
+			onInterval(heartbeatTimer);
+
+			// Vasana/health refresh — polls every 60s
+			const vasanaTimer = setInterval(async () => {
 				const b = state.chitraguptaBridge.value;
 				if (!b?.isConnected) return;
 				try {
@@ -114,7 +153,7 @@ export function connectChitragupta(
 					/* best effort */
 				}
 			}, 60_000);
-			onInterval(timer);
+			onInterval(vasanaTimer);
 		})
 		.catch((err) => {
 			log.debug(`Chitragupta bridge connection failed: ${(err as Error).message}`);
@@ -135,6 +174,15 @@ export function connectChitragupta(
 export async function disconnectChitragupta(state: AppState): Promise<void> {
 	const bridge = state.chitraguptaBridge.value;
 	if (!bridge || !bridge.isConnected) return;
+
+	// Cleanup telemetry heartbeat file before handover
+	try {
+		await bridge.telemetryCleanup(process.pid);
+		log.debug("Telemetry heartbeat file cleaned up");
+	} catch (err) {
+		log.debug(`Telemetry cleanup failed: ${(err as Error).message}`);
+	}
+
 	try {
 		await Promise.race([
 			bridge.handover(),

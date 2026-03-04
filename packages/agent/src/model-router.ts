@@ -216,6 +216,49 @@ export function inferProvider(modelString: string): ProviderFamily {
 	return "openai-compat";
 }
 
+/**
+ * Extend the static MODEL_TIERS with dynamically-discovered models from
+ * kosha-discovery. Call once after kosha initialises to keep the router
+ * in sync with whatever the user actually has available.
+ */
+export function syncModelTiersFromKosha(providerModels: Record<string, string[]>): void {
+	const familyMap: Record<string, ProviderFamily> = {
+		anthropic: "anthropic",
+		openai: "openai",
+		gemini: "google",
+		google: "google",
+		ollama: "openai-compat",
+		openrouter: "openai-compat",
+		groq: "openai-compat",
+		deepseek: "openai-compat",
+		mistral: "openai-compat",
+		together: "openai-compat",
+		github: "openai-compat",
+	};
+
+	for (const [provider, models] of Object.entries(providerModels)) {
+		const family = familyMap[provider];
+		if (!family || models.length === 0) continue;
+
+		// For openai-compat providers that aren't already in MODEL_TIERS,
+		// populate tiers from the discovered model list.
+		if (family === "openai-compat" && provider !== "openai") {
+			// Use the first model as default across tiers
+			const m = models[0];
+			if (!MODEL_TIERS["openai-compat"]) continue;
+			// Only override if we don't already have good defaults
+			if (MODEL_TIERS["openai-compat"].fast === "gpt-4o-mini") {
+				MODEL_TIERS["openai-compat"] = {
+					fast: models[0] ?? m,
+					balanced: models[Math.min(1, models.length - 1)] ?? m,
+					powerful: models[Math.min(2, models.length - 1)] ?? m,
+					frontier: models[models.length - 1] ?? m,
+				};
+			}
+		}
+	}
+}
+
 // ─── Dynamic Temperature Scaling ──────────────────────────────────────────────
 
 /**

@@ -1,6 +1,7 @@
 import type { TakumiConfig } from "@takumi/core";
 import { PROVIDER_ENDPOINTS } from "@takumi/core";
 import { tryResolveCliToken } from "./cli-auth.js";
+import { koshaEndpoint } from "./kosha-bridge.js";
 
 export function canSkipApiKey(config: TakumiConfig): boolean {
 	if (config.provider === "ollama") return true;
@@ -21,6 +22,18 @@ export async function buildSingleProvider(
 	agent: any,
 ): Promise<any | null> {
 	const env = process.env;
+
+	// Resolve endpoint: CLI override → kosha-discovery → hardcoded fallback
+	const resolveEndpoint = async (name: string): Promise<string> => {
+		if (config.endpoint) return config.endpoint;
+		try {
+			const koshaUrl = await koshaEndpoint(name);
+			if (koshaUrl) return koshaUrl;
+		} catch {
+			// kosha unavailable — fall through
+		}
+		return PROVIDER_ENDPOINTS[name] || "";
+	};
 
 	if (providerName === "anthropic") {
 		// Priority: CLI tools → env vars (pi-mono ecosystem standard)
@@ -43,10 +56,11 @@ export async function buildSingleProvider(
 			env.GOOGLE_API_KEY ||
 			env.TAKUMI_API_KEY;
 		if (!key) return null;
+		const endpoint = await resolveEndpoint("google");
 		return new agent.GeminiProvider({
 			...config,
 			apiKey: key,
-			endpoint: config.endpoint || PROVIDER_ENDPOINTS[providerName] || "",
+			endpoint,
 		});
 	}
 
@@ -72,10 +86,12 @@ export async function buildSingleProvider(
 		env.TAKUMI_API_KEY;
 	if (!key && providerName !== "ollama") return null;
 
+	const endpoint = await resolveEndpoint(providerName);
+
 	return new agent.OpenAIProvider({
 		...config,
 		apiKey: key || "",
-		endpoint: config.endpoint || PROVIDER_ENDPOINTS[providerName] || "",
+		endpoint,
 	});
 }
 

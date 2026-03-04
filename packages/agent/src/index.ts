@@ -51,6 +51,9 @@ export {
 // Codebase indexer (Phase 10 — RAG)
 export type { CodebaseIndex, FileEntry, IndexedSymbol, IndexStats } from "./context/indexer.js";
 export { buildIndex, indexStats, loadIndex } from "./context/indexer.js";
+// Phase 33 — Agent Memory Hooks
+export type { ExtractionEvent, Lesson, MemoryHooksConfig } from "./context/memory-hooks.js";
+export { MemoryHooks } from "./context/memory-hooks.js";
 export type { ProjectContext, ProjectInfo } from "./context/project.js";
 export {
 	detectFramework,
@@ -59,9 +62,18 @@ export {
 	detectProject,
 	detectProjectContext,
 } from "./context/project.js";
+// Phase 34 — Prompt Cache Layer
+export type { CacheEntry, CacheStats, PromptCacheConfig } from "./context/prompt-cache.js";
+export { PromptCache } from "./context/prompt-cache.js";
 // RAG query + formatting (Phase 10)
 export type { RagOptions, RagResult } from "./context/rag.js";
 export { formatRagContext, queryIndex } from "./context/rag.js";
+// Phase 29 — Context Ripple DAG
+export type { DagNode, RippleResult } from "./context/ripple-dag.js";
+export { RippleDag } from "./context/ripple-dag.js";
+// Phase 30 — Smart Context Window
+export type { ContextItem, PackResult, ScoredItem, SmartContextConfig } from "./context/smart-context.js";
+export { SmartContextWindow } from "./context/smart-context.js";
 export type { SoulData } from "./context/soul.js";
 export { formatSoulPrompt, loadSoul } from "./context/soul.js";
 // LLM cost estimation + budget enforcement (Phase 11)
@@ -76,13 +88,16 @@ export {
 	isRetryable,
 	ProviderUnavailableError,
 } from "./errors.js";
+// Phase 26 — Guardian daemon
+export type { GuardianConfig, GuardianEvent, GuardianSuggestion } from "./guardian.js";
+export { Guardian } from "./guardian.js";
 export type { AgentLoopOptions, MessagePayload } from "./loop.js";
 export { agentLoop } from "./loop.js";
 // Message building
 export { buildSystemPrompt, buildToolResult, buildUserMessage } from "./message.js";
 export type { ModelRecommendation, ModelTier, ProviderFamily, RouterRole } from "./model-router.js";
 // Smart model router
-export { inferProvider, MODEL_TIERS, ModelRouter } from "./model-router.js";
+export { inferProvider, MODEL_TIERS, ModelRouter, syncModelTiersFromKosha } from "./model-router.js";
 // Providers
 export { DarpanaProvider } from "./providers/darpana.js";
 export { DirectProvider } from "./providers/direct.js";
@@ -114,8 +129,22 @@ export { parseSSEStream } from "./stream.js";
 export { calculateContextPressure, estimateMessagesTokens, renderLastAssistantHtml } from "./telemetry.js";
 export { akashaDepositDefinition, akashaTracesDefinition, createAkashaHandlers } from "./tools/akasha.js";
 export { askDefinition, createAskHandler } from "./tools/ask.js";
+// Phase 28 — AST-aware patching
+export {
+	astGrepDefinition,
+	astGrepHandler,
+	astPatchDefinition,
+	astPatchHandler,
+	extractDeclarations,
+} from "./tools/ast-patch.js";
 export { bashDefinition, bashHandler } from "./tools/bash.js";
 export { registerBuiltinTools } from "./tools/builtin.js";
+// Phase 31 — Tool Compose Pipelines
+export type { PipelineResult, PipelineSpec, PipelineStep, StepResult } from "./tools/compose.js";
+export { composeDefinition, createComposeHandler, executePipeline } from "./tools/compose.js";
+// Phase 32 — Semantic Diff Review
+export type { DiffFinding, DiffReviewConfig, DiffReviewResult, FindingSeverity } from "./tools/diff-review.js";
+export { diffReviewDefinition, diffReviewHandler, reviewDiff } from "./tools/diff-review.js";
 export { editDefinition, editHandler } from "./tools/edit.js";
 export { globDefinition, globHandler } from "./tools/glob.js";
 export { grepDefinition, grepHandler } from "./tools/grep.js";
@@ -139,4 +168,15 @@ export {
 	createAgentWaitAnyHandler,
 	registerSideAgentTools,
 } from "./tools/side-agent.js";
+// Phase 27 — Speculative worktrees
+export {
+	worktreeCreateDefinition,
+	worktreeCreateHandler,
+	worktreeDestroyDefinition,
+	worktreeDestroyHandler,
+	worktreeExecDefinition,
+	worktreeExecHandler,
+	worktreeMergeDefinition,
+	worktreeMergeHandler,
+} from "./tools/worktree.js";
 export { writeDefinition, writeHandler } from "./tools/write.js";

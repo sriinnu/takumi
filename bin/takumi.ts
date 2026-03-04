@@ -8,6 +8,7 @@ import { printHelp } from "./cli/help.js";
 import { fetchIssueContext, readStdin, runOneShot } from "./cli/one-shot.js";
 import { buildSingleProvider, canSkipApiKey, createProvider } from "./cli/provider.js";
 import { autoDetectAuth } from "./cli/cli-auth.js";
+import { koshaProviderModels, koshaProviders } from "./cli/kosha-bridge.js";
 import { cmdDelete, cmdExport, cmdList, cmdLogs, cmdStatus } from "./cli/session-commands.js";
 import { cmdDaemon } from "./cli/daemon.js";
 import { cmdDaemon } from "./cli/daemon.js";
@@ -36,20 +37,35 @@ async function chooseProviderAndModel(config: TakumiConfig): Promise<void> {
 
 	p.intro("\x1b[1;36mTakumi AI Coding Agent\x1b[0m");
 
+	// ── Build dynamic provider list from kosha-discovery ─────────────────────
+	let dynamicProviders: Record<string, string[]> = {};
+	try {
+		dynamicProviders = await koshaProviderModels();
+	} catch {
+		// kosha unavailable — fall through to static list
+	}
+
+	// Merge kosha-discovered providers with static PROVIDER_MODELS (kosha wins)
+	const allProviders = { ...PROVIDER_MODELS, ...dynamicProviders };
+
+	// Build selection options — authenticated kosha providers first, then static
+	let koshaProviderStatus: Array<{ id: string; name: string; authenticated: boolean }> = [];
+	try {
+		const kProviders = await koshaProviders();
+		koshaProviderStatus = kProviders.map((kp) => ({
+			id: mapKoshaToTakumi(kp.id),
+			name: kp.name,
+			authenticated: kp.authenticated || kp.id === "ollama",
+		}));
+	} catch {
+		// fallback — no status info
+	}
+
+	const providerOptions = buildProviderOptions(allProviders, koshaProviderStatus);
+
 	const providerChoice = await p.select({
 		message: "Select AI Provider",
-		options: [
-			{ value: "anthropic", label: "Claude (Anthropic)" },
-			{ value: "openai", label: "OpenAI (GPT / Codex / o-series)" },
-			{ value: "gemini", label: "Google Gemini" },
-			{ value: "github", label: "GitHub Models (free with gh CLI)" },
-			{ value: "groq", label: "Groq (Fast Llama/Mixtral)" },
-			{ value: "deepseek", label: "DeepSeek" },
-			{ value: "mistral", label: "Mistral AI" },
-			{ value: "together", label: "Together AI" },
-			{ value: "openrouter", label: "OpenRouter" },
-			{ value: "ollama", label: "Ollama (Local)" },
-		],
+		options: providerOptions,
 		initialValue: config.provider || "anthropic",
 	});
 
@@ -59,7 +75,7 @@ async function chooseProviderAndModel(config: TakumiConfig): Promise<void> {
 	}
 
 	const selectedProvider = providerChoice as string;
-	const models = PROVIDER_MODELS[selectedProvider] || [];
+	const models = allProviders[selectedProvider] || [];
 
 	let selectedModel = config.model;
 	if (models.length > 0) {
@@ -85,6 +101,65 @@ async function chooseProviderAndModel(config: TakumiConfig): Promise<void> {
 	config.provider = selectedProvider;
 	config.model = selectedModel;
 	p.outro(`Starting with \x1b[32m${selectedProvider}\x1b[0m / \x1b[32m${selectedModel}\x1b[0m...`);
+}
+
+/** Map kosha provider IDs → Takumi provider names. */
+function mapKoshaToTakumi(koshaId: string): string {
+	const mapping: Record<string, string> = {
+		anthropic: "anthropic",
+		openai: "openai",
+		google: "gemini",
+		ollama: "ollama",
+		openrouter: "openrouter",
+		bedrock: "bedrock",
+		vertex: "vertex",
+	};
+	return mapping[koshaId] ?? koshaId;
+}
+
+/** Provider display name map. */
+const PROVIDER_LABELS: Record<string, string> = {
+	anthropic: "Claude (Anthropic)",
+	openai: "OpenAI (GPT / Codex / o-series)",
+	gemini: "Google Gemini",
+	github: "GitHub Models (free with gh CLI)",
+	groq: "Groq (Fast Llama/Mixtral)",
+	deepseek: "DeepSeek",
+	mistral: "Mistral AI",
+	together: "Together AI",
+	openrouter: "OpenRouter",
+	ollama: "Ollama (Local)",
+	bedrock: "AWS Bedrock",
+	vertex: "Google Vertex AI",
+};
+
+/** Build sorted provider selection options: authenticated first, then rest. */
+function buildProviderOptions(
+	allProviders: Record<string, string[]>,
+	koshaStatus: Array<{ id: string; name: string; authenticated: boolean }>,
+): Array<{ value: string; label: string; hint?: string }> {
+	const statusMap = new Map(koshaStatus.map((s) => [s.id, s]));
+
+	const authenticated: Array<{ value: string; label: string; hint?: string }> = [];
+	const unauthenticated: Array<{ value: string; label: string; hint?: string }> = [];
+
+	for (const provider of Object.keys(allProviders)) {
+		const status = statusMap.get(provider);
+		const label = PROVIDER_LABELS[provider] ?? provider;
+		const hint = status?.authenticated
+			? `✓ ${allProviders[provider].length} models`
+			: undefined;
+
+		const option = { value: provider, label, hint };
+
+		if (status?.authenticated) {
+			authenticated.push(option);
+		} else {
+			unauthenticated.push(option);
+		}
+	}
+
+	return [...authenticated, ...unauthenticated];
 }
 
 function installFatalHandlers(): void {
@@ -119,7 +194,12 @@ async function runInteractiveApp(config: TakumiConfig, args: ReturnType<typeof p
 	}
 
 	const { TakumiApp } = await import("@takumi/tui");
-	const { ToolRegistry, registerBuiltinTools } = await import("@takumi/agent");
+	const { ToolRegistry, registerBuiltinTools, syncModelTiersFromKosha } = await import("@takumi/agent");
+
+	// Sync model tiers from kosha-discovery (non-blocking, best-effort)
+	koshaProviderModels()
+		.then((pm) => syncModelTiersFromKosha(pm))
+		.catch(() => {});
 
 	const provider = await createProvider(config, args.fallback);
 	const tools = new ToolRegistry();
@@ -265,14 +345,16 @@ async function main(): Promise<void> {
 	if (!config.apiKey && !config.proxyUrl && !canSkipApiKey(config) && !hasProviderEnvKey(config)) {
 		console.error(
 			"\nError: No API key found.\n\n" +
-				"Takumi checked automatically:\n" +
+				"Takumi uses kosha-discovery to scan for credentials:\n" +
 				"  • Claude CLI  (~/.claude/.credentials.json)\n" +
 				"  • Gemini CLI  (~/.gemini/.env)\n" +
 				"  • Codex CLI   (~/.codex/auth.json)\n" +
+				"  • GitHub Copilot (~/.config/github-copilot/)\n" +
 				"  • GitHub CLI  (gh auth token)\n" +
 				"  • Ollama      (localhost:11434)\n" +
+				"  • AWS Bedrock (~/.aws/credentials)\n" +
 				"  • Env vars    (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY …)\n\n" +
-				"Install any of the above CLIs, set an env var, or pass --api-key <key>.\n" +
+				"Install any CLI, set an env var, or pass --api-key <key>.\n" +
 				"Or use --proxy <url> to connect through a Darpana proxy.\n",
 		);
 		process.exit(1);
@@ -303,7 +385,7 @@ async function main(): Promise<void> {
 			console.error("Error: No prompt provided. Pass a message as a positional argument or pipe to stdin.");
 			process.exit(1);
 		}
-		await runOneShot(config, issueContext + finalPrompt, args.fallback);
+		await runOneShot(config, issueContext + finalPrompt, args.fallback, args.stream);
 		return;
 	}
 
