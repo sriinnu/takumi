@@ -4,6 +4,7 @@
 
 import { astGrepDefinition, astGrepHandler, astPatchDefinition, astPatchHandler } from "./ast-patch.js";
 import { bashDefinition, bashHandler } from "./bash.js";
+import { composeDefinition, createComposeHandler } from "./compose.js";
 import { editDefinition, editHandler } from "./edit.js";
 import { globDefinition, globHandler } from "./glob.js";
 import { grepDefinition, grepHandler } from "./grep.js";
@@ -38,4 +39,7 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
 	// Phase 28 — AST-aware patching
 	registry.register(astGrepDefinition, astGrepHandler);
 	registry.register(astPatchDefinition, astPatchHandler);
+
+	// Phase 31 — Tool compose pipelines
+	registry.register(composeDefinition, createComposeHandler(registry));
 }
