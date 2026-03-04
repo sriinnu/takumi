@@ -63,7 +63,7 @@ vi.mock("@takumi/core", async (importOriginal) => {
 });
 
 // Import mocked functions for direct manipulation
-const { saveSession, __testStore } = (await import("@takumi/core")) as Record<string, unknown> & {
+const { loadSession, saveSession, __testStore } = (await import("@takumi/core")) as Record<string, unknown> & {
 	loadSession: ReturnType<typeof vi.fn>;
 	saveSession: ReturnType<typeof vi.fn>;
 	__testStore: Map<string, unknown>;
