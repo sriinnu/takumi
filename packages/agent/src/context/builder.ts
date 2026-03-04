@@ -11,6 +11,7 @@ import type { ToolDefinition } from "@takumi/core";
 import { buildSystemPrompt as buildBaseSystemPrompt } from "../message.js";
 import { truncateToTokenBudget } from "./budget.js";
 import { detectProject, type ProjectContext } from "./project.js";
+import type { SmartContextWindow } from "./smart-context.js";
 import { formatSoulPrompt, loadSoul, type SoulData } from "./soul.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -47,6 +48,9 @@ export interface SystemPromptOptions {
 
 	/** RAG context from codebase indexer (injected between project context and instructions). */
 	ragContext?: string;
+
+	/** Smart context window for composite-scored context packing (Phase 30). */
+	smartContext?: SmartContextWindow;
 }
 
 // ── Default identity ─────────────────────────────────────────────────────────
@@ -170,6 +174,17 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
 	if (options.ragContext) {
 		sections.push("");
 		sections.push(options.ragContext);
+	}
+
+	// ── 3c. Smart Context (Phase 30) ────────────────────────────────────────
+
+	if (options.smartContext) {
+		const packResult = options.smartContext.pack();
+		if (packResult.packed) {
+			sections.push("");
+			sections.push("# Relevant Context\n");
+			sections.push(packResult.packed);
+		}
 	}
 
 	// ── 4. Instructions (guidelines) ─────────────────────────────────────────

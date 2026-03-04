@@ -63,6 +63,7 @@
 		"@takumi/agent": "workspace:*",
 		"@takumi/core": "workspace:*",
 		"@takumi/tui": "workspace:*",
+		"kosha-discovery": "^0.3.0",
 		"tsx": "^4.21.0",
 		"yoga-wasm-web": "^0.3.3"
 	},

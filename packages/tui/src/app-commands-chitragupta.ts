@@ -137,6 +137,104 @@ export function registerChitraguptaCommands(ctx: AppCommandContext): void {
 		}
 	});
 
+	ctx.commands.register("/session", "Session management (dates, projects, delete)", async (args) => {
+		const bridge = ctx.state.chitraguptaBridge.value;
+		if (!bridge?.isConnected) return ctx.addInfoMessage("Chitragupta not connected");
+
+		if (!args) {
+			return ctx.addInfoMessage(
+				"Usage:\n  /session dates [project]  — list session dates\n  /session projects         — list tracked projects\n  /session delete <id>      — delete a session",
+			);
+		}
+		const parts = args.trim().split(/\s+/);
+		const sub = parts[0];
+
+		if (sub === "dates") {
+			const project = parts[1] || process.cwd();
+			try {
+				const dates = await bridge.sessionDates(project);
+				if (dates.length === 0) return ctx.addInfoMessage("No session dates found");
+				ctx.addInfoMessage(`Session dates (${dates.length}):\n${dates.map((d, i) => `${i + 1}. ${d}`).join("\n")}`);
+			} catch (err) {
+				ctx.addInfoMessage(`Failed: ${(err as Error).message}`);
+			}
+			return;
+		}
+		if (sub === "projects") {
+			try {
+				const projects = await bridge.sessionProjects();
+				if (projects.length === 0) return ctx.addInfoMessage("No projects tracked");
+				const lines = projects.map(
+					(p, i) => `${i + 1}. **${p.project}** — ${p.sessionCount} sessions (last: ${p.lastActive})`,
+				);
+				ctx.addInfoMessage(`Projects (${projects.length}):\n${lines.join("\n")}`);
+			} catch (err) {
+				ctx.addInfoMessage(`Failed: ${(err as Error).message}`);
+			}
+			return;
+		}
+		if (sub === "delete") {
+			const id = parts[1];
+			if (!id) return ctx.addInfoMessage("Usage: /session delete <session-id>");
+			try {
+				const result = await bridge.sessionDelete(id);
+				ctx.addInfoMessage(result.deleted ? `✓ Session ${id} deleted` : `Session ${id} not found`);
+			} catch (err) {
+				ctx.addInfoMessage(`Failed: ${(err as Error).message}`);
+			}
+			return;
+		}
+		ctx.addInfoMessage(`Unknown: ${sub}\nUse /session for usage.`);
+	});
+
+	ctx.commands.register("/memory", "Show memory scopes", async () => {
+		const bridge = ctx.state.chitraguptaBridge.value;
+		if (!bridge?.isConnected) return ctx.addInfoMessage("Chitragupta not connected");
+		try {
+			const scopes = await bridge.memoryScopes();
+			if (scopes.length === 0) return ctx.addInfoMessage("No memory scopes found");
+			const lines = scopes.map((s, i) => `${i + 1}. **${s.type}**${s.path ? ` — ${s.path}` : ""}`);
+			ctx.addInfoMessage(`Memory scopes (${scopes.length}):\n${lines.join("\n")}`);
+		} catch (err) {
+			ctx.addInfoMessage(`Failed: ${(err as Error).message}`);
+		}
+	});
+
+	ctx.commands.register("/daemon", "Show daemon status", async () => {
+		const bridge = ctx.state.chitraguptaBridge.value;
+		if (!bridge?.isConnected) return ctx.addInfoMessage("Chitragupta not connected");
+		try {
+			const status = await bridge.daemonStatus();
+			if (!status) return ctx.addInfoMessage("Daemon not running or status unavailable");
+			const c = status.counts;
+			ctx.addInfoMessage(
+				`## Daemon Status\n` +
+					`• Sessions: ${c.sessions}\n• Turns: ${c.turns}\n• Rules: ${c.rules}\n` +
+					`• Vidhis: ${c.vidhis}\n• Samskaras: ${c.samskaras}\n• Vasanas: ${c.vasanas}\n` +
+					`• Akasha: ${c.akashaTraces}\n• Timestamp: ${new Date(status.timestamp).toISOString()}`,
+			);
+		} catch (err) {
+			ctx.addInfoMessage(`Failed: ${(err as Error).message}`);
+		}
+	});
+
+	ctx.commands.register("/turns", "List turns for a session", async (args) => {
+		const bridge = ctx.state.chitraguptaBridge.value;
+		if (!bridge?.isConnected) return ctx.addInfoMessage("Chitragupta not connected");
+		const sessionId = args?.trim() || ctx.state.sessionId.value;
+		if (!sessionId) return ctx.addInfoMessage("Usage: /turns <session-id>");
+		try {
+			const turns = await bridge.turnList(sessionId);
+			if (turns.length === 0) return ctx.addInfoMessage("No turns found");
+			const lines = turns.map(
+				(t) => `${t.number}. [${t.role}] ${t.content.slice(0, 80)}${t.content.length > 80 ? "…" : ""}`,
+			);
+			ctx.addInfoMessage(`Turns (${turns.length}):\n${lines.join("\n")}`);
+		} catch (err) {
+			ctx.addInfoMessage(`Failed: ${(err as Error).message}`);
+		}
+	});
+
 	ctx.commands.register("/track", "Track last turn to chitragupta (experimental)", async () => {
 		const bridge = ctx.state.chitraguptaBridge.value;
 		if (!bridge?.isConnected) return ctx.addInfoMessage("Chitragupta not connected");

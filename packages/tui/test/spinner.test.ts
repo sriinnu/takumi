@@ -98,9 +98,8 @@ describe("ToolSpinner", () => {
 		expect(spinner.currentFrame).toBe(2);
 	});
 
-	it("wraps frame around after all frames", () => {
-		const frameCount = TOOL_SPINNER_FRAMES.length;
-		for (let i = 0; i < frameCount; i++) {
+	it("wraps frame around after 1000 ticks", () => {
+		for (let i = 0; i < 1000; i++) {
 			spinner.tick();
 		}
 		expect(spinner.currentFrame).toBe(0);
@@ -118,8 +117,8 @@ describe("ToolSpinner", () => {
 		expect(line.fg).toBe(3); // yellow
 		expect(line.text).toContain("bash");
 		expect(line.text).toContain("pnpm test");
-		// Should start with a Braille frame character
-		expect(TOOL_SPINNER_FRAMES).toContain(line.text[0]);
+		// Should start with a torii or lotus frame character
+		expect(line.text[0] === "\u26E9" || line.text[0] === "\u{1104D}").toBe(true);
 	});
 
 	it("returns success line with check mark for completed tool", () => {
@@ -148,12 +147,13 @@ describe("ToolSpinner", () => {
 		expect(line.dim).toBe(true);
 	});
 
-	it("shows animated spinner frame that changes with tick", () => {
+	it("shows animated spinner frame that changes with ticks", () => {
 		spinner.start("tool-1", "bash", "pnpm test");
 		const line1 = spinner.getLine("tool-1");
-		spinner.tick();
+		// Need 5 ticks to advance the visible frame (divide by 5 strategy)
+		for (let i = 0; i < 5; i++) spinner.tick();
 		const line2 = spinner.getLine("tool-1");
-		// Frame should change
+		// Frame should change after 5 ticks
 		expect(line1.text[0]).not.toBe(line2.text[0]);
 	});
 
