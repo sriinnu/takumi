@@ -26,7 +26,7 @@ function turnId(turnNumber: number): string {
 }
 
 /** Generate a unique message ID (fallback when no turn number is available). */
-function uniqueId(): string {
+function _uniqueId(): string {
 	return `msg-${Date.now()}-${++_idCounter}`;
 }
 

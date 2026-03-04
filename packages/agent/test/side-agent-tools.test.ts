@@ -1,7 +1,7 @@
 import type { SideAgentInfo, SideAgentState, ToolResult } from "@takumi/core";
 
 import type { SideAgentListener } from "../src/cluster/side-agent-registry.js";
-import type { ToolHandler } from "../src/tools/registry.js";
+
 import { ToolRegistry } from "../src/tools/registry.js";
 import {
 	agentCheckDefinition,
