@@ -1,4 +1,7 @@
 export { ChitraguptaBridge } from "./chitragupta.js";
+export type { NotificationCallbacks } from "./chitragupta-observe.js";
+export { subscribeNotifications } from "./chitragupta-observe.js";
+export { ChitraguptaObserver } from "./chitragupta-observer.js";
 export type {
 	AgentTelemetry,
 	AkashaTrace,
@@ -59,6 +62,31 @@ export type { HttpBridgeConfig } from "./http-bridge.js";
 export { HttpBridgeServer } from "./http-bridge.js";
 export type { McpClientOptions } from "./mcp-client.js";
 export { McpClient } from "./mcp-client.js";
+export type {
+	AnomalyAlertNotification,
+	ChitraguptaNotification,
+	DetectedPattern,
+	EditPatternEvent,
+	ErrorResolutionEvent,
+	EvolveRequestNotification,
+	HealReportParams,
+	HealReportResult,
+	HealthStatusResult,
+	ObservationEvent,
+	ObserveBatchResult,
+	PatternDetectedNotification,
+	PatternQueryParams,
+	PatternQueryResult,
+	PredictionNotification,
+	PredictionResult,
+	PredictNextParams,
+	PredictNextResult,
+	PreferenceEvent,
+	PreferenceUpdateNotification,
+	ToolUsageEvent,
+	UserCorrectionEvent,
+} from "./observation-types.js";
+export { NOTIFICATION_METHODS } from "./observation-types.js";
 export type { RecoveredSession } from "./session-recovery.js";
 export { forkSessionAtTurn, reconstructFromDaemon } from "./session-recovery.js";
 export { telemetryCleanup, telemetryHeartbeat, telemetrySnapshot } from "./telemetry.js";
