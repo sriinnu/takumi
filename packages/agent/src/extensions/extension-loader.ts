@@ -16,7 +16,7 @@
  * - Errors are collected, never thrown — partial success is fine.
  */
 
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync as fsReadFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -134,9 +134,7 @@ function discoverInDir(dir: string): string[] {
 
 /** Synchronous read for package.json (only used during discovery). */
 function readFileSync(filePath: string): string {
-	// Using Node's built-in; we import lazily to avoid top-level fs import issues
-	const { readFileSync: read } = require("node:fs") as typeof import("node:fs");
-	return read(filePath, "utf-8");
+	return fsReadFileSync(filePath, "utf-8");
 }
 
 /** Create an empty LoadedExtension shell. */
@@ -154,7 +152,7 @@ function createExtension(extPath: string, resolvedPath: string): LoadedExtension
 /** Create the ExtensionAPI scoped to a specific extension. */
 function createExtensionAPI(extension: LoadedExtension, _cwd: string): ExtensionAPI {
 	return {
-		on(event: string, handler: (...args: unknown[]) => Promise<unknown>): void {
+		on(event: string, handler: (...args: unknown[]) => unknown): void {
 			const list = extension.handlers.get(event) ?? [];
 			list.push(handler);
 			extension.handlers.set(event, list);
@@ -274,7 +272,7 @@ export async function discoverAndLoadExtensions(configuredPaths: string[], cwd: 
 
 	const addPaths = (paths: string[]): void => {
 		for (const p of paths) {
-			const resolved = resolve(p);
+			const resolved = resolvePath(p, cwd);
 			if (!seen.has(resolved)) {
 				seen.add(resolved);
 				allPaths.push(p);

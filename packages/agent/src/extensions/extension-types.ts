@@ -419,7 +419,7 @@ export type ExtensionFactory = (api: ExtensionAPI) => void | Promise<void>;
 export interface LoadedExtension {
 	path: string;
 	resolvedPath: string;
-	handlers: Map<string, Array<(...args: unknown[]) => Promise<unknown>>>;
+	handlers: Map<string, Array<(...args: unknown[]) => unknown>>;
 	tools: Map<string, ExtensionToolDefinition>;
 	commands: Map<string, RegisteredCommand>;
 	shortcuts: Map<string, RegisteredShortcut>;

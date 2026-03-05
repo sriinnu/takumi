@@ -468,7 +468,7 @@ describe("ExtensionRunner", () => {
 
 			const runner = boundRunner([ext]);
 			runner.onError(listener);
-			await runner.emit({ type: "turn_start", turnIndex: 0 });
+			await runner.emit({ type: "turn_start", turnIndex: 0, timestamp: Date.now() });
 
 			const err = listener.mock.calls[0]![0];
 			expect(err.extensionPath).toBe("/my/ext.ts");

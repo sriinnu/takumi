@@ -88,6 +88,7 @@ export async function emitCancellableImpl(
 // ── Context Transform ───────────────────────────────────────────────────────
 
 export async function emitContextImpl(runner: ExtensionRunner, messages: Message[]): Promise<Message[]> {
+	if (!runner.hasHandlers("context")) return messages;
 	const ctx = runner.createContext();
 	let current = structuredClone(messages);
 	for (const ext of runner._extensions) {

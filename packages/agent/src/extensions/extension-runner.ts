@@ -32,9 +32,12 @@ import type {
 	ExtensionContext,
 	ExtensionError,
 	ExtensionEvent,
+	ExtensionToolDefinition,
 	InputEventResult,
 	InputSource,
 	LoadedExtension,
+	RegisteredCommand,
+	RegisteredShortcut,
 	ToolCallEvent,
 	ToolCallEventResult,
 	ToolResultEvent,
@@ -182,8 +185,8 @@ export class ExtensionRunner {
 	}
 
 	/** Get all registered tools from all extensions (first registration wins). */
-	getAllTools(): Map<string, { tool: any; extensionPath: string }> {
-		const result = new Map<string, { tool: any; extensionPath: string }>();
+	getAllTools(): Map<string, { tool: ExtensionToolDefinition; extensionPath: string }> {
+		const result = new Map<string, { tool: ExtensionToolDefinition; extensionPath: string }>();
 		for (const ext of this._extensions) {
 			for (const [name, tool] of ext.tools) {
 				if (!result.has(name)) result.set(name, { tool, extensionPath: ext.path });
@@ -193,8 +196,8 @@ export class ExtensionRunner {
 	}
 
 	/** Get all registered commands from all extensions (first registration wins). */
-	getAllCommands(): Map<string, { command: any; extensionPath: string }> {
-		const result = new Map<string, { command: any; extensionPath: string }>();
+	getAllCommands(): Map<string, { command: RegisteredCommand; extensionPath: string }> {
+		const result = new Map<string, { command: RegisteredCommand; extensionPath: string }>();
 		for (const ext of this._extensions) {
 			for (const [name, command] of ext.commands) {
 				if (!result.has(name)) result.set(name, { command, extensionPath: ext.path });
@@ -204,8 +207,8 @@ export class ExtensionRunner {
 	}
 
 	/** Get all registered shortcuts from all extensions. */
-	getAllShortcuts(): Map<string, any> {
-		const result = new Map<string, any>();
+	getAllShortcuts(): Map<string, RegisteredShortcut> {
+		const result = new Map<string, RegisteredShortcut>();
 		for (const ext of this._extensions) {
 			for (const [key, shortcut] of ext.shortcuts) {
 				if (!result.has(key)) result.set(key, shortcut);
