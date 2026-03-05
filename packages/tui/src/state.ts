@@ -3,6 +3,7 @@
  * All UI components observe these signals and re-render when they change.
  */
 
+import { SteeringQueue } from "@takumi/agent";
 import type { ChitraguptaBridge, ChitraguptaHealth, VasanaTendency } from "@takumi/bridge";
 import type { Message, PermissionDecision, Size, Usage } from "@takumi/core";
 import type { ReadonlySignal, Signal } from "@takumi/render";
@@ -168,6 +169,12 @@ export class AppState {
 	/** Max context window size for current model. */
 	readonly contextWindow: Signal<number> = signal(200000);
 
+	// ── Steering queue (Phase 48) ─────────────────────────────────────────────
+	/** Priority queue for injecting directives into the agent loop mid-run. */
+	readonly steeringQueue: SteeringQueue = new SteeringQueue();
+	/** Number of pending items in the steering queue (for UI display). */
+	readonly steeringPending: Signal<number> = signal(0);
+
 	// ── Consolidation (auto-triggered on near_limit pressure) ─────────────────
 	/** Whether a consolidation run is currently in progress. */
 	readonly consolidationInProgress: Signal<boolean> = signal(false);
@@ -313,5 +320,7 @@ export class AppState {
 		this.contextTokens.value = 0;
 		this.contextWindow.value = 200000;
 		this.consolidationInProgress.value = false;
+		this.steeringQueue.clear();
+		this.steeringPending.value = 0;
 	}
 }

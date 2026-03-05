@@ -10,6 +10,7 @@ import {
 	type ExtensionRunner,
 	type MessagePayload,
 	PermissionEngine,
+	type SteeringQueue,
 	type ToolRegistry,
 } from "@takumi/agent";
 import type { AgentEvent, Message, PermissionDecision, TakumiConfig, ToolDefinition } from "@takumi/core";
@@ -38,6 +39,7 @@ export class AgentRunner {
 
 	private extensionRunner: ExtensionRunner | null;
 	private conventionFiles: ConventionFiles | null;
+	private steeringQueue: SteeringQueue | null;
 
 	readonly permissions: PermissionEngine;
 
@@ -54,6 +56,7 @@ export class AgentRunner {
 		tools: ToolRegistry,
 		extensionRunner?: ExtensionRunner,
 		conventionFiles?: ConventionFiles,
+		steeringQueue?: SteeringQueue,
 	) {
 		this.state = state;
 		this.config = config;
@@ -61,6 +64,7 @@ export class AgentRunner {
 		this.tools = tools;
 		this.extensionRunner = extensionRunner ?? null;
 		this.conventionFiles = conventionFiles ?? null;
+		this.steeringQueue = steeringQueue ?? null;
 
 		// Set up permission engine with TUI prompt callback
 		this.permissions = new PermissionEngine();
@@ -108,6 +112,7 @@ export class AgentRunner {
 				maxTurns: this.config.maxTurns,
 				signal: this.abortController.signal,
 				extensionRunner: this.extensionRunner ?? undefined,
+				steeringQueue: this.steeringQueue ?? undefined,
 			});
 
 			let fullText = "";
