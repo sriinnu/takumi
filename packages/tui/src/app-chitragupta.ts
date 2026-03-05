@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { akashaDepositDefinition, akashaTracesDefinition, createAkashaHandlers } from "@takumi/agent";
-import { ChitraguptaBridge } from "@takumi/bridge";
+import { ChitraguptaBridge, ChitraguptaObserver } from "@takumi/bridge";
 import { createLogger } from "@takumi/core";
 import type { AgentRunner } from "./agent-runner.js";
 import type { AppState } from "./state.js";
@@ -115,6 +115,10 @@ export function connectChitragupta(
 
 			// Subscribe to server-push notifications (anomaly, pattern, prediction, etc.)
 			subscribeToNotifications(state, bridge);
+
+			// Phase 49 — Create observer for observation dispatch & prediction queries
+			const observer = new ChitraguptaObserver(bridge);
+			state.chitraguptaObserver.value = observer;
 
 			if (agentRunner) {
 				const tools = agentRunner.getTools();
@@ -240,6 +244,10 @@ export async function disconnectChitragupta(state: AppState): Promise<void> {
 	// Unsubscribe from daemon notifications
 	for (const unsub of notificationUnsubs) unsub();
 	notificationUnsubs.length = 0;
+
+	// Phase 49 — Teardown observer notification subscriptions
+	state.chitraguptaObserver.value?.teardown();
+	state.chitraguptaObserver.value = null;
 
 	// Cleanup telemetry heartbeat file before handover
 	try {
