@@ -270,4 +270,67 @@ export function registerChitraguptaCommands(ctx: AppCommandContext): void {
 			ctx.addInfoMessage(`❌ Failed: ${(err as Error).message}`);
 		}
 	});
+
+	// ── Phase 51: Prediction & Pattern Commands ──────────────────────────
+
+	ctx.commands.register("/predict", "Show Chitragupta predictions for current context", async () => {
+		const observer = ctx.state.chitraguptaObserver.value;
+		if (!observer) return ctx.addInfoMessage("Chitragupta observer not available");
+
+		ctx.addInfoMessage("Querying predictions...");
+		try {
+			const result = await observer.predictNext({
+				currentFile: undefined,
+				currentTool: ctx.state.activeTool.value ?? undefined,
+				sessionId: ctx.state.sessionId.value,
+			});
+			if (result.predictions.length === 0) return ctx.addInfoMessage("No predictions available yet");
+			const lines = result.predictions.map(
+				(p, i) => `${i + 1}. **${p.type}** (${(p.confidence * 100).toFixed(0)}%)\n   ${p.action ?? p.reasoning}`,
+			);
+			ctx.addInfoMessage(`## Predictions\n\n${lines.join("\n\n")}`);
+		} catch (err) {
+			ctx.addInfoMessage(`❌ ${(err as Error).message}`);
+		}
+	});
+
+	ctx.commands.register("/patterns", "Show detected behavioral patterns", async (args) => {
+		const observer = ctx.state.chitraguptaObserver.value;
+		if (!observer) return ctx.addInfoMessage("Chitragupta observer not available");
+
+		const minConf = args ? Number.parseFloat(args) : undefined;
+		try {
+			const result = await observer.patternQuery({
+				minConfidence: !Number.isNaN(minConf!) ? minConf : 0.5,
+				limit: 15,
+			});
+			if (result.patterns.length === 0) return ctx.addInfoMessage("No patterns detected yet");
+			const lines = result.patterns.map(
+				(p, i) =>
+					`${i + 1}. **${p.type}** — ${String(p.pattern)} (${(p.confidence * 100).toFixed(0)}%, ${p.occurrences} occ.)`,
+			);
+			ctx.addInfoMessage(`## Patterns\n\n${lines.join("\n")}`);
+		} catch (err) {
+			ctx.addInfoMessage(`❌ ${(err as Error).message}`);
+		}
+	});
+
+	ctx.commands.register("/healthx", "Extended health status from Chitragupta", async () => {
+		const observer = ctx.state.chitraguptaObserver.value;
+		if (!observer) return ctx.addInfoMessage("Chitragupta observer not available");
+
+		try {
+			const h = await observer.healthStatusExtended();
+			if (!h) return ctx.addInfoMessage("Health status unavailable");
+			const anomalyLines =
+				h.anomalies.length > 0
+					? h.anomalies.map((a) => `  • [${a.severity}] ${a.type}: ${a.details}`).join("\n")
+					: "  None";
+			ctx.addInfoMessage(
+				`## Extended Health\n• Error rate: ${(h.errorRate * 100).toFixed(1)}%\n• Cost trajectory: ${h.costTrajectory}\n• Anomalies:\n${anomalyLines}`,
+			);
+		} catch (err) {
+			ctx.addInfoMessage(`❌ ${(err as Error).message}`);
+		}
+	});
 }

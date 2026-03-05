@@ -1501,3 +1501,25 @@ Add to `takumi.config.json`:
 - [x] cli-auth: kosha-first with legacy fallback chain.
 - [x] Dynamic provider/model selection with auth status hints.
 - [x] syncModelTiersFromKosha for runtime model tier updates.
+
+## Phase 49: Observation Dispatch (Chitragupta Intelligence) ✅
+- [x] Create `observation-types.ts` — full type definitions for observation events, push notifications, and query/result types.
+- [x] Create `chitragupta-observe.ts` — bridge ops for `observe.batch`, `predict.next`, `pattern.query`, `health.status`, `heal.report`.
+- [x] Create `ChitraguptaObserver` class — companion to `ChitraguptaBridge` for bidirectional intelligence.
+- [x] `subscribeNotifications()` — typed notification subscription with unsubscribe.
+- [x] Wire observation dispatch into agent loop (`ObservationCollector` with timing, error→resolution pairing).
+- [x] Barrel exports updated in `@takumi/bridge` and `@takumi/agent`.
+
+## Phase 50: Notification Receiver (Chitragupta Push) ✅
+- [x] `ChitraguptaObserver.subscribe()` — typed notification callbacks.
+- [x] `chitraguptaObserver` signal in `AppState`.
+- [x] Observer creation + teardown wired in `connectChitragupta` / `disconnectChitragupta`.
+- [x] Existing notification signals (`chitraguptaAnomaly`, `chitraguptaLastPattern`, `chitraguptaPredictions`, `chitraguptaEvolveQueue`) confirmed wired.
+
+## Phase 51: Prediction Consumption & Commands ✅
+- [x] `/predict` command — query Chitragupta for next-action predictions.
+- [x] `/patterns` command — query detected behavioral patterns.
+- [x] `/healthx` command — extended health status (error rate, anomalies, cost trajectory).
+- [x] `observationFlushCount` signal for tracking observation throughput.
+- [x] Post-loop observation flush in `AgentRunner.submit()`.
+- [x] 35 new tests (11 observation-collector + 24 chitragupta-observe).

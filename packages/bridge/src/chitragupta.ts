@@ -1,13 +1,6 @@
 /**
  * ChitraguptaBridge -- High-level bridge to the Chitragupta memory system.
- *
- * Connection strategy (Docker daemon pattern):
- *   1. Probe the chitragupta daemon Unix socket.
- *   2. If alive → connect directly via JSON-RPC 2.0 (socket mode, fast path).
- *   3. Otherwise → spawn chitragupta-mcp subprocess via stdio (MCP mode, fallback).
- *
- * Socket mode eliminates the 5-8 s cold-start per session when the daemon is
- * already running in the background.
+ * Connection: probe daemon Unix socket first (fast path), else spawn MCP subprocess.
  */
 
 import { createLogger, TELEMETRY_DIR } from "@takumi/core";
@@ -92,7 +85,6 @@ export class ChitraguptaBridge {
 
 	/**
 	 * Connect to Chitragupta.
-	 *
 	 * Tries daemon socket first (zero cold-start if daemon is running), then
 	 * falls back to spawning the chitragupta-mcp subprocess via stdio.
 	 */
