@@ -44,6 +44,16 @@ export type { NotificationHandler } from "./daemon-socket.js";
 export { DaemonSocketClient, probeSocket, resolveLogDir, resolvePidPath, resolveSocketPath } from "./daemon-socket.js";
 export type { DarpanaConfig } from "./darpana.js";
 export { DarpanaClient } from "./darpana.js";
+// Phase 54 — Darpana Evolution Hooks
+export type {
+	CostRouteAdvice,
+	CostRouterConfig,
+	ReflectionEntry,
+	RequestTransform,
+	TransformContext,
+	TransformResult,
+} from "./darpana-evolution.js";
+export { DarpanaEvolution } from "./darpana-evolution.js";
 export type { GitLogEntry, GitStatus } from "./git.js";
 export {
 	gitBranch,
