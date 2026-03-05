@@ -25,6 +25,7 @@ import { BudgetExceededError } from "./cost.js";
 import type { ExtensionRunner } from "./extensions/extension-runner.js";
 import { buildSystemPrompt, buildToolResult, buildUserMessage } from "./message.js";
 import { type RetryOptions, withRetry } from "./retry.js";
+import type { SteeringQueue } from "./steering-queue.js";
 import type { ToolRegistry } from "./tools/registry.js";
 
 const log = createLogger("agent-loop");
@@ -74,6 +75,9 @@ export interface AgentLoopOptions {
 
 	/** Optional extension runner — emits lifecycle events to loaded extensions (Phase 45). */
 	extensionRunner?: ExtensionRunner;
+
+	/** Optional steering queue — priority directives injected between turns (Phase 48). */
+	steeringQueue?: SteeringQueue;
 }
 
 export interface MessagePayload {
@@ -390,6 +394,26 @@ export async function* agentLoop(
 		// Phase 45 — emit turn_end with usage
 		if (ext && _usage) {
 			void ext.emit({ type: "turn_end", turnIndex: turn, usage: _usage });
+		}
+
+		// Phase 48 — Drain steering queue between turns.
+		// INTERRUPT items abort the current continuation; HIGH/NORMAL are injected as user messages.
+		if (options.steeringQueue && !options.steeringQueue.isEmpty) {
+			if (options.steeringQueue.hasInterrupt()) {
+				const interrupts = options.steeringQueue.drain();
+				const combined = interrupts.map((i) => i.text).join("\n\n");
+				log.info(`Steering: ${interrupts.length} interrupt(s), aborting continuation`);
+				messages.push({ role: "user", content: buildUserMessage(combined) });
+				// Don't return — let the loop continue with the interrupt message
+				continue;
+			}
+			const items = options.steeringQueue.drain();
+			if (items.length > 0) {
+				const combined = items.map((i) => `[Steering directive] ${i.text}`).join("\n\n");
+				log.info(`Steering: injecting ${items.length} directive(s) between turns`);
+				messages.push({ role: "user", content: buildUserMessage(combined) });
+				continue;
+			}
 		}
 
 		// If the stop reason was not tool_use, we're done

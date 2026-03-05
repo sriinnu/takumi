@@ -21,6 +21,28 @@ export {
 export type { Logger } from "./logger.js";
 
 export { createLogger, setLogLevel } from "./logger.js";
+export type {
+	BranchResult,
+	FlatTreeEntry,
+	SessionTreeManifest,
+	SessionTreeNode,
+} from "./session-tree.js";
+export {
+	branchSession,
+	ensureNode,
+	flattenTree,
+	getAncestors,
+	getDepth,
+	getDescendants,
+	getRoots,
+	getSessionTree,
+	getSiblings,
+	linkChild,
+	loadTreeManifest,
+	registerInTree,
+	removeNode,
+	saveTreeManifest,
+} from "./session-tree.js";
 export type { AutoSaver, SessionData, SessionSummary } from "./sessions.js";
 
 export {
