@@ -103,6 +103,63 @@ export {
 	isRetryable,
 	ProviderUnavailableError,
 } from "./errors.js";
+export {
+	discoverAndLoadExtensions,
+	loadExtensionFromFactory,
+	loadExtensions,
+} from "./extensions/extension-loader.js";
+export type {
+	ExtensionAPIActions,
+	ExtensionCommandActions,
+	ExtensionContextActions,
+	ExtensionErrorListener,
+} from "./extensions/extension-runner.js";
+export { ExtensionRunner } from "./extensions/extension-runner.js";
+// Phase 42-44 — Extension System
+export type {
+	AgentEndEvent,
+	AgentLoopEvent,
+	AgentStartEvent,
+	BeforeAgentStartEvent,
+	BeforeAgentStartEventResult,
+	ContextEvent,
+	ContextEventResult,
+	ContextUsage,
+	ExtensionAPI,
+	ExtensionCommandContext,
+	ExtensionContext,
+	ExtensionError,
+	ExtensionEvent,
+	ExtensionEventType,
+	ExtensionFactory,
+	ExtensionHandler,
+	ExtensionToolDefinition,
+	InputEvent,
+	InputEventResult,
+	InputSource,
+	LoadExtensionsResult,
+	LoadedExtension,
+	MessageUpdateEvent,
+	ModelSelectEvent,
+	RegisteredCommand,
+	RegisteredShortcut,
+	SessionBeforeCompactEvent,
+	SessionBeforeCompactResult,
+	SessionBeforeSwitchEvent,
+	SessionBeforeSwitchResult,
+	SessionCompactEvent,
+	SessionEvent,
+	SessionShutdownEvent,
+	SessionStartEvent,
+	SessionSwitchEvent,
+	ToolCallEvent,
+	ToolCallEventResult,
+	ToolEvent,
+	ToolResultEvent,
+	ToolResultEventResult,
+	TurnEndEvent,
+	TurnStartEvent,
+} from "./extensions/extension-types.js";
 // Phase 26 — Guardian daemon
 export type { GuardianConfig, GuardianEvent, GuardianSuggestion } from "./guardian.js";
 export { Guardian } from "./guardian.js";
