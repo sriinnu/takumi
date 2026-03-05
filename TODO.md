@@ -1523,3 +1523,33 @@ Add to `takumi.config.json`:
 - [x] `observationFlushCount` signal for tracking observation throughput.
 - [x] Post-loop observation flush in `AgentRunner.submit()`.
 - [x] 35 new tests (11 observation-collector + 24 chitragupta-observe).
+
+## Phase 52: Extension Health Monitor ✅
+- [x] `ExtensionHealthMonitor` class with sliding-window error-rate tracking.
+- [x] Per-extension latency reservoir (P50/P95/P99) with O(1) eviction.
+- [x] Auto-quarantine at configurable error-rate threshold + minimum event guard.
+- [x] Manual quarantine/reinstate API + auto-reinstate after max quarantine duration.
+- [x] Hibernation detection for idle extensions + awakening on activity.
+- [x] `onTransition()` listener for quarantined/reinstated/hibernated/awakened events.
+- [x] `getSnapshot()` / `getAllSnapshots()` for health reporting.
+- [x] 22 new tests covering all health monitor paths.
+
+## Phase 53: Extension Self-Authoring ✅
+- [x] `SelfAuthor` class — generate extensions from `ExtensionSpec` with provenance tracking.
+- [x] `generateExtensionSource()` — template-based TS generation with events, tools, commands.
+- [x] `validateExtensionSource()` — safety checks (eval, Function, process.exit, child_process).
+- [x] Disk write to `.takumi/extensions/_generated/` with `manifest.json` versioning.
+- [x] `rollback()` removes generated file + marks manifest entry as rolled-back.
+- [x] `ExtensionValidationResult` alias to avoid conflict with cluster `ValidationResult`.
+- [x] 14 new tests covering generation, validation, write, rollback.
+
+## Phase 54: Darpana Evolution Hooks ✅
+- [x] `DarpanaEvolution` class in `@takumi/bridge` for request/response intelligence.
+- [x] Request transforms: priority-ordered prompt modification (prepend/append/replace/injectContext).
+- [x] `addTransform()` / `removeTransform()` / `setTransformEnabled()` API.
+- [x] Response reflection: compare LLM output vs Chitragupta predictions, track accuracy.
+- [x] Per-model and global reflection accuracy queries with configurable limit.
+- [x] Cost routing: `getCostAdvice()` recommends cheaper model via downgrade paths.
+- [x] Configurable `CostRouterConfig` (downgradeThreshold, minReflectionAccuracy, downgradePaths).
+- [x] `getStats()` summary for telemetry integration.
+- [x] 27 new tests covering transforms, reflections, cost routing, enable/disable.
