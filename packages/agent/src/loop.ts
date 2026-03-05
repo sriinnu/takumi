@@ -24,6 +24,7 @@ import type { BudgetGuard } from "./cost.js";
 import { BudgetExceededError } from "./cost.js";
 import type { ExtensionRunner } from "./extensions/extension-runner.js";
 import { buildSystemPrompt, buildToolResult, buildUserMessage } from "./message.js";
+import type { ObservationCollector } from "./observation-collector.js";
 import { type RetryOptions, withRetry } from "./retry.js";
 import type { SteeringQueue } from "./steering-queue.js";
 import type { ToolRegistry } from "./tools/registry.js";
@@ -78,6 +79,9 @@ export interface AgentLoopOptions {
 
 	/** Optional steering queue — priority directives injected between turns (Phase 48). */
 	steeringQueue?: SteeringQueue;
+
+	/** Optional observation collector — records tool usage for Chitragupta (Phase 49). */
+	observationCollector?: ObservationCollector;
 }
 
 export interface MessagePayload {
@@ -347,7 +351,9 @@ export async function* agentLoop(
 				}
 			}
 
+			const t0 = Date.now();
 			let result = await tools.execute(tc.name, tc.input, signal);
+			const elapsed = Date.now() - t0;
 
 			// Phase 45 — emit tool_result (can modify result)
 			if (ext) {
@@ -362,6 +368,9 @@ export async function* agentLoop(
 					result = { output: modified.output, isError: modified.isError ?? result.isError };
 				}
 			}
+
+			// Phase 49 — record tool usage observation
+			options.observationCollector?.recordToolUsage(tc.name, tc.input ?? {}, elapsed, !result.isError);
 
 			return { id: tc.id, name: tc.name, result };
 		});
