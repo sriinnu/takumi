@@ -22,8 +22,10 @@ import type { MemoryHooks } from "./context/memory-hooks.js";
 import type { PromptCache } from "./context/prompt-cache.js";
 import type { BudgetGuard } from "./cost.js";
 import { BudgetExceededError } from "./cost.js";
+import type { ExtensionRunner } from "./extensions/extension-runner.js";
 import { buildSystemPrompt, buildToolResult, buildUserMessage } from "./message.js";
 import { type RetryOptions, withRetry } from "./retry.js";
+import type { SteeringQueue } from "./steering-queue.js";
 import type { ToolRegistry } from "./tools/registry.js";
 
 const log = createLogger("agent-loop");
@@ -70,6 +72,12 @@ export interface AgentLoopOptions {
 
 	/** Model name (needed for prompt cache keying). */
 	model?: string;
+
+	/** Optional extension runner — emits lifecycle events to loaded extensions (Phase 45). */
+	extensionRunner?: ExtensionRunner;
+
+	/** Optional steering queue — priority directives injected between turns (Phase 48). */
+	steeringQueue?: SteeringQueue;
 }
 
 export interface MessagePayload {
@@ -105,6 +113,28 @@ export async function* agentLoop(
 		maxContextTokens = 200_000,
 	} = options;
 
+	// Merge extension-registered tools into the registry
+	const ext = options.extensionRunner;
+	if (ext) {
+		for (const [name, { tool }] of ext.getAllTools()) {
+			if (!tools.has(name)) {
+				tools.register(
+					{
+						name: tool.name,
+						description: tool.description,
+						inputSchema: tool.inputSchema,
+						requiresPermission: tool.requiresPermission,
+						category: tool.category,
+					},
+					async (args, signal) => {
+						const ctx = ext.createContext();
+						return tool.execute(args, signal, ctx);
+					},
+				);
+			}
+		}
+	}
+
 	const toolDefs = tools.getDefinitions();
 	const system = systemPrompt ?? buildSystemPrompt(toolDefs);
 
@@ -139,6 +169,11 @@ export async function* agentLoop(
 		turn++;
 		log.info(`Starting turn ${turn}`);
 
+		// Phase 45 — emit turn_start
+		if (ext) {
+			void ext.emit({ type: "turn_start", turnIndex: turn, timestamp: Date.now() });
+		}
+
 		// Context compaction check before each turn
 		if (compactOptions !== false) {
 			const estimatedTokens = cumulativeTokens > 0 ? cumulativeTokens : estimateTotalPayloadTokens(messages);
@@ -162,6 +197,10 @@ export async function* agentLoop(
 		const pendingToolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
 		let stopReason: string | undefined;
 		let _usage: Usage | undefined;
+
+		// Phase 45 — emit context transform (extensions can modify messages)
+		// We skip this for the raw MessagePayload[] — extensions get Message[] in the
+		// higher-level AgentRunner emit. Here we emit message_update events during streaming.
 
 		// Phase 34 — Check prompt cache before LLM call (only for non-tool-result turns)
 		const cacheKey =
@@ -208,6 +247,11 @@ export async function* agentLoop(
 
 			for await (const event of stream) {
 				yield event;
+
+				// Phase 45 — emit message_update for streaming events
+				if (ext) {
+					void ext.emit({ type: "message_update", event });
+				}
 
 				switch (event.type) {
 					case "text_delta":
@@ -289,7 +333,36 @@ export async function* agentLoop(
 		const toolResults: Array<{ id: string; name: string; result: ToolResult }> = [];
 
 		const executions = pendingToolCalls.map(async (tc) => {
-			const result = await tools.execute(tc.name, tc.input, signal);
+			// Phase 45 — emit tool_call (blocking: can skip execution)
+			if (ext) {
+				const blocked = await ext.emitToolCall({
+					type: "tool_call",
+					toolCallId: tc.id,
+					toolName: tc.name,
+					args: tc.input,
+				});
+				if (blocked?.block) {
+					const fallback: ToolResult = { output: blocked.reason ?? "Blocked by extension", isError: false };
+					return { id: tc.id, name: tc.name, result: fallback };
+				}
+			}
+
+			let result = await tools.execute(tc.name, tc.input, signal);
+
+			// Phase 45 — emit tool_result (can modify result)
+			if (ext) {
+				const modified = await ext.emitToolResult({
+					type: "tool_result",
+					toolCallId: tc.id,
+					toolName: tc.name,
+					result,
+					isError: result.isError,
+				});
+				if (modified?.output !== undefined) {
+					result = { output: modified.output, isError: modified.isError ?? result.isError };
+				}
+			}
+
 			return { id: tc.id, name: tc.name, result };
 		});
 
@@ -317,6 +390,31 @@ export async function* agentLoop(
 		// Add tool results to message history
 		const toolResultContent = toolResults.map((tr) => buildToolResult(tr.id, tr.result));
 		messages.push({ role: "user", content: toolResultContent });
+
+		// Phase 45 — emit turn_end with usage
+		if (ext && _usage) {
+			void ext.emit({ type: "turn_end", turnIndex: turn, usage: _usage });
+		}
+
+		// Phase 48 — Drain steering queue between turns.
+		// INTERRUPT items abort the current continuation; HIGH/NORMAL are injected as user messages.
+		if (options.steeringQueue && !options.steeringQueue.isEmpty) {
+			if (options.steeringQueue.hasInterrupt()) {
+				const interrupts = options.steeringQueue.drain();
+				const combined = interrupts.map((i) => i.text).join("\n\n");
+				log.info(`Steering: ${interrupts.length} interrupt(s), aborting continuation`);
+				messages.push({ role: "user", content: buildUserMessage(combined) });
+				// Don't return — let the loop continue with the interrupt message
+				continue;
+			}
+			const items = options.steeringQueue.drain();
+			if (items.length > 0) {
+				const combined = items.map((i) => `[Steering directive] ${i.text}`).join("\n\n");
+				log.info(`Steering: injecting ${items.length} directive(s) between turns`);
+				messages.push({ role: "user", content: buildUserMessage(combined) });
+				continue;
+			}
+		}
 
 		// If the stop reason was not tool_use, we're done
 		if (stopReason !== "tool_use") {

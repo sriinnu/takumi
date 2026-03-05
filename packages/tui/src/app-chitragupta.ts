@@ -11,6 +11,65 @@ const log = createLogger("app");
 /** Timestamp (epoch ms) captured when the Chitragupta bridge first connects. */
 let startedAt = 0;
 
+/** Unsubscribe functions for daemon socket notification handlers. */
+const notificationUnsubs: Array<() => void> = [];
+
+/**
+ * Subscribe to Chitragupta daemon push notifications.
+ * These arrive as JSON-RPC messages without an `id` field.
+ */
+function subscribeToNotifications(state: AppState, bridge: ChitraguptaBridge): void {
+	const socket = bridge.daemonSocket;
+	if (!socket) return; // MCP subprocess mode — no push notifications
+
+	notificationUnsubs.push(
+		socket.onNotification("anomaly_alert", (params) => {
+			const severity = params.severity as string;
+			const details = params.details as string;
+			const suggestion = params.suggestion as string | undefined;
+			log.warn(`Chitragupta anomaly [${severity}]: ${details}`);
+			state.chitraguptaAnomaly.value = { severity, details, suggestion: suggestion ?? null, at: Date.now() };
+		}),
+	);
+
+	notificationUnsubs.push(
+		socket.onNotification("pattern_detected", (params) => {
+			const type = params.type as string;
+			const confidence = params.confidence as number;
+			log.info(`Chitragupta pattern [${type}]: confidence=${confidence.toFixed(2)}`);
+			state.chitraguptaLastPattern.value = { type, confidence, at: Date.now() };
+		}),
+	);
+
+	notificationUnsubs.push(
+		socket.onNotification("prediction", (params) => {
+			const predictions = params.predictions as Array<{ action: string; confidence: number }>;
+			if (predictions?.length > 0) {
+				log.debug(`Chitragupta prediction: ${predictions[0].action} (${predictions[0].confidence.toFixed(2)})`);
+			}
+			state.chitraguptaPredictions.value = predictions ?? [];
+		}),
+	);
+
+	notificationUnsubs.push(
+		socket.onNotification("evolve_request", (params) => {
+			const type = params.type as string;
+			log.info(`Chitragupta evolve request: ${type}`);
+			state.chitraguptaEvolveQueue.value = [...state.chitraguptaEvolveQueue.value, params];
+		}),
+	);
+
+	notificationUnsubs.push(
+		socket.onNotification("preference_update", (params) => {
+			const key = params.key as string;
+			const value = params.value as string;
+			log.info(`Chitragupta preference update: ${key}=${value}`);
+		}),
+	);
+
+	log.info("Subscribed to Chitragupta daemon notifications");
+}
+
 function loadMcpConfig(): { command: string; args: string[] } | null {
 	try {
 		const mcpPath = join(process.cwd(), ".vscode", "mcp.json");
@@ -53,6 +112,9 @@ export function connectChitragupta(
 			state.chitraguptaConnected.value = true;
 			startedAt = Date.now();
 			log.info("Chitragupta bridge connected");
+
+			// Subscribe to server-push notifications (anomaly, pattern, prediction, etc.)
+			subscribeToNotifications(state, bridge);
 
 			if (agentRunner) {
 				const tools = agentRunner.getTools();
@@ -174,6 +236,10 @@ export function connectChitragupta(
 export async function disconnectChitragupta(state: AppState): Promise<void> {
 	const bridge = state.chitraguptaBridge.value;
 	if (!bridge || !bridge.isConnected) return;
+
+	// Unsubscribe from daemon notifications
+	for (const unsub of notificationUnsubs) unsub();
+	notificationUnsubs.length = 0;
 
 	// Cleanup telemetry heartbeat file before handover
 	try {

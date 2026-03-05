@@ -99,11 +99,15 @@ interface Pending {
 	timer: ReturnType<typeof setTimeout>;
 }
 
+/** Handler for server-push notifications (JSON-RPC messages without an id). */
+export type NotificationHandler = (params: Record<string, unknown>) => void;
+
 /** JSON-RPC 2.0 NDJSON socket client for the chitragupta daemon. */
 export class DaemonSocketClient {
 	private sock: net.Socket | null = null;
 	private buf = "";
 	private readonly pending = new Map<string, Pending>();
+	private readonly notificationHandlers = new Map<string, Set<NotificationHandler>>();
 	private seq = 0;
 
 	readonly socketPath: string;
@@ -192,6 +196,20 @@ export class DaemonSocketClient {
 		return this.sock !== null && !this.sock.destroyed;
 	}
 
+	/**
+	 * Subscribe to server-push notifications (JSON-RPC messages without an `id`).
+	 * Returns an unsubscribe function.
+	 */
+	onNotification(method: string, handler: NotificationHandler): () => void {
+		const set = this.notificationHandlers.get(method) ?? new Set();
+		set.add(handler);
+		this.notificationHandlers.set(method, set);
+		return () => {
+			set.delete(handler);
+			if (set.size === 0) this.notificationHandlers.delete(method);
+		};
+	}
+
 	/** Process the NDJSON buffer, resolving pending requests. */
 	private flush(): void {
 		let idx = this.buf.indexOf("\n");
@@ -203,6 +221,8 @@ export class DaemonSocketClient {
 				try {
 					const msg = JSON.parse(line) as {
 						id?: string;
+						method?: string;
+						params?: Record<string, unknown>;
 						result?: unknown;
 						error?: { message: string; code: number };
 					};
@@ -217,6 +237,18 @@ export class DaemonSocketClient {
 								pend.reject(new Error(`${msg.error.message} (code: ${msg.error.code})`));
 							} else {
 								pend.resolve(msg.result);
+							}
+						}
+					} else if (msg.method) {
+						// Server-push notification (no id)
+						const handlers = this.notificationHandlers.get(msg.method);
+						if (handlers) {
+							for (const handler of handlers) {
+								try {
+									handler(msg.params ?? {});
+								} catch (err) {
+									log.debug(`Notification handler error [${msg.method}]: ${(err as Error).message}`);
+								}
 							}
 						}
 					}

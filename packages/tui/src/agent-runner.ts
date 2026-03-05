@@ -5,9 +5,12 @@
 
 import {
 	agentLoop,
+	type ConventionFiles,
 	calculateContextPressure,
+	type ExtensionRunner,
 	type MessagePayload,
 	PermissionEngine,
+	type SteeringQueue,
 	type ToolRegistry,
 } from "@takumi/agent";
 import type { AgentEvent, Message, PermissionDecision, TakumiConfig, ToolDefinition } from "@takumi/core";
@@ -34,6 +37,10 @@ export class AgentRunner {
 		options?: { model?: string },
 	) => AsyncIterable<AgentEvent>;
 
+	private extensionRunner: ExtensionRunner | null;
+	private conventionFiles: ConventionFiles | null;
+	private steeringQueue: SteeringQueue | null;
+
 	readonly permissions: PermissionEngine;
 
 	constructor(
@@ -47,11 +54,17 @@ export class AgentRunner {
 			options?: { model?: string },
 		) => AsyncIterable<AgentEvent>,
 		tools: ToolRegistry,
+		extensionRunner?: ExtensionRunner,
+		conventionFiles?: ConventionFiles,
+		steeringQueue?: SteeringQueue,
 	) {
 		this.state = state;
 		this.config = config;
 		this.sendMessageFn = sendMessageFn;
 		this.tools = tools;
+		this.extensionRunner = extensionRunner ?? null;
+		this.conventionFiles = conventionFiles ?? null;
+		this.steeringQueue = steeringQueue ?? null;
 
 		// Set up permission engine with TUI prompt callback
 		this.permissions = new PermissionEngine();
@@ -81,7 +94,13 @@ export class AgentRunner {
 			// Memories are fetched once on startup and stored in state; this injects
 			// them before each submit so the LLM has persistent project context.
 			const memoryContext = this.state.chitraguptaMemory.value;
-			const basePrompt = this.config.systemPrompt || undefined;
+			let basePrompt = this.config.systemPrompt || undefined;
+
+			// Phase 45 — append convention system-prompt addon
+			if (this.conventionFiles?.systemPromptAddon) {
+				basePrompt = `${basePrompt ?? ""}\n\n## Project Conventions\n${this.conventionFiles.systemPromptAddon}`.trim();
+			}
+
 			const enrichedPrompt = memoryContext
 				? `${basePrompt ?? ""}\n\n## Project Memory (from Chitragupta)\n${memoryContext}`.trim()
 				: basePrompt;
@@ -92,6 +111,8 @@ export class AgentRunner {
 				systemPrompt: enrichedPrompt,
 				maxTurns: this.config.maxTurns,
 				signal: this.abortController.signal,
+				extensionRunner: this.extensionRunner ?? undefined,
+				steeringQueue: this.steeringQueue ?? undefined,
 			});
 
 			let fullText = "";

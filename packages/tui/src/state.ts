@@ -3,6 +3,7 @@
  * All UI components observe these signals and re-render when they change.
  */
 
+import { SteeringQueue } from "@takumi/agent";
 import type { ChitraguptaBridge, ChitraguptaHealth, VasanaTendency } from "@takumi/bridge";
 import type { Message, PermissionDecision, Size, Usage } from "@takumi/core";
 import type { ReadonlySignal, Signal } from "@takumi/render";
@@ -127,6 +128,21 @@ export class AppState {
 	readonly chitraguptaHealth: Signal<ChitraguptaHealth | null> = signal<ChitraguptaHealth | null>(null);
 	/** Unix ms timestamp of the last vasana tendencies refresh. */
 	readonly vasanaLastRefresh: Signal<number> = signal(0);
+
+	// ── Chitragupta push notification state (Phase 45) ────────────────────────
+	/** Latest anomaly alert from Chitragupta daemon. */
+	readonly chitraguptaAnomaly: Signal<{
+		severity: string;
+		details: string;
+		suggestion: string | null;
+		at: number;
+	} | null> = signal(null);
+	/** Latest detected pattern from Chitragupta. */
+	readonly chitraguptaLastPattern: Signal<{ type: string; confidence: number; at: number } | null> = signal(null);
+	/** Active predictions from Chitragupta. */
+	readonly chitraguptaPredictions: Signal<Array<{ action: string; confidence: number }>> = signal([]);
+	/** Queued evolve requests from Chitragupta. */
+	readonly chitraguptaEvolveQueue: Signal<Array<Record<string, unknown>>> = signal([]);
 	/**
 	 * Cluster command channel — slash commands and dialogs write here;
 	 * CodingAgent observes via an effect and handles immediately.
@@ -152,6 +168,12 @@ export class AppState {
 	readonly contextTokens: Signal<number> = signal(0);
 	/** Max context window size for current model. */
 	readonly contextWindow: Signal<number> = signal(200000);
+
+	// ── Steering queue (Phase 48) ─────────────────────────────────────────────
+	/** Priority queue for injecting directives into the agent loop mid-run. */
+	readonly steeringQueue: SteeringQueue = new SteeringQueue();
+	/** Number of pending items in the steering queue (for UI display). */
+	readonly steeringPending: Signal<number> = signal(0);
 
 	// ── Consolidation (auto-triggered on near_limit pressure) ─────────────────
 	/** Whether a consolidation run is currently in progress. */
@@ -298,5 +320,7 @@ export class AppState {
 		this.contextTokens.value = 0;
 		this.contextWindow.value = 200000;
 		this.consolidationInProgress.value = false;
+		this.steeringQueue.clear();
+		this.steeringPending.value = 0;
 	}
 }

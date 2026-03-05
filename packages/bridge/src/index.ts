@@ -37,6 +37,7 @@ export type {
 	VidhiInfo,
 	VidhiMatch,
 } from "./chitragupta-types.js";
+export type { NotificationHandler } from "./daemon-socket.js";
 export { DaemonSocketClient, probeSocket, resolveLogDir, resolvePidPath, resolveSocketPath } from "./daemon-socket.js";
 export type { DarpanaConfig } from "./darpana.js";
 export { DarpanaClient } from "./darpana.js";
