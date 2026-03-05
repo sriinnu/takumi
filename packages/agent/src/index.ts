@@ -106,6 +106,15 @@ export {
 // Phase 45 — Convention file loader
 export type { ConventionFiles, ToolRule } from "./extensions/convention-loader.js";
 export { loadConventionFiles } from "./extensions/convention-loader.js";
+// Phase 52 — Extension Health Monitor
+export type {
+	ExtensionHealthConfig,
+	ExtensionHealthSnapshot,
+	HealthEvent,
+	HealthTransition,
+	HealthTransitionListener,
+} from "./extensions/extension-health.js";
+export { ExtensionHealthMonitor } from "./extensions/extension-health.js";
 export {
 	discoverAndLoadExtensions,
 	loadExtensionFromFactory,
@@ -163,6 +172,18 @@ export type {
 	TurnEndEvent,
 	TurnStartEvent,
 } from "./extensions/extension-types.js";
+// Phase 53 — Extension Self-Authoring
+export type {
+	AuthorResult,
+	ExtensionCommandSpec,
+	ExtensionEventSpec,
+	ExtensionSpec,
+	ExtensionToolSpec,
+	GeneratedManifest,
+	ValidationIssue,
+	ValidationResult as ExtensionValidationResult,
+} from "./extensions/self-author.js";
+export { generateExtensionSource, SelfAuthor, validateExtensionSource } from "./extensions/self-author.js";
 // Phase 26 — Guardian daemon
 export type { GuardianConfig, GuardianEvent, GuardianSuggestion } from "./guardian.js";
 export { Guardian } from "./guardian.js";
