@@ -9,6 +9,7 @@ import {
 	calculateContextPressure,
 	type ExtensionRunner,
 	type MessagePayload,
+	ObservationCollector,
 	PermissionEngine,
 	type SteeringQueue,
 	type ToolRegistry,
@@ -105,6 +106,11 @@ export class AgentRunner {
 				? `${basePrompt ?? ""}\n\n## Project Memory (from Chitragupta)\n${memoryContext}`.trim()
 				: basePrompt;
 
+			// Phase 49 — observation collector for Chitragupta intelligence
+			const collector = this.state.sessionId.value
+				? new ObservationCollector({ sessionId: this.state.sessionId.value })
+				: undefined;
+
 			const loop = agentLoop(text, this.history, {
 				sendMessage: this.sendMessageFn,
 				tools: this.tools,
@@ -113,6 +119,7 @@ export class AgentRunner {
 				signal: this.abortController.signal,
 				extensionRunner: this.extensionRunner ?? undefined,
 				steeringQueue: this.steeringQueue ?? undefined,
+				observationCollector: collector,
 			});
 
 			let fullText = "";
@@ -205,6 +212,22 @@ export class AgentRunner {
 				if (bridge?.isConnected && fullText.length > 100) {
 					void bridge
 						.akashaDeposit(fullText.slice(0, 2000), "agent_response", [process.cwd().split("/").pop() ?? "unknown"])
+						.catch(() => {
+							/* best-effort */
+						});
+				}
+			}
+
+			// Phase 49 — flush observation events to ChitraguptaObserver
+			if (collector && collector.pending > 0) {
+				const observer = this.state.chitraguptaObserver.value;
+				if (observer) {
+					const events = collector.flush();
+					void observer
+						.observeBatch(events)
+						.then((r) => {
+							if (r.accepted > 0) this.state.observationFlushCount.value++;
+						})
 						.catch(() => {
 							/* best-effort */
 						});

@@ -173,6 +173,9 @@ export { buildSystemPrompt, buildToolResult, buildUserMessage } from "./message.
 export type { ModelRecommendation, ModelTier, ProviderFamily, RouterRole } from "./model-router.js";
 // Smart model router
 export { inferProvider, MODEL_TIERS, ModelRouter, syncModelTiersFromKosha } from "./model-router.js";
+// Phase 49 — Observation Collector
+export type { ObservationCollectorConfig } from "./observation-collector.js";
+export { ObservationCollector } from "./observation-collector.js";
 // Providers
 export { DarpanaProvider } from "./providers/darpana.js";
 export { DirectProvider } from "./providers/direct.js";

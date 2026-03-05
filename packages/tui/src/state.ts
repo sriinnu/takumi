@@ -4,7 +4,7 @@
  */
 
 import { SteeringQueue } from "@takumi/agent";
-import type { ChitraguptaBridge, ChitraguptaHealth, VasanaTendency } from "@takumi/bridge";
+import type { ChitraguptaBridge, ChitraguptaHealth, ChitraguptaObserver, VasanaTendency } from "@takumi/bridge";
 import type { Message, PermissionDecision, Size, Usage } from "@takumi/core";
 import type { ReadonlySignal, Signal } from "@takumi/render";
 import { computed, signal } from "@takumi/render";
@@ -128,6 +128,12 @@ export class AppState {
 	readonly chitraguptaHealth: Signal<ChitraguptaHealth | null> = signal<ChitraguptaHealth | null>(null);
 	/** Unix ms timestamp of the last vasana tendencies refresh. */
 	readonly vasanaLastRefresh: Signal<number> = signal(0);
+
+	// ── Phase 49-51: Observation & Intelligence ──────────────────────────────
+	/** ChitraguptaObserver instance for observation dispatch and prediction queries. */
+	readonly chitraguptaObserver: Signal<ChitraguptaObserver | null> = signal(null);
+	/** Number of observation batches flushed to Chitragupta in this session. */
+	readonly observationFlushCount: Signal<number> = signal(0);
 
 	// ── Chitragupta push notification state (Phase 45) ────────────────────────
 	/** Latest anomaly alert from Chitragupta daemon. */
