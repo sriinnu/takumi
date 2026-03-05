@@ -127,6 +127,21 @@ export class AppState {
 	readonly chitraguptaHealth: Signal<ChitraguptaHealth | null> = signal<ChitraguptaHealth | null>(null);
 	/** Unix ms timestamp of the last vasana tendencies refresh. */
 	readonly vasanaLastRefresh: Signal<number> = signal(0);
+
+	// ── Chitragupta push notification state (Phase 45) ────────────────────────
+	/** Latest anomaly alert from Chitragupta daemon. */
+	readonly chitraguptaAnomaly: Signal<{
+		severity: string;
+		details: string;
+		suggestion: string | null;
+		at: number;
+	} | null> = signal(null);
+	/** Latest detected pattern from Chitragupta. */
+	readonly chitraguptaLastPattern: Signal<{ type: string; confidence: number; at: number } | null> = signal(null);
+	/** Active predictions from Chitragupta. */
+	readonly chitraguptaPredictions: Signal<Array<{ action: string; confidence: number }>> = signal([]);
+	/** Queued evolve requests from Chitragupta. */
+	readonly chitraguptaEvolveQueue: Signal<Array<Record<string, unknown>>> = signal([]);
 	/**
 	 * Cluster command channel — slash commands and dialogs write here;
 	 * CodingAgent observes via an effect and handles immediately.
