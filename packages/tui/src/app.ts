@@ -86,6 +86,7 @@ export class TakumiApp {
 				options.tools,
 				this.extensionRunner ?? undefined,
 				this.conventionFiles ?? undefined,
+				this.state.steeringQueue,
 			);
 			this.rootView.chatView.agentRunner = this.agentRunner;
 		} else {

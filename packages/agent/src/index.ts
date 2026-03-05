@@ -198,6 +198,14 @@ export { buildDefaultRules, mergeAllowlist, parseAllowlistConfig } from "./safet
 export { PermissionEngine } from "./safety/permissions.js";
 // Safety — sandbox
 export { DANGEROUS_PATTERNS, SAFE_COMMANDS, validateCommand } from "./safety/sandbox.js";
+// Phase 48 — Steering Queue
+export type {
+	EnqueueOptions,
+	OnEnqueueCallback,
+	SteeringItem,
+	SteeringPriorityLevel,
+} from "./steering-queue.js";
+export { SteeringPriority, SteeringQueue } from "./steering-queue.js";
 // SSE stream parser
 export { parseSSEStream } from "./stream.js";
 // Telemetry helpers (Phase 20)
