@@ -103,6 +103,9 @@ export {
 	isRetryable,
 	ProviderUnavailableError,
 } from "./errors.js";
+// Phase 45 — Convention file loader
+export type { ConventionFiles, ToolRule } from "./extensions/convention-loader.js";
+export { loadConventionFiles } from "./extensions/convention-loader.js";
 export {
 	discoverAndLoadExtensions,
 	loadExtensionFromFactory,

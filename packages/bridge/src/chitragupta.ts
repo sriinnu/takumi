@@ -336,6 +336,11 @@ export class ChitraguptaBridge {
 		return this.client;
 	}
 
+	/** Access the underlying DaemonSocketClient (for notification subscriptions). */
+	get daemonSocket(): DaemonSocketClient | null {
+		return this._socket;
+	}
+
 	// ── Phase 17: Session Query & Turn Listing ────────────────────────────
 
 	/** List all dates that have sessions. */
