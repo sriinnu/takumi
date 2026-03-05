@@ -11,7 +11,6 @@ import { autoDetectAuth } from "./cli/cli-auth.js";
 import { koshaProviderModels, koshaProviders } from "./cli/kosha-bridge.js";
 import { cmdDelete, cmdExport, cmdList, cmdLogs, cmdStatus } from "./cli/session-commands.js";
 import { cmdDaemon } from "./cli/daemon.js";
-import { cmdDaemon } from "./cli/daemon.js";
 import { printSplash } from "./cli/splash.js";
 
 const VERSION = "0.1.0";
@@ -194,7 +193,14 @@ async function runInteractiveApp(config: TakumiConfig, args: ReturnType<typeof p
 	}
 
 	const { TakumiApp } = await import("@takumi/tui");
-	const { ToolRegistry, registerBuiltinTools, syncModelTiersFromKosha } = await import("@takumi/agent");
+	const {
+		discoverAndLoadExtensions,
+		ExtensionRunner,
+		loadConventionFiles,
+		ToolRegistry,
+		registerBuiltinTools,
+		syncModelTiersFromKosha,
+	} = await import("@takumi/agent");
 
 	// Sync model tiers from kosha-discovery (non-blocking, best-effort)
 	koshaProviderModels()
@@ -205,6 +211,24 @@ async function runInteractiveApp(config: TakumiConfig, args: ReturnType<typeof p
 	const tools = new ToolRegistry();
 	registerBuiltinTools(tools);
 
+	// Phase 45 — Discover and load extensions
+	const cwd = process.cwd();
+	const configuredPaths = config.plugins?.map((p) => p.name) ?? [];
+	const extResult = await discoverAndLoadExtensions(configuredPaths, cwd);
+	const extensionRunner = extResult.loaded.length > 0 ? new ExtensionRunner(extResult.loaded) : undefined;
+	if (extResult.loaded.length > 0) {
+		process.stderr.write(`\x1b[2m⚡ Loaded ${extResult.loaded.length} extension(s)\x1b[0m\n`);
+	}
+	for (const err of extResult.errors) {
+		process.stderr.write(`\x1b[33m⚠ Extension error: ${err}\x1b[0m\n`);
+	}
+
+	// Phase 45 — Load convention files (.takumi/system-prompt.md, .takumi/tool-rules.json)
+	const conventionFiles = loadConventionFiles(cwd);
+	if (conventionFiles.loadedFiles.length > 0) {
+		process.stderr.write(`\x1b[2m⚡ Loaded ${conventionFiles.loadedFiles.length} convention file(s)\x1b[0m\n`);
+	}
+
 	const app = new TakumiApp({
 		config,
 		sendMessage: (messages: any, system: any, toolDefs: any, signal: any, options: any) =>
@@ -213,6 +237,8 @@ async function runInteractiveApp(config: TakumiConfig, args: ReturnType<typeof p
 		resumeSessionId: args.resume,
 		autoPr: args.pr,
 		autoShip: args.ship,
+		extensionRunner,
+		conventionFiles,
 		providerFactory: async (providerName: string) => {
 			const agentModule = await import("@takumi/agent");
 			const newProvider = await buildSingleProvider(providerName, config, agentModule);

@@ -1,4 +1,4 @@
-import type { MessagePayload, ToolRegistry } from "@takumi/agent";
+import type { ConventionFiles, ExtensionRunner, MessagePayload, ToolRegistry } from "@takumi/agent";
 import type { AgentEvent, AutoSaver, Message, SessionData, TakumiConfig, ToolDefinition } from "@takumi/core";
 import { ANSI, createAutoSaver, createLogger, generateSessionId, LIMITS, loadSession } from "@takumi/core";
 import { effect, initYoga, RenderScheduler } from "@takumi/render";
@@ -34,6 +34,8 @@ export interface TakumiAppOptions {
 	providerFactory?: ProviderFactory;
 	autoPr?: boolean;
 	autoShip?: boolean;
+	extensionRunner?: ExtensionRunner;
+	conventionFiles?: ConventionFiles;
 }
 
 export class TakumiApp {
@@ -59,6 +61,8 @@ export class TakumiApp {
 	private autoPr: boolean;
 	private autoShip: boolean;
 	private providerFactory?: ProviderFactory;
+	private extensionRunner: ExtensionRunner | null = null;
+	private conventionFiles: ConventionFiles | null = null;
 
 	constructor(options: TakumiAppOptions) {
 		this.config = options.config;
@@ -68,12 +72,21 @@ export class TakumiApp {
 		this.autoPr = options.autoPr ?? false;
 		this.autoShip = options.autoShip ?? false;
 		this.providerFactory = options.providerFactory;
+		this.extensionRunner = options.extensionRunner ?? null;
+		this.conventionFiles = options.conventionFiles ?? null;
 		this.state = new AppState();
 		this.keybinds = new KeyBindingRegistry();
 		this.commands = new SlashCommandRegistry();
 		this.rootView = new RootView({ state: this.state, config: this.config, commands: this.commands });
 		if (options.sendMessage && options.tools) {
-			this.agentRunner = new AgentRunner(this.state, this.config, options.sendMessage, options.tools);
+			this.agentRunner = new AgentRunner(
+				this.state,
+				this.config,
+				options.sendMessage,
+				options.tools,
+				this.extensionRunner ?? undefined,
+				this.conventionFiles ?? undefined,
+			);
 			this.rootView.chatView.agentRunner = this.agentRunner;
 		} else {
 			this.agentRunner = null;
@@ -131,6 +144,49 @@ export class TakumiApp {
 		this.running = true;
 		this.scheduler.start();
 		this.state.terminalSize.value = { width: columns, height: rows };
+
+		// Phase 45 — bind extension runner actions
+		if (this.extensionRunner) {
+			this.extensionRunner.bindActions(
+				{
+					getModel: () => this.state.model.value || undefined,
+					getSessionId: () => this.state.sessionId.value || undefined,
+					getCwd: () => process.cwd(),
+					isIdle: () => !this.state.isStreaming.value,
+					abort: () => this.agentRunner?.cancel(),
+					getContextUsage: () => ({
+						tokens: this.state.contextTokens.value,
+						contextWindow: this.state.contextWindow.value,
+						percent: this.state.contextPercent.value,
+					}),
+					getSystemPrompt: () => this.config.systemPrompt || "",
+					compact: () => {
+						/* future: trigger manual compaction */
+					},
+					shutdown: () => void this.quit(),
+				},
+				{
+					sendUserMessage: (content) => this.agentRunner?.submit(content),
+					getActiveTools: () => (this.agentRunner ? this.agentRunner.getTools().listNames() : []),
+					setActiveTools: () => {
+						/* future: dynamic tool enable/disable */
+					},
+					exec: async (command, args) => {
+						const { execFile } = await import("node:child_process");
+						const { promisify } = await import("node:util");
+						const execFileAsync = promisify(execFile);
+						try {
+							const { stdout, stderr } = await execFileAsync(command, args ?? []);
+							return { stdout, stderr, exitCode: 0 };
+						} catch (err: unknown) {
+							const e = err as { stdout?: string; stderr?: string; code?: number };
+							return { stdout: e.stdout ?? "", stderr: e.stderr ?? "", exitCode: e.code ?? 1 };
+						}
+					},
+				},
+			);
+			log.info("Extension runner actions bound");
+		}
 
 		const scheduler = this.scheduler;
 		effect(() => {
