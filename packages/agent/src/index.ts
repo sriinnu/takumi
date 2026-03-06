@@ -56,10 +56,13 @@ export type { CompactOptions, CompactResult, PayloadCompactOptions } from "./con
 export {
 	compactHistory,
 	compactMessages,
+	compactMessagesDetailed,
 	estimatePayloadTokens,
 	estimateTotalPayloadTokens,
 	shouldCompact,
 } from "./context/compact.js";
+export type { ExperienceArchive, ToolRuntimeSnapshot } from "./context/experience-memory.js";
+export { ExperienceMemory } from "./context/experience-memory.js";
 // Codebase indexer (Phase 10 — RAG)
 export type { CodebaseIndex, FileEntry, IndexedSymbol, IndexStats } from "./context/indexer.js";
 export { buildIndex, indexStats, loadIndex } from "./context/indexer.js";
@@ -88,6 +91,7 @@ export type { ContextItem, PackResult, ScoredItem, SmartContextConfig } from "./
 export { SmartContextWindow } from "./context/smart-context.js";
 export type { SoulData } from "./context/soul.js";
 export { formatSoulPrompt, loadSoul } from "./context/soul.js";
+export { buildStrategyPrompt } from "./context/strategy-guide.js";
 // LLM cost estimation + budget enforcement (Phase 11)
 export type { BudgetGuardOptions, CostEstimate } from "./cost.js";
 export { BudgetExceededError, BudgetGuard, estimateClusterCost, estimateCost, MODEL_PRICING } from "./cost.js";
@@ -184,6 +188,8 @@ export type {
 	ValidationResult as ExtensionValidationResult,
 } from "./extensions/self-author.js";
 export { generateExtensionSource, SelfAuthor, validateExtensionSource } from "./extensions/self-author.js";
+export type { LoadedSkill, LoadedSkillsResult } from "./extensions/skills-loader.js";
+export { loadSkills } from "./extensions/skills-loader.js";
 // Phase 26 — Guardian daemon
 export type { GuardianConfig, GuardianEvent, GuardianSuggestion } from "./guardian.js";
 export { Guardian } from "./guardian.js";

@@ -5,8 +5,10 @@
 
 import {
 	agentLoop,
+	buildStrategyPrompt,
 	type ConventionFiles,
 	calculateContextPressure,
+	ExperienceMemory,
 	type ExtensionRunner,
 	type MessagePayload,
 	ObservationCollector,
@@ -41,6 +43,7 @@ export class AgentRunner {
 	private extensionRunner: ExtensionRunner | null;
 	private conventionFiles: ConventionFiles | null;
 	private steeringQueue: SteeringQueue | null;
+	private experienceMemory = new ExperienceMemory();
 
 	readonly permissions: PermissionEngine;
 
@@ -102,9 +105,47 @@ export class AgentRunner {
 				basePrompt = `${basePrompt ?? ""}\n\n## Project Conventions\n${this.conventionFiles.systemPromptAddon}`.trim();
 			}
 
-			const enrichedPrompt = memoryContext
-				? `${basePrompt ?? ""}\n\n## Project Memory (from Chitragupta)\n${memoryContext}`.trim()
-				: basePrompt;
+			let predictiveContext = "";
+			const observer = this.state.chitraguptaObserver.value;
+			const sessionId = this.state.sessionId.value;
+			if (observer && sessionId) {
+				try {
+					const predictionResult = await observer.predictNext({
+						currentTool: this.state.activeTool.value ?? undefined,
+						currentFile: this.state.previewFile.value || undefined,
+						sessionId,
+					});
+					if (predictionResult.predictions.length > 0) {
+						this.state.chitraguptaPredictions.value = predictionResult.predictions.map((prediction) => ({
+							action: prediction.action ?? (prediction.files?.length ? prediction.files.join(", ") : prediction.type),
+							confidence: prediction.confidence,
+						}));
+						const lines = predictionResult.predictions.slice(0, 3).map((prediction, index) => {
+							const subject = prediction.action
+								? prediction.action
+								: prediction.files?.length
+									? prediction.files.join(", ")
+									: prediction.type;
+							const note = prediction.reasoning ?? "";
+							return `${index + 1}. ${prediction.type}: ${subject} (${Math.round(prediction.confidence * 100)}%)${note ? ` — ${note}` : ""}`;
+						});
+						predictiveContext = `## Chitragupta Live Guidance\n${lines.join("\n")}`;
+					}
+				} catch (err) {
+					log.debug(`Chitragupta pre-turn prediction failed: ${(err as Error).message}`);
+				}
+			}
+
+			const promptSections = [
+				basePrompt ?? "",
+				memoryContext ? `## Project Memory (from Chitragupta)\n${memoryContext}` : "",
+				this.conventionFiles?.skillsPromptAddon ?? "",
+				this.experienceMemory.buildPromptSection() ?? "",
+				buildStrategyPrompt(text, this.tools.getDefinitions(), this.experienceMemory) ?? "",
+				renderToolRoutingHints(text, this.tools.getDefinitions(), this.experienceMemory),
+				predictiveContext,
+			].filter(Boolean);
+			const enrichedPrompt = promptSections.length > 0 ? promptSections.join("\n\n").trim() : undefined;
 
 			// Phase 49 — observation collector for Chitragupta intelligence
 			const collector = this.state.sessionId.value
@@ -120,6 +161,7 @@ export class AgentRunner {
 				extensionRunner: this.extensionRunner ?? undefined,
 				steeringQueue: this.steeringQueue ?? undefined,
 				observationCollector: collector,
+				experienceMemory: this.experienceMemory,
 			});
 
 			let fullText = "";
@@ -290,6 +332,7 @@ export class AgentRunner {
 	/** Clear conversation history (for /clear). */
 	clearHistory(): void {
 		this.history = [];
+		this.experienceMemory.clear();
 	}
 
 	/** Check permissions before executing a tool. Returns true if allowed. */
@@ -372,4 +415,19 @@ function summarizeToolArgs(toolName: string, input: Record<string, unknown>): st
 			return "";
 		}
 	}
+}
+
+function renderToolRoutingHints(text: string, tools: ToolDefinition[], memory: ExperienceMemory): string {
+	const ranked = memory
+		.rankTools(tools, text)
+		.filter((entry) => entry.score > 0)
+		.slice(0, 3);
+	if (ranked.length === 0) {
+		return "";
+	}
+
+	return [
+		"## Dynamic Tool Ranking",
+		...ranked.map((entry, index) => `${index + 1}. ${entry.name} — ${entry.reason}`),
+	].join("\n");
 }
