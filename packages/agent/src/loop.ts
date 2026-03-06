@@ -13,11 +13,12 @@
 import type { AgentEvent, ToolDefinition, ToolResult, Usage } from "@takumi/core";
 import { createLogger, LIMITS } from "@takumi/core";
 import {
-	compactMessages,
+	compactMessagesDetailed,
 	estimateTotalPayloadTokens,
 	type PayloadCompactOptions,
 	shouldCompact,
 } from "./context/compact.js";
+import type { ExperienceMemory } from "./context/experience-memory.js";
 import type { MemoryHooks } from "./context/memory-hooks.js";
 import type { PromptCache } from "./context/prompt-cache.js";
 import type { BudgetGuard } from "./cost.js";
@@ -82,6 +83,9 @@ export interface AgentLoopOptions {
 
 	/** Optional observation collector — records tool usage for Chitragupta (Phase 49). */
 	observationCollector?: ObservationCollector;
+
+	/** Optional indexed experience memory — stores compaction summaries and tool runtime state. */
+	experienceMemory?: ExperienceMemory;
 }
 
 export interface MessagePayload {
@@ -184,12 +188,17 @@ export async function* agentLoop(
 
 			if (shouldCompact(messages, estimatedTokens, maxContextTokens)) {
 				log.info(`Context compaction triggered: ~${estimatedTokens} tokens`);
-				const compacted = compactMessages(messages, {
+				const compacted = compactMessagesDetailed(messages, {
 					maxTokens: maxContextTokens,
 					...(typeof compactOptions === "object" ? compactOptions : {}),
 				});
+				options.experienceMemory?.archiveCompaction(
+					compacted.summary,
+					compacted.compactedMessages,
+					compacted.preservedMessages,
+				);
 				// Replace contents in-place so the `history` alias stays in sync.
-				messages.splice(0, messages.length, ...compacted);
+				messages.splice(0, messages.length, ...compacted.messages);
 				// Re-estimate after compaction
 				cumulativeTokens = estimateTotalPayloadTokens(messages);
 			}
@@ -371,6 +380,7 @@ export async function* agentLoop(
 
 			// Phase 49 — record tool usage observation
 			options.observationCollector?.recordToolUsage(tc.name, tc.input ?? {}, elapsed, !result.isError);
+			options.experienceMemory?.recordToolUse(tc.name, tc.input ?? {}, result);
 
 			return { id: tc.id, name: tc.name, result };
 		});
