@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "@takumi/core";
-import { type LoadedSkill, loadSkills } from "./skills-loader.js";
+import { buildSkillsPrompt, type LoadedSkill, loadSkills } from "./skills-loader.js";
 
 const log = createLogger("convention-loader");
 
@@ -105,7 +105,7 @@ export function loadConventionFiles(cwd: string): ConventionFiles {
 	// ── Skills ──────────────────────────────────────────────────────────────
 	const loadedSkills = loadSkills(cwd);
 	result.skills = loadedSkills.skills;
-	result.skillsPromptAddon = loadedSkills.promptAddon;
+	result.skillsPromptAddon = buildSkillsPrompt(loadedSkills.skills);
 	result.loadedFiles.push(...loadedSkills.loadedFiles);
 	if (loadedSkills.skills.length > 0) {
 		log.info(`Loaded ${loadedSkills.skills.length} skill prompt(s)`);

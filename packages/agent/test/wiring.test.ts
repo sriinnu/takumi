@@ -5,7 +5,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConventionFiles } from "@takumi/agent";
+import { buildSkillsPrompt, loadConventionFiles } from "@takumi/agent";
 import { describe, expect, it, vi } from "vitest";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -57,6 +57,48 @@ describe("loadConventionFiles", () => {
 			expect(result.loadedFiles.some((file) => file.endsWith("react-review.md"))).toBe(true);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("prefers project skills over global duplicates and activates relevant skills", () => {
+		const dir = mkdtempSync(join(tmpdir(), "takumi-skill-dedupe-"));
+		const globalRoot = join(process.env.HOME ?? tmpdir(), ".takumi", "skills");
+		const globalFile = join(globalRoot, "review.md");
+		const projectSkillDir = join(dir, ".takumi", "skills");
+
+		mkdirSync(globalRoot, { recursive: true });
+		mkdirSync(projectSkillDir, { recursive: true });
+
+		try {
+			writeFileSync(
+				globalFile,
+				["---", "name: Review", "description: Global review skill", "tags: docs", "---", "Global skill body."].join(
+					"\n",
+				),
+			);
+			writeFileSync(
+				join(projectSkillDir, "review.md"),
+				[
+					"---",
+					"name: Review",
+					"description: Project review skill",
+					"tags:",
+					"- docs",
+					"- architecture",
+					"---",
+					"Inspect architecture docs and project structure before summarizing.",
+				].join("\n"),
+			);
+
+			const result = loadConventionFiles(dir);
+			expect(result.skills).toHaveLength(1);
+			expect(result.skills[0]?.description).toBe("Project review skill");
+			const prompt = buildSkillsPrompt(result.skills, "review the architecture docs");
+			expect(prompt).toContain("Activated skills:");
+			expect(prompt).toContain("Project review skill");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+			rmSync(globalFile, { force: true });
 		}
 	});
 });
@@ -162,6 +204,8 @@ describe("ConventionFiles type", () => {
 		const mod = await import("@takumi/agent");
 		expect(typeof mod.loadConventionFiles).toBe("function");
 		expect(typeof mod.loadSkills).toBe("function");
+		expect(typeof mod.buildSkillsPrompt).toBe("function");
+		expect(typeof mod.selectSkillsForPrompt).toBe("function");
 	});
 });
 

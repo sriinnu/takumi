@@ -2,6 +2,10 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
 
+const IGNORED_DIR_NAMES = new Set([".git", "node_modules", "dist", "build", "coverage", ".next"]);
+
+type SkillSource = "project" | "global";
+
 export interface LoadedSkill {
 	name: string;
 	description: string;
@@ -9,6 +13,7 @@ export interface LoadedSkill {
 	path: string;
 	alwaysOn: boolean;
 	tags: string[];
+	source: SkillSource;
 }
 
 export interface LoadedSkillsResult {
@@ -25,32 +30,77 @@ interface SkillFrontmatter {
 }
 
 export function loadSkills(cwd: string): LoadedSkillsResult {
-	const roots = [join(cwd, ".takumi", "skills"), join(homedir(), ".takumi", "skills")];
-	const skills: LoadedSkill[] = [];
-	const loadedFiles: string[] = [];
+	const roots: Array<{ path: string; source: SkillSource }> = [
+		{ path: join(homedir(), ".takumi", "skills"), source: "global" },
+		{ path: join(cwd, ".takumi", "skills"), source: "project" },
+	];
+	const skillsByKey = new Map<string, LoadedSkill>();
 
 	for (const root of roots) {
-		if (!existsSync(root)) {
+		if (!existsSync(root.path)) {
 			continue;
 		}
 
-		for (const filePath of walkSkillFiles(root)) {
-			const skill = parseSkillFile(filePath);
+		for (const filePath of walkSkillFiles(root.path)) {
+			const skill = parseSkillFile(filePath, root.source);
 			if (!skill) {
 				continue;
 			}
-			skills.push(skill);
-			loadedFiles.push(filePath);
+			skillsByKey.set(toSkillKey(skill), skill);
 		}
 	}
+
+	const skills = [...skillsByKey.values()];
+	const loadedFiles = skills.map((skill) => skill.path);
 
 	skills.sort((a, b) => Number(b.alwaysOn) - Number(a.alwaysOn) || a.name.localeCompare(b.name));
 
 	return {
 		skills,
 		loadedFiles,
-		promptAddon: renderSkillsPrompt(skills),
+		promptAddon: buildSkillsPrompt(skills),
 	};
+}
+
+export function buildSkillsPrompt(skills: LoadedSkill[], userText?: string, limit = 4): string | null {
+	if (skills.length === 0) {
+		return null;
+	}
+
+	const lines = ["## Skills System"];
+	const selected = selectSkillsForPrompt(skills, userText, limit);
+	if (selected.length > 0) {
+		lines.push("Activated skills:");
+		for (const skill of selected) {
+			const source = skill.source === "project" ? "project" : "global";
+			lines.push(`- ${skill.name} (${source}): ${skill.description}`);
+			lines.push(indentBlock(trimForPrompt(skill.prompt, 700), "  "));
+		}
+	}
+
+	const remaining = skills.filter((skill) => !selected.includes(skill)).slice(0, 8);
+	if (remaining.length > 0) {
+		lines.push("Available skill catalog:");
+		for (const skill of remaining) {
+			const tagText = skill.tags.length > 0 ? ` [${skill.tags.join(", ")}]` : "";
+			lines.push(`- ${skill.name}${tagText}: ${skill.description}`);
+		}
+	}
+
+	lines.push("Apply only the skills that materially improve the current task; skip unrelated guidance.");
+	return lines.join("\n");
+}
+
+export function selectSkillsForPrompt(skills: LoadedSkill[], userText?: string, limit = 4): LoadedSkill[] {
+	const alwaysOn = skills.filter((skill) => skill.alwaysOn);
+	const scored = skills
+		.filter((skill) => !skill.alwaysOn)
+		.map((skill) => ({ skill, score: scoreSkill(skill, userText ?? "") }))
+		.filter((entry) => entry.score > 0)
+		.sort((a, b) => b.score - a.score || a.skill.name.localeCompare(b.skill.name))
+		.map((entry) => entry.skill);
+
+	return [...alwaysOn, ...scored].slice(0, Math.max(limit, alwaysOn.length));
 }
 
 function walkSkillFiles(root: string): string[] {
@@ -58,6 +108,9 @@ function walkSkillFiles(root: string): string[] {
 	for (const entry of readdirSync(root, { withFileTypes: true })) {
 		const fullPath = join(root, entry.name);
 		if (entry.isDirectory()) {
+			if (IGNORED_DIR_NAMES.has(entry.name)) {
+				continue;
+			}
 			files.push(...walkSkillFiles(fullPath));
 			continue;
 		}
@@ -65,10 +118,10 @@ function walkSkillFiles(root: string): string[] {
 			files.push(fullPath);
 		}
 	}
-	return files;
+	return files.sort((left, right) => left.localeCompare(right));
 }
 
-function parseSkillFile(filePath: string): LoadedSkill | null {
+function parseSkillFile(filePath: string, source: SkillSource): LoadedSkill | null {
 	try {
 		const raw = readFileSync(filePath, "utf-8").trim();
 		if (!raw) {
@@ -92,6 +145,7 @@ function parseSkillFile(filePath: string): LoadedSkill | null {
 			path: filePath,
 			alwaysOn: frontmatter.alwaysOn ?? false,
 			tags: frontmatter.tags ?? [],
+			source,
 		};
 	} catch {
 		return null;
@@ -112,7 +166,9 @@ function extractFrontmatter(raw: string): { frontmatter: SkillFrontmatter; body:
 	const body = raw.slice(end + 5);
 	const frontmatter: SkillFrontmatter = {};
 
-	for (const line of header.split("\n")) {
+	const headerLines = header.split("\n");
+	for (let index = 0; index < headerLines.length; index++) {
+		const line = headerLines[index];
 		const separator = line.indexOf(":");
 		if (separator === -1) {
 			continue;
@@ -129,42 +185,28 @@ function extractFrontmatter(raw: string): { frontmatter: SkillFrontmatter; body:
 			case "alwaysOn":
 				frontmatter.alwaysOn = value.toLowerCase() === "true";
 				break;
-			case "tags":
-				frontmatter.tags = stripQuotes(value)
-					.split(",")
-					.map((tag) => tag.trim())
-					.filter(Boolean);
+			case "tags": {
+				if (value.length > 0) {
+					frontmatter.tags = parseTagList(value);
+					break;
+				}
+
+				const items: string[] = [];
+				for (let next = index + 1; next < headerLines.length; next++) {
+					const candidate = headerLines[next].trim();
+					if (!candidate.startsWith("- ")) {
+						break;
+					}
+					items.push(stripQuotes(candidate.slice(2).trim()));
+					index = next;
+				}
+				frontmatter.tags = items;
 				break;
+			}
 		}
 	}
 
 	return { frontmatter, body };
-}
-
-function renderSkillsPrompt(skills: LoadedSkill[]): string | null {
-	if (skills.length === 0) {
-		return null;
-	}
-
-	const sections: string[] = ["## Skills System"];
-	const activeSkills = skills.filter((skill) => skill.alwaysOn);
-	if (activeSkills.length > 0) {
-		sections.push("Always-on skills:");
-		for (const skill of activeSkills.slice(0, 4)) {
-			sections.push(`- ${skill.name}: ${skill.description}`);
-			sections.push(indentBlock(trimForPrompt(skill.prompt, 500), "  "));
-		}
-	}
-
-	const catalogSkills = skills.slice(0, 8);
-	sections.push("Available skill catalog:");
-	for (const skill of catalogSkills) {
-		const tagText = skill.tags.length > 0 ? ` [${skill.tags.join(", ")}]` : "";
-		sections.push(`- ${skill.name}${tagText}: ${skill.description}`);
-	}
-
-	sections.push("Use the catalog to pick the smallest relevant skill instead of expanding every instruction set.");
-	return sections.join("\n");
 }
 
 function firstSentence(text: string): string {
@@ -189,6 +231,58 @@ function humanizeName(value: string): string {
 
 function stripQuotes(value: string): string {
 	return value.replace(/^['"]|['"]$/g, "");
+}
+
+function parseTagList(value: string): string[] {
+	const normalized = value.startsWith("[") && value.endsWith("]") ? value.slice(1, -1) : value;
+	return normalized
+		.split(",")
+		.map((tag) => stripQuotes(tag.trim()))
+		.filter(Boolean);
+}
+
+function scoreSkill(skill: LoadedSkill, userText: string): number {
+	if (!userText.trim()) {
+		return 0;
+	}
+
+	const queryTokens = tokenize(userText);
+	if (queryTokens.size === 0) {
+		return 0;
+	}
+
+	const haystack = tokenize(`${skill.name} ${skill.description} ${skill.tags.join(" ")}`);
+	let score = 0;
+	for (const token of haystack) {
+		if (queryTokens.has(token)) {
+			score += 3;
+		}
+	}
+
+	for (const tag of skill.tags) {
+		if (queryTokens.has(tag.toLowerCase())) {
+			score += 4;
+		}
+	}
+
+	if (skill.source === "project") {
+		score += 1;
+	}
+
+	return score;
+}
+
+function tokenize(value: string): Set<string> {
+	return new Set(
+		value
+			.toLowerCase()
+			.split(/[^a-z0-9_+#.-]+/g)
+			.filter((token) => token.length > 1),
+	);
+}
+
+function toSkillKey(skill: LoadedSkill): string {
+	return skill.name.toLowerCase();
 }
 
 function trimForPrompt(value: string, limit: number): string {

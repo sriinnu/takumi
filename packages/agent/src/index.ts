@@ -189,7 +189,7 @@ export type {
 } from "./extensions/self-author.js";
 export { generateExtensionSource, SelfAuthor, validateExtensionSource } from "./extensions/self-author.js";
 export type { LoadedSkill, LoadedSkillsResult } from "./extensions/skills-loader.js";
-export { loadSkills } from "./extensions/skills-loader.js";
+export { buildSkillsPrompt, loadSkills, selectSkillsForPrompt } from "./extensions/skills-loader.js";
 // Phase 26 — Guardian daemon
 export type { GuardianConfig, GuardianEvent, GuardianSuggestion } from "./guardian.js";
 export { Guardian } from "./guardian.js";
