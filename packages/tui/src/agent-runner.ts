@@ -5,6 +5,7 @@
 
 import {
 	agentLoop,
+	buildSkillsPrompt,
 	buildStrategyPrompt,
 	type ConventionFiles,
 	calculateContextPressure,
@@ -139,7 +140,7 @@ export class AgentRunner {
 			const promptSections = [
 				basePrompt ?? "",
 				memoryContext ? `## Project Memory (from Chitragupta)\n${memoryContext}` : "",
-				this.conventionFiles?.skillsPromptAddon ?? "",
+				buildSkillsPrompt(this.conventionFiles?.skills ?? [], text) ?? this.conventionFiles?.skillsPromptAddon ?? "",
 				this.experienceMemory.buildPromptSection() ?? "",
 				buildStrategyPrompt(text, this.tools.getDefinitions(), this.experienceMemory) ?? "",
 				renderToolRoutingHints(text, this.tools.getDefinitions(), this.experienceMemory),
