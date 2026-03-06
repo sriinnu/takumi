@@ -146,6 +146,14 @@ Key primitives: `signal(value)`, `computed(fn)`, `effect(fn)`, `batch(fn)`, `unt
 | `darpana.ts` | HTTP health check, auto-launch, connection management |
 | `git.ts` | Git operations: status, branch detection, diff, commit |
 
+#### Bridge contract
+
+| Direction | Methods |
+|---|---|
+| Takumi → Chitragupta | `session.open`, `session.turn`, `observe.batch`, `heal.report`, `preference.update` |
+| Chitragupta → Takumi | `predict.next`, `memory.recall`, `pattern.query`, `sabha.ask`, push notifications |
+| Shared | `health.status`, `capabilities`, `subscribe` |
+
 ## Data Flow
 
 ### User Message → LLM Response

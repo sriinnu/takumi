@@ -180,6 +180,17 @@ describe("MemoryHooks", () => {
 		expect(hooks.getAll()).toHaveLength(0);
 	});
 
+	it("observeSuccess reinforces search-first and verification lessons", () => {
+		const hooks = makeHooks();
+		hooks.load();
+
+		const lessons = hooks.observeSuccess("search the repo and run tests", ["grep", "bash"]);
+
+		expect(lessons).toHaveLength(2);
+		expect(hooks.getAll().some((lesson) => lesson.text.includes("search-first workflows"))).toBe(true);
+		expect(hooks.getAll().some((lesson) => lesson.text.includes("executable command"))).toBe(true);
+	});
+
 	it("handles corrupted lessons file gracefully", () => {
 		const dir = join(TEST_DIR, ".takumi/memory");
 		mkdirSync(dir, { recursive: true });

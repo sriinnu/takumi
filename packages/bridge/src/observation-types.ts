@@ -1,10 +1,12 @@
 /**
  * Observation & Notification types — Phases 49-51.
  *
- * Types for bidirectional Chitragupta ↔ Takumi communication:
- * - Observation events (Takumi → Chitragupta): tool usage, errors, edits, corrections
- * - Push notifications (Chitragupta → Takumi): patterns, predictions, anomalies
- * - Query methods (Takumi → Chitragupta): predict.next, pattern.query, health.status
+ * Types for bidirectional Chitragupta ↔ Takumi communication.
+ *
+ * Current bridge contract shape:
+ * - Takumi → Chitragupta: session.open, session.turn, observe.batch, heal.report, preference.update
+ * - Chitragupta → Takumi: predict.next, memory.recall, pattern.query, sabha.ask, push notifications
+ * - Shared service methods: health.status, capabilities, subscribe
  */
 
 // ── Observation Events (Phase 49: Takumi → Chitragupta) ──────────────────────
