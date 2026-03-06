@@ -5,6 +5,8 @@
 
 import type { ToolDefinition, ToolResult } from "@takumi/core";
 import { createLogger } from "@takumi/core";
+import type { ExperienceMemory } from "../context/experience-memory.js";
+import { type RankedTool, rankToolDefinitions, selectToolDefinitions, type ToolSelectionOptions } from "./selection.js";
 
 const log = createLogger("tool-registry");
 
@@ -45,6 +47,22 @@ export class ToolRegistry {
 	/** Get all tool definitions (for building the system prompt). */
 	getDefinitions(): ToolDefinition[] {
 		return [...this.tools.values()].map((t) => t.definition);
+	}
+
+	/** Rank tool definitions for a specific task/query. */
+	rankDefinitions(
+		query: string,
+		options: Omit<ToolSelectionOptions, "experienceMemory"> & { experienceMemory?: ExperienceMemory } = {},
+	): RankedTool[] {
+		return rankToolDefinitions(this.getDefinitions(), query, options);
+	}
+
+	/** Select a working subset of tools for a specific task/query. */
+	selectDefinitions(
+		query: string,
+		options: Omit<ToolSelectionOptions, "experienceMemory"> & { experienceMemory?: ExperienceMemory } = {},
+	): ToolDefinition[] {
+		return selectToolDefinitions(this.getDefinitions(), query, options);
 	}
 
 	/** List all registered tool names. */

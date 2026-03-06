@@ -69,6 +69,8 @@ export { buildIndex, indexStats, loadIndex } from "./context/indexer.js";
 // Phase 33 — Agent Memory Hooks
 export type { ExtractionEvent, Lesson, MemoryHooksConfig } from "./context/memory-hooks.js";
 export { MemoryHooks } from "./context/memory-hooks.js";
+export type { EvolvingPrinciple, PrincipleTurnSignal } from "./context/principles.js";
+export { PrincipleMemory } from "./context/principles.js";
 export type { ProjectContext, ProjectInfo } from "./context/project.js";
 export {
 	detectFramework,
@@ -269,6 +271,8 @@ export { readDefinition, readHandler } from "./tools/read.js";
 export type { ToolHandler } from "./tools/registry.js";
 // Tool registry
 export { ToolRegistry } from "./tools/registry.js";
+export type { RankedTool, ToolSelectionOptions } from "./tools/selection.js";
+export { rankToolDefinitions, selectToolDefinitions } from "./tools/selection.js";
 export type { SideAgentToolDeps } from "./tools/side-agent.js";
 export {
 	agentCheckDefinition,
