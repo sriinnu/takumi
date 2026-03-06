@@ -577,15 +577,17 @@ If not installed, Takumi works fine without it (graceful degradation).
 | **Phase 10** — Chitragupta Deep Integration | Done | — | Live guidance, anomaly/pattern push steering, Akasha-backed project memory |
 | **Phase 11** — Indexed Experience Memory | Done | — | Compaction now produces reusable memory indices instead of summary-only collapse |
 | **Phase 12** — Skills System | Done | — | `.takumi/skills` prompt skills, always-on skills, and project skill catalog |
-| **Phase 13** — Strategy + Stateful Runtime | Done | — | Strategy-guided turns, dynamic tool ranking, recent tool/runtime carry-over |
-| **Next** — Adaptive Retrieval Loop | Planned | — | Query-time skill activation, deeper memory retrieval, self-evolving principles |
+| **Phase 13** — Strategy + Stateful Runtime | Done | — | Strategy-guided turns, recent tool/runtime carry-over, and verification-biased planning |
+| **Phase 14** — Dynamic Tool Selection | Done | — | Per-turn tool subset selection now uses task intent, category coverage, and runtime experience |
+| **Phase 15** — Self-Evolving Principles | Done | — | Successful turns reinforce reusable operating principles that are recalled into later prompts |
 
 ### New in the latest cognitive pass
 
 - **Indexed experience memory** keeps compacted history useful instead of turning it into a one-way summary blob.
 - **Prompt skills** let repositories add narrow domain guidance without shipping a full extension.
-- **Dynamic tool ranking** nudges the model toward the most relevant and recently successful tools for the current turn.
+- **Dynamic tool selection** now exposes a smaller, task-relevant tool set each turn instead of merely hinting about rankings.
 - **Stateful runtime hints** preserve last-used file paths and tool outcomes across follow-up turns.
+- **Self-evolving principles** promote proven workflows like inspect-before-edit and verify-after-change into reusable guidance.
 - **Chitragupta live guidance** can inject predictive steering before the next action lands. Tiny oracle, large vibes.
 
 ---
