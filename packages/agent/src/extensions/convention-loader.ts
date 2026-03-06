@@ -13,6 +13,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "@takumi/core";
+import { buildSkillsPrompt, type LoadedSkill, loadSkills } from "./skills-loader.js";
 
 const log = createLogger("convention-loader");
 
@@ -36,6 +37,10 @@ export interface ConventionFiles {
 	systemPromptAddon: string | null;
 	/** Tool permission rules from `.takumi/tool-rules.json`. */
 	toolRules: ToolRule[];
+	/** Loaded prompt skills from `.takumi/skills/`. */
+	skills: LoadedSkill[];
+	/** Rendered prompt block describing loaded skills. */
+	skillsPromptAddon: string | null;
 	/** Paths of files that were successfully loaded. */
 	loadedFiles: string[];
 }
@@ -53,6 +58,8 @@ export function loadConventionFiles(cwd: string): ConventionFiles {
 	const result: ConventionFiles = {
 		systemPromptAddon: null,
 		toolRules: [],
+		skills: [],
+		skillsPromptAddon: null,
 		loadedFiles: [],
 	};
 
@@ -93,6 +100,15 @@ export function loadConventionFiles(cwd: string): ConventionFiles {
 		} catch (err) {
 			log.debug(`Failed to parse ${rulesPath}: ${(err as Error).message}`);
 		}
+	}
+
+	// ── Skills ──────────────────────────────────────────────────────────────
+	const loadedSkills = loadSkills(cwd);
+	result.skills = loadedSkills.skills;
+	result.skillsPromptAddon = buildSkillsPrompt(loadedSkills.skills);
+	result.loadedFiles.push(...loadedSkills.loadedFiles);
+	if (loadedSkills.skills.length > 0) {
+		log.info(`Loaded ${loadedSkills.skills.length} skill prompt(s)`);
 	}
 
 	return result;

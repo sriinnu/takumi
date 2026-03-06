@@ -2,7 +2,10 @@
  * Tests for Phase 45 — Extension wiring, convention loader, daemon notifications
  */
 
-import { loadConventionFiles } from "@takumi/agent";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { buildSkillsPrompt, loadConventionFiles } from "@takumi/agent";
 import { describe, expect, it, vi } from "vitest";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -21,9 +24,82 @@ describe("loadConventionFiles", () => {
 		const result = loadConventionFiles("/nonexistent/path");
 		expect(result).toHaveProperty("systemPromptAddon");
 		expect(result).toHaveProperty("toolRules");
+		expect(result).toHaveProperty("skills");
+		expect(result).toHaveProperty("skillsPromptAddon");
 		expect(result).toHaveProperty("loadedFiles");
 		expect(Array.isArray(result.toolRules)).toBe(true);
+		expect(Array.isArray(result.skills)).toBe(true);
 		expect(Array.isArray(result.loadedFiles)).toBe(true);
+	});
+
+	it("loads prompt skills from .takumi/skills", () => {
+		const dir = mkdtempSync(join(tmpdir(), "takumi-skill-test-"));
+		try {
+			const skillDir = join(dir, ".takumi", "skills");
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(
+				join(skillDir, "react-review.md"),
+				[
+					"---",
+					"name: React Review",
+					"description: Use for component architecture reviews",
+					"alwaysOn: true",
+					"tags: react,typescript",
+					"---",
+					"Check component boundaries, hooks, and memoization trade-offs.",
+				].join("\n"),
+			);
+
+			const result = loadConventionFiles(dir);
+			expect(result.skills).toHaveLength(1);
+			expect(result.skills[0]?.name).toBe("React Review");
+			expect(result.skillsPromptAddon).toContain("Skills System");
+			expect(result.loadedFiles.some((file) => file.endsWith("react-review.md"))).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("prefers project skills over global duplicates and activates relevant skills", () => {
+		const dir = mkdtempSync(join(tmpdir(), "takumi-skill-dedupe-"));
+		const globalRoot = join(process.env.HOME ?? tmpdir(), ".takumi", "skills");
+		const globalFile = join(globalRoot, "review.md");
+		const projectSkillDir = join(dir, ".takumi", "skills");
+
+		mkdirSync(globalRoot, { recursive: true });
+		mkdirSync(projectSkillDir, { recursive: true });
+
+		try {
+			writeFileSync(
+				globalFile,
+				["---", "name: Review", "description: Global review skill", "tags: docs", "---", "Global skill body."].join(
+					"\n",
+				),
+			);
+			writeFileSync(
+				join(projectSkillDir, "review.md"),
+				[
+					"---",
+					"name: Review",
+					"description: Project review skill",
+					"tags:",
+					"- docs",
+					"- architecture",
+					"---",
+					"Inspect architecture docs and project structure before summarizing.",
+				].join("\n"),
+			);
+
+			const result = loadConventionFiles(dir);
+			expect(result.skills).toHaveLength(1);
+			expect(result.skills[0]?.description).toBe("Project review skill");
+			const prompt = buildSkillsPrompt(result.skills, "review the architecture docs");
+			expect(prompt).toContain("Activated skills:");
+			expect(prompt).toContain("Project review skill");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+			rmSync(globalFile, { force: true });
+		}
 	});
 });
 
@@ -127,6 +203,9 @@ describe("ConventionFiles type", () => {
 	it("loadConventionFiles is exported from @takumi/agent", async () => {
 		const mod = await import("@takumi/agent");
 		expect(typeof mod.loadConventionFiles).toBe("function");
+		expect(typeof mod.loadSkills).toBe("function");
+		expect(typeof mod.buildSkillsPrompt).toBe("function");
+		expect(typeof mod.selectSkillsForPrompt).toBe("function");
 	});
 });
 

@@ -55,8 +55,11 @@ Takumi TUI (this repo) → @takumi/bridge → @yugenlab/chitragupta (npm) → da
 
 - **Custom Renderer (Kagami 鏡)** — Yoga WASM flexbox layout, double-buffered ANSI output, cell-level diff
 - **Reactive Signals (Myaku 脈)** — Fine-grained Preact-style signals with auto-dependency tracking (~150 lines)
-- **Agent Loop (Shigoto 仕事)** — ReAct reasoning + tool execution, streaming responses, context compaction
+- **Agent Loop (Shigoto 仕事)** — ReAct reasoning + tool execution, streaming responses, indexed context compaction
 - **Multi-Agent Orchestration** — Task classifier → planner + workers + 5 specialized validators in parallel
+- **Strategy-Guided Turns** — Short plan-first prompting, dynamic tool ranking, verification-biased execution
+- **Skills System** — Drop-in `.takumi/skills/*.md` prompt skills with always-on and catalog modes
+- **Stateful Tool Runtime** — Carries forward recent tool outcomes, file hints, and compacted experience summaries
 - **ArXiv Research Strategies** — Self-Consistency ensemble, Reflexion self-critique, Mixture-of-Agents, Tree-of-Thoughts, Progressive Refinement, Adaptive Temperature
 - **Blind Validation** — Validators receive only task + output, never worker conversation history
 - **Checkpoint & Resume** — Crash recovery for long-running multi-agent tasks (local + Akasha)
@@ -159,7 +162,7 @@ pnpm takumi --resume session-2026-02-12-a1b2
 ### Verify Everything Works
 
 ```bash
-# Run the test suite (1537 tests)
+# Run the test suite
 pnpm test
 
 # Build all packages
@@ -571,7 +574,19 @@ If not installed, Takumi works fine without it (graceful degradation).
 | **Phase 7** — Multi-Agent | Done | 2095 | Cluster orchestrator, 5 validators, checkpoint, isolation |
 | **Phase 8** — ArXiv Research | Done | 2095 | Ensemble, Reflexion, MoA, ToT, Progressive Refinement, Bandit |
 | **Phase 9** — Global Install + DX | Done | 2343 | `npm install -g takumi`, GitHub Models, session fork, vi mode, `/tree` |
-| **Future** — Stretch Goals | Planned | — | Codebase RAG (AST+CodeBERT), session fork from CLI, plugin API |
+| **Phase 10** — Chitragupta Deep Integration | Done | — | Live guidance, anomaly/pattern push steering, Akasha-backed project memory |
+| **Phase 11** — Indexed Experience Memory | Done | — | Compaction now produces reusable memory indices instead of summary-only collapse |
+| **Phase 12** — Skills System | Done | — | `.takumi/skills` prompt skills, always-on skills, and project skill catalog |
+| **Phase 13** — Strategy + Stateful Runtime | Done | — | Strategy-guided turns, dynamic tool ranking, recent tool/runtime carry-over |
+| **Next** — Adaptive Retrieval Loop | Planned | — | Query-time skill activation, deeper memory retrieval, self-evolving principles |
+
+### New in the latest cognitive pass
+
+- **Indexed experience memory** keeps compacted history useful instead of turning it into a one-way summary blob.
+- **Prompt skills** let repositories add narrow domain guidance without shipping a full extension.
+- **Dynamic tool ranking** nudges the model toward the most relevant and recently successful tools for the current turn.
+- **Stateful runtime hints** preserve last-used file paths and tool outcomes across follow-up turns.
+- **Chitragupta live guidance** can inject predictive steering before the next action lands. Tiny oracle, large vibes.
 
 ---
 
