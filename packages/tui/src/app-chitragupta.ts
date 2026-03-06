@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { akashaDepositDefinition, akashaTracesDefinition, createAkashaHandlers } from "@takumi/agent";
+import type { SteeringPriorityLevel } from "@takumi/agent";
+import { akashaDepositDefinition, akashaTracesDefinition, createAkashaHandlers, SteeringPriority } from "@takumi/agent";
 import { ChitraguptaBridge, ChitraguptaObserver } from "@takumi/bridge";
 import { createLogger } from "@takumi/core";
 import type { AgentRunner } from "./agent-runner.js";
@@ -11,63 +12,221 @@ const log = createLogger("app");
 /** Timestamp (epoch ms) captured when the Chitragupta bridge first connects. */
 let startedAt = 0;
 
-/** Unsubscribe functions for daemon socket notification handlers. */
-const notificationUnsubs: Array<() => void> = [];
+const RECENT_NOTIFICATION_WINDOW_MS = 8_000;
+const recentDirectives = new Map<string, number>();
+
+function wasRecentlyHandled(key: string, windowMs = RECENT_NOTIFICATION_WINDOW_MS): boolean {
+	const now = Date.now();
+	const lastAt = recentDirectives.get(key) ?? 0;
+	if (lastAt && now - lastAt < windowMs) return true;
+	recentDirectives.set(key, now);
+	return false;
+}
+
+function enqueueDirective(
+	state: AppState,
+	text: string,
+	priority: SteeringPriorityLevel,
+	metadata?: Record<string, unknown>,
+): void {
+	const id = state.steeringQueue.enqueue(text, { priority, metadata });
+	if (id) {
+		state.steeringPending.value = state.steeringQueue.size;
+	}
+}
+
+function parseStringArray(value: unknown): string[] {
+	return Array.isArray(value) ? value.map((entry) => String(entry ?? "").trim()).filter(Boolean) : [];
+}
+
+function normalizePredictions(params: Record<string, unknown>): Array<{
+	type: string;
+	action?: string;
+	files?: string[];
+	confidence: number;
+	reasoning?: string;
+	risk?: number;
+	pastFailures?: number;
+	suggestion?: string;
+}> {
+	const raw = Array.isArray(params.predictions) ? params.predictions : [];
+	const predictions: Array<{
+		type: string;
+		action?: string;
+		files?: string[];
+		confidence: number;
+		reasoning?: string;
+		risk?: number;
+		pastFailures?: number;
+		suggestion?: string;
+	}> = [];
+
+	for (const entry of raw) {
+		if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+		const prediction = entry as Record<string, unknown>;
+		const confidence = Number(prediction.confidence ?? 0);
+		predictions.push({
+			type: String(prediction.type ?? params.type ?? "prediction"),
+			action: typeof prediction.action === "string" ? prediction.action : undefined,
+			files: parseStringArray(prediction.files),
+			confidence: Number.isFinite(confidence) ? confidence : 0,
+			reasoning: typeof prediction.reasoning === "string" ? prediction.reasoning : undefined,
+			risk: Number.isFinite(Number(prediction.risk)) ? Number(prediction.risk) : undefined,
+			pastFailures: Number.isFinite(Number(prediction.pastFailures)) ? Number(prediction.pastFailures) : undefined,
+			suggestion: typeof prediction.suggestion === "string" ? prediction.suggestion : undefined,
+		});
+	}
+
+	return predictions;
+}
 
 /**
  * Subscribe to Chitragupta daemon push notifications.
  * These arrive as JSON-RPC messages without an `id` field.
  */
-function subscribeToNotifications(state: AppState, bridge: ChitraguptaBridge): void {
-	const socket = bridge.daemonSocket;
-	if (!socket) return; // MCP subprocess mode — no push notifications
+function subscribeToNotifications(
+	state: AppState,
+	observer: ChitraguptaObserver,
+	agentRunner: AgentRunner | null,
+): void {
+	observer.subscribe({
+		onAnomalyAlert: (params) => {
+			const type = String(params.type ?? "anomaly");
+			const severity = String(params.severity ?? "warning");
+			const suggestion = typeof params.suggestion === "string" ? params.suggestion : undefined;
+			const details = typeof params.details === "string" ? params.details : JSON.stringify(params.details ?? {});
 
-	notificationUnsubs.push(
-		socket.onNotification("anomaly_alert", (params) => {
-			const severity = params.severity as string;
-			const details = params.details as string;
-			const suggestion = params.suggestion as string | undefined;
-			log.warn(`Chitragupta anomaly [${severity}]: ${details}`);
+			log.warn(`Chitragupta anomaly [${severity}] ${type}: ${details}`);
 			state.chitraguptaAnomaly.value = { severity, details, suggestion: suggestion ?? null, at: Date.now() };
-		}),
-	);
 
-	notificationUnsubs.push(
-		socket.onNotification("pattern_detected", (params) => {
-			const type = params.type as string;
-			const confidence = params.confidence as number;
-			log.info(`Chitragupta pattern [${type}]: confidence=${confidence.toFixed(2)}`);
-			state.chitraguptaLastPattern.value = { type, confidence, at: Date.now() };
-		}),
-	);
-
-	notificationUnsubs.push(
-		socket.onNotification("prediction", (params) => {
-			const predictions = params.predictions as Array<{ action: string; confidence: number }>;
-			if (predictions?.length > 0) {
-				log.debug(`Chitragupta prediction: ${predictions[0].action} (${predictions[0].confidence.toFixed(2)})`);
+			if (agentRunner?.isRunning && (type === "loop_detected" || suggestion === "abort")) {
+				agentRunner.cancel();
+				const sessionId = state.sessionId.value || "takumi-live";
+				void observer
+					.healReport({
+						anomalyType: type,
+						actionTaken: "cancel_run",
+						outcome: "success",
+						sessionId,
+					})
+					.catch(() => {
+						/* best effort */
+					});
+				return;
 			}
-			state.chitraguptaPredictions.value = predictions ?? [];
-		}),
-	);
 
-	notificationUnsubs.push(
-		socket.onNotification("evolve_request", (params) => {
-			const type = params.type as string;
+			const directiveKey = `anomaly:${type}:${severity}:${suggestion ?? ""}`;
+			if (agentRunner?.isRunning && !wasRecentlyHandled(directiveKey)) {
+				const directive = suggestion
+					? `Chitragupta anomaly alert: ${type} (${severity}). ${suggestion}. Avoid repeating the failing path.`
+					: `Chitragupta anomaly alert: ${type} (${severity}). Adjust the current approach to stabilize the run.`;
+				enqueueDirective(
+					state,
+					directive,
+					severity === "critical" ? SteeringPriority.INTERRUPT : SteeringPriority.HIGH,
+					{ source: "chitragupta", method: "anomaly_alert", type },
+				);
+			}
+		},
+		onPatternDetected: (params) => {
+			const type = String(params.type ?? "pattern");
+			const confidence = Number(params.confidence ?? 0);
+			state.chitraguptaLastPattern.value = {
+				type,
+				confidence: Number.isFinite(confidence) ? confidence : 0,
+				at: Date.now(),
+			};
+
+			const suggestion = typeof params.suggestion === "string" ? params.suggestion : undefined;
+			if (
+				agentRunner?.isRunning &&
+				suggestion &&
+				confidence >= 0.85 &&
+				!wasRecentlyHandled(`pattern:${type}:${suggestion}`)
+			) {
+				enqueueDirective(state, `Chitragupta pattern detected: ${suggestion}`, SteeringPriority.NORMAL, {
+					source: "chitragupta",
+					method: "pattern_detected",
+					type,
+				});
+			}
+		},
+		onPrediction: (params) => {
+			const predictions = normalizePredictions(params as unknown as Record<string, unknown>);
+			state.chitraguptaPredictions.value = predictions.map((prediction) => ({
+				action: prediction.action ?? (prediction.files?.length ? prediction.files.join(", ") : prediction.type),
+				confidence: prediction.confidence,
+			}));
+
+			const top = predictions[0];
+			if (!agentRunner?.isRunning || !top) return;
+
+			if (top.type === "failure_warning" && (top.risk ?? top.confidence) >= 0.8) {
+				const key = `prediction:failure:${top.action ?? top.type}`;
+				if (!wasRecentlyHandled(key)) {
+					enqueueDirective(
+						state,
+						top.suggestion
+							? `Chitragupta warns the current path may fail. ${top.suggestion}`
+							: `Chitragupta warns the current path may fail. Choose a safer next step.`,
+						SteeringPriority.INTERRUPT,
+						{ source: "chitragupta", method: "prediction", type: top.type },
+					);
+				}
+				return;
+			}
+
+			if (top.confidence >= 0.85) {
+				const summary = top.action
+					? `next action "${top.action}"`
+					: top.files?.length
+						? `likely files ${top.files.join(", ")}`
+						: top.type;
+				const key = `prediction:${summary}`;
+				if (!wasRecentlyHandled(key)) {
+					enqueueDirective(
+						state,
+						`Chitragupta predicts ${summary}. ${top.reasoning ?? "Use this as guidance for the next turn."}`,
+						SteeringPriority.HIGH,
+						{ source: "chitragupta", method: "prediction", type: top.type },
+					);
+				}
+			}
+		},
+		onEvolveRequest: (params) => {
+			const type = String(params.type ?? "evolve_request");
 			log.info(`Chitragupta evolve request: ${type}`);
-			state.chitraguptaEvolveQueue.value = [...state.chitraguptaEvolveQueue.value, params];
-		}),
-	);
-
-	notificationUnsubs.push(
-		socket.onNotification("preference_update", (params) => {
-			const key = params.key as string;
-			const value = params.value as string;
+			state.chitraguptaEvolveQueue.value = [
+				...state.chitraguptaEvolveQueue.value,
+				params as unknown as Record<string, unknown>,
+			];
+			if (agentRunner?.isRunning && !wasRecentlyHandled(`evolve:${type}`)) {
+				enqueueDirective(state, `Chitragupta evolve request: adapt behavior for ${type}.`, SteeringPriority.HIGH, {
+					source: "chitragupta",
+					method: "evolve_request",
+					type,
+				});
+			}
+		},
+		onPreferenceUpdate: (params) => {
+			const key = String(params.key ?? "").trim();
+			const value = String(params.value ?? "").trim();
+			if (!key || !value) return;
 			log.info(`Chitragupta preference update: ${key}=${value}`);
-		}),
-	);
+			if (key === "theme") {
+				state.theme.value = value;
+			}
+			if (agentRunner?.isRunning && !wasRecentlyHandled(`preference:${key}:${value}`, 30_000)) {
+				enqueueDirective(state, `Honor learned preference from Chitragupta: ${key}=${value}.`, SteeringPriority.LOW, {
+					source: "chitragupta",
+					method: "preference_update",
+					key,
+				});
+			}
+		},
+	});
 
-	log.info("Subscribed to Chitragupta daemon notifications");
+	log.info("Subscribed to Chitragupta daemon notifications via observer");
 }
 
 function loadMcpConfig(): { command: string; args: string[] } | null {
@@ -113,12 +272,10 @@ export function connectChitragupta(
 			startedAt = Date.now();
 			log.info("Chitragupta bridge connected");
 
-			// Subscribe to server-push notifications (anomaly, pattern, prediction, etc.)
-			subscribeToNotifications(state, bridge);
-
 			// Phase 49 — Create observer for observation dispatch & prediction queries
 			const observer = new ChitraguptaObserver(bridge);
 			state.chitraguptaObserver.value = observer;
+			subscribeToNotifications(state, observer, agentRunner);
 
 			if (agentRunner) {
 				const tools = agentRunner.getTools();
@@ -240,10 +397,6 @@ export function connectChitragupta(
 export async function disconnectChitragupta(state: AppState): Promise<void> {
 	const bridge = state.chitraguptaBridge.value;
 	if (!bridge || !bridge.isConnected) return;
-
-	// Unsubscribe from daemon notifications
-	for (const unsub of notificationUnsubs) unsub();
-	notificationUnsubs.length = 0;
 
 	// Phase 49 — Teardown observer notification subscriptions
 	state.chitraguptaObserver.value?.teardown();

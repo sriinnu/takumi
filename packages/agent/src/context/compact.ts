@@ -134,6 +134,14 @@ export interface PayloadCompactOptions {
 	preserveSystem: boolean;
 }
 
+export interface PayloadCompactionResult {
+	messages: MessagePayload[];
+	summary: string;
+	compactedMessages: MessagePayload[];
+	preservedMessages: MessagePayload[];
+	keptMessages: MessagePayload[];
+}
+
 export const DEFAULT_COMPACT_OPTIONS: PayloadCompactOptions = {
 	maxTokens: 200_000,
 	threshold: 0.8,
@@ -217,10 +225,23 @@ export function compactMessages(
 	messages: MessagePayload[],
 	options: Partial<PayloadCompactOptions> = {},
 ): MessagePayload[] {
+	return compactMessagesDetailed(messages, options).messages;
+}
+
+export function compactMessagesDetailed(
+	messages: MessagePayload[],
+	options: Partial<PayloadCompactOptions> = {},
+): PayloadCompactionResult {
 	const opts: PayloadCompactOptions = { ...DEFAULT_COMPACT_OPTIONS, ...options };
 
 	if (messages.length <= opts.preserveRecent) {
-		return messages;
+		return {
+			messages,
+			summary: "",
+			compactedMessages: [],
+			preservedMessages: [],
+			keptMessages: messages,
+		};
 	}
 
 	const splitIndex = messages.length - opts.preserveRecent;
@@ -287,7 +308,13 @@ export function compactMessages(
 
 	log.info(`Compaction complete: ${messages.length} -> ${result.length} messages`);
 
-	return result;
+	return {
+		messages: result,
+		summary: summaryText,
+		compactedMessages: toCompact,
+		preservedMessages,
+		keptMessages: toKeep,
+	};
 }
 
 /** Create a brief summary of a MessagePayload. */
