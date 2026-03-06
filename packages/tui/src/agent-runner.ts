@@ -11,9 +11,11 @@ import {
 	calculateContextPressure,
 	ExperienceMemory,
 	type ExtensionRunner,
+	MemoryHooks,
 	type MessagePayload,
 	ObservationCollector,
 	PermissionEngine,
+	PrincipleMemory,
 	type SteeringQueue,
 	type ToolRegistry,
 } from "@takumi/agent";
@@ -45,6 +47,8 @@ export class AgentRunner {
 	private conventionFiles: ConventionFiles | null;
 	private steeringQueue: SteeringQueue | null;
 	private experienceMemory = new ExperienceMemory();
+	private memoryHooks = new MemoryHooks({ cwd: process.cwd() });
+	private principleMemory = new PrincipleMemory(process.cwd());
 
 	readonly permissions: PermissionEngine;
 
@@ -70,6 +74,8 @@ export class AgentRunner {
 		this.extensionRunner = extensionRunner ?? null;
 		this.conventionFiles = conventionFiles ?? null;
 		this.steeringQueue = steeringQueue ?? null;
+		this.memoryHooks.load();
+		this.principleMemory.load();
 
 		// Set up permission engine with TUI prompt callback
 		this.permissions = new PermissionEngine();
@@ -163,6 +169,8 @@ export class AgentRunner {
 				steeringQueue: this.steeringQueue ?? undefined,
 				observationCollector: collector,
 				experienceMemory: this.experienceMemory,
+				memoryHooks: this.memoryHooks,
+				principleMemory: this.principleMemory,
 			});
 
 			let fullText = "";
@@ -279,6 +287,8 @@ export class AgentRunner {
 		} catch (err) {
 			log.error("Agent loop error", err);
 		} finally {
+			this.memoryHooks.save();
+			this.principleMemory.save();
 			this.state.isStreaming.value = false;
 			this.state.streamingText.value = "";
 			this.state.thinkingText.value = "";
