@@ -1,7 +1,14 @@
+import { mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentEvent, ToolDefinition, Usage } from "@takumi/core";
 import { describe, expect, it, vi } from "vitest";
+import { MemoryHooks } from "../src/context/memory-hooks.js";
+import { PrincipleMemory } from "../src/context/principles.js";
 import { type AgentLoopOptions, agentLoop, type MessagePayload } from "../src/loop.js";
 import { ToolRegistry } from "../src/tools/registry.js";
+
+const TEST_DIR = join(tmpdir(), "takumi-loop-principles-test");
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -14,6 +21,10 @@ function makeDef(name: string, overrides?: Partial<ToolDefinition>): ToolDefinit
 		category: "read",
 		...overrides,
 	};
+}
+
+function okHandler(output = "ok") {
+	return async () => ({ output, isError: false });
 }
 
 /** Collect all events from the agent loop into an array. */
@@ -739,6 +750,76 @@ describe("agentLoop", () => {
 
 			// Default prompt includes "Takumi"
 			expect(capturedSystem).toContain("Takumi");
+		});
+
+		it("injects recalled lessons and principles into the system prompt", async () => {
+			mkdirSync(TEST_DIR, { recursive: true });
+			const hooks = new MemoryHooks({ cwd: TEST_DIR, projectId: "loop-test" });
+			hooks.load();
+			hooks.extract({ type: "config_discovery", details: "use vitest for verification" });
+
+			const principles = new PrincipleMemory(TEST_DIR);
+			principles.load();
+			principles.observeTurn({
+				request: "run tests after editing",
+				toolNames: ["read_file", "edit_file", "bash"],
+				toolCategories: ["read", "write", "execute"],
+				hadError: false,
+				finalResponse: "Tests passed.",
+			});
+
+			let capturedSystem = "";
+			const sendMessage: AgentLoopOptions["sendMessage"] = async function* (_messages, system) {
+				capturedSystem = system;
+				yield { type: "done" as const, stopReason: "end_turn" as const };
+			};
+
+			await collectEvents("verify the edit", [], {
+				sendMessage,
+				tools: createRegistry(),
+				memoryHooks: hooks,
+				principleMemory: principles,
+			});
+
+			expect(capturedSystem).toContain("## Lessons from previous sessions");
+			expect(capturedSystem).toContain("## Self-Evolving Principles");
+			rmSync(TEST_DIR, { recursive: true, force: true });
+		});
+	});
+
+	describe("dynamic tool selection", () => {
+		it("passes query-relevant tools to the provider", async () => {
+			const registry = new ToolRegistry();
+			for (const tool of [
+				makeDef("ask", { category: "read" }),
+				makeDef("read_file", { category: "read", description: "Read file content" }),
+				makeDef("grep", { category: "read", description: "Search the repo" }),
+				makeDef("edit_file", { category: "write", description: "Edit files" }),
+				makeDef("write_file", { category: "write", description: "Write files" }),
+				makeDef("bash", { category: "execute", description: "Run tests" }),
+				makeDef("lint", { category: "execute", description: "Lint the repo" }),
+				makeDef("docs", { category: "read", description: "Read docs" }),
+				makeDef("mcp", { category: "read", description: "External tool" }),
+			]) {
+				registry.register(tool, okHandler());
+			}
+
+			let capturedTools: ToolDefinition[] = [];
+			const sendMessage: AgentLoopOptions["sendMessage"] = async function* (_messages, _system, tools) {
+				capturedTools = tools ?? [];
+				yield { type: "done" as const, stopReason: "end_turn" as const };
+			};
+
+			await collectEvents("search the code, edit the file, then run tests", [], {
+				sendMessage,
+				tools: registry,
+			});
+
+			const names = capturedTools.map((tool) => tool.name);
+			expect(names).toContain("ask");
+			expect(names).toContain("grep");
+			expect(names).toContain("edit_file");
+			expect(names).toContain("bash");
 		});
 	});
 
