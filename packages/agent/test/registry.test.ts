@@ -198,6 +198,46 @@ describe("ToolRegistry", () => {
 		});
 	});
 
+	/* ---- rank/select definitions ---------------------------------------- */
+
+	describe("rankDefinitions/selectDefinitions", () => {
+		it("ranks edit and execute tools ahead of unrelated tools for a fix query", () => {
+			const reg = new ToolRegistry();
+			reg.register(makeDef("read_file", { category: "read", description: "Inspect a file" }), okHandler());
+			reg.register(makeDef("edit_file", { category: "write", description: "Patch a file" }), okHandler());
+			reg.register(makeDef("bash", { category: "execute", description: "Run tests and builds" }), okHandler());
+			reg.register(makeDef("ask", { category: "read", description: "Ask the user" }), okHandler());
+
+			const ranked = reg.rankDefinitions("fix the failing test and patch the file");
+			expect(ranked.slice(0, 2).map((entry) => entry.tool.name)).toEqual(expect.arrayContaining(["bash", "edit_file"]));
+		});
+
+		it("selects a limited working set while preserving ask and relevant category coverage", () => {
+			const reg = new ToolRegistry();
+			for (const tool of [
+				makeDef("ask", { category: "read" }),
+				makeDef("read_file", { category: "read", description: "Read files" }),
+				makeDef("grep", { category: "read", description: "Search code" }),
+				makeDef("edit_file", { category: "write", description: "Edit source files" }),
+				makeDef("write_file", { category: "write", description: "Write source files" }),
+				makeDef("bash", { category: "execute", description: "Run tests" }),
+				makeDef("lint", { category: "execute", description: "Lint code" }),
+				makeDef("docs", { category: "read", description: "Read docs" }),
+				makeDef("mcp", { category: "read", description: "External tool" }),
+			]) {
+				reg.register(tool, okHandler());
+			}
+
+			const selected = reg.selectDefinitions("search the code, edit the file, then run tests", { limit: 5 });
+			const names = selected.map((tool) => tool.name);
+			expect(names).toContain("ask");
+			expect(names).toContain("grep");
+			expect(names).toContain("edit_file");
+			expect(names).toContain("bash");
+			expect(selected.length).toBeGreaterThanOrEqual(4);
+		});
+	});
+
 	/* ---- execute --------------------------------------------------------- */
 
 	describe("execute", () => {

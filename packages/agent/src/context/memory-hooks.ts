@@ -182,6 +182,28 @@ export class MemoryHooks {
 		this.lessons = [];
 	}
 
+	observeSuccess(request: string, toolNames: string[]): Lesson[] {
+		const lessons: Lesson[] = [];
+		const requestLower = request.toLowerCase();
+		if (toolNames.some((name) => name === "grep" || name === "glob") && /find|search|trace|locate/.test(requestLower)) {
+			const lesson = this.extract({
+				type: "config_discovery",
+				details: "search-first workflows should narrow the codebase before editing",
+			});
+			if (lesson) lessons.push(lesson);
+		}
+
+		if (toolNames.some((name) => name === "bash") && /test|verify|build|lint|check/.test(requestLower)) {
+			const lesson = this.extract({
+				type: "config_discovery",
+				details: "verification tasks should end with an executable command",
+			});
+			if (lesson) lessons.push(lesson);
+		}
+
+		return lessons;
+	}
+
 	// ── Internal ─────────────────────────────────────────────────────────────
 
 	private formatLesson(event: ExtractionEvent): string | null {

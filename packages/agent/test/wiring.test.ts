@@ -206,6 +206,8 @@ describe("ConventionFiles type", () => {
 		expect(typeof mod.loadSkills).toBe("function");
 		expect(typeof mod.buildSkillsPrompt).toBe("function");
 		expect(typeof mod.selectSkillsForPrompt).toBe("function");
+		expect(typeof mod.PrincipleMemory).toBe("function");
+		expect(typeof mod.selectToolDefinitions).toBe("function");
 	});
 });
 

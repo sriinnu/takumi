@@ -20,11 +20,13 @@ import {
 } from "./context/compact.js";
 import type { ExperienceMemory } from "./context/experience-memory.js";
 import type { MemoryHooks } from "./context/memory-hooks.js";
+import type { PrincipleMemory } from "./context/principles.js";
 import type { PromptCache } from "./context/prompt-cache.js";
 import type { BudgetGuard } from "./cost.js";
 import { BudgetExceededError } from "./cost.js";
 import type { ExtensionRunner } from "./extensions/extension-runner.js";
-import { buildSystemPrompt, buildToolResult, buildUserMessage } from "./message.js";
+import { buildEnrichedSystemPrompt, mergeExtensionTools, selectTurnTools } from "./loop-support.js";
+import { buildToolResult, buildUserMessage } from "./message.js";
 import type { ObservationCollector } from "./observation-collector.js";
 import { type RetryOptions, withRetry } from "./retry.js";
 import type { SteeringQueue } from "./steering-queue.js";
@@ -86,6 +88,9 @@ export interface AgentLoopOptions {
 
 	/** Optional indexed experience memory — stores compaction summaries and tool runtime state. */
 	experienceMemory?: ExperienceMemory;
+
+	/** Optional principle memory — extracts reusable principles from successful turns. */
+	principleMemory?: PrincipleMemory;
 }
 
 export interface MessagePayload {
@@ -121,46 +126,19 @@ export async function* agentLoop(
 		maxContextTokens = 200_000,
 	} = options;
 
-	// Merge extension-registered tools into the registry
 	const ext = options.extensionRunner;
-	if (ext) {
-		for (const [name, { tool }] of ext.getAllTools()) {
-			if (!tools.has(name)) {
-				tools.register(
-					{
-						name: tool.name,
-						description: tool.description,
-						inputSchema: tool.inputSchema,
-						requiresPermission: tool.requiresPermission,
-						category: tool.category,
-					},
-					async (args, signal) => {
-						const ctx = ext.createContext();
-						return tool.execute(args, signal, ctx);
-					},
-				);
-			}
-		}
-	}
+	mergeExtensionTools(tools, ext);
 
 	const toolDefs = tools.getDefinitions();
-	const system = systemPrompt ?? buildSystemPrompt(toolDefs);
-
-	// Phase 33 — inject recalled lessons into system prompt
-	let enrichedSystem = system;
-	if (options.memoryHooks) {
-		const lessons = options.memoryHooks.recall("", 5);
-		const lessonBlock = options.memoryHooks.formatForPrompt(lessons);
-		if (lessonBlock) {
-			enrichedSystem = `${system}\n\n${lessonBlock}`;
-		}
-	}
-	// Push the new user message directly onto the caller's history array.
-	// This ensures that after agentLoop returns, `history` contains the full
-	// turn including all intermediate tool-call / tool-result pairs — not just
-	// the final assistant text. Subsequent turns therefore have complete context.
+	const enrichedSystem = buildEnrichedSystemPrompt(
+		toolDefs,
+		userMessage,
+		systemPrompt,
+		options.memoryHooks,
+		options.principleMemory,
+	);
+	// Push onto caller history so subsequent turns retain the full tool/result context.
 	history.push({ role: "user", content: buildUserMessage(userMessage) });
-	// messages is an alias for history — all .push() calls below mutate history.
 	const messages: MessagePayload[] = history;
 
 	// Cumulative token tracking from usage_update events
@@ -181,6 +159,8 @@ export async function* agentLoop(
 		if (ext) {
 			void ext.emit({ type: "turn_start", turnIndex: turn, timestamp: Date.now() });
 		}
+
+		const selectedToolDefs = selectTurnTools(tools, userMessage, messages, options.experienceMemory);
 
 		// Context compaction check before each turn
 		if (compactOptions !== false) {
@@ -211,18 +191,13 @@ export async function* agentLoop(
 		let stopReason: string | undefined;
 		let _usage: Usage | undefined;
 
-		// Phase 45 — emit context transform (extensions can modify messages)
-		// We skip this for the raw MessagePayload[] — extensions get Message[] in the
-		// higher-level AgentRunner emit. Here we emit message_update events during streaming.
-
 		// Phase 34 — Check prompt cache before LLM call (only for non-tool-result turns)
 		const cacheKey =
 			options.promptCache && turn === 1
-				? options.promptCache.computeKey(
-						options.model ?? "unknown",
-						enrichedSystem,
-						messages.map((m) => JSON.stringify(m.content)),
-					)
+				? options.promptCache.computeKey(options.model ?? "unknown", enrichedSystem, [
+						...messages.map((m) => JSON.stringify(m.content)),
+						`tools:${selectedToolDefs.map((tool) => tool.name).join(",")}`,
+					])
 				: null;
 
 		if (cacheKey && options.promptCache) {
@@ -251,12 +226,14 @@ export async function* agentLoop(
 								// Materialize the async iterable; the retry applies
 								// to the initial call (HTTP request). Once we get
 								// the iterable back, we consume it outside the retry.
-								const iterable = sendMessage(messages, system, toolDefs);
+								const iterable = sendMessage(messages, enrichedSystem, selectedToolDefs, signal, {
+									model: options.model,
+								});
 								return iterable;
 							},
 							typeof retryOptions === "object" ? retryOptions : undefined,
 						)
-					: sendMessage(messages, system, toolDefs);
+					: sendMessage(messages, enrichedSystem, selectedToolDefs, signal, { model: options.model });
 
 			for await (const event of stream) {
 				yield event;
@@ -404,6 +381,25 @@ export async function* agentLoop(
 					details: `tool "${name}" failed: ${typeof result.output === "string" ? result.output.slice(0, 120) : "error"}`,
 				});
 			}
+		}
+
+		if (options.memoryHooks && toolResults.every((entry) => !entry.result.isError)) {
+			options.memoryHooks.observeSuccess(
+				userMessage,
+				toolResults.map((entry) => entry.name),
+			);
+		}
+		if (options.principleMemory) {
+			const toolCategories = toolResults
+				.map((entry) => tools.getDefinition(entry.name)?.category)
+				.filter((value): value is NonNullable<ToolDefinition["category"]> => value !== undefined);
+			options.principleMemory.observeTurn({
+				request: userMessage,
+				toolNames: toolResults.map((entry) => entry.name),
+				toolCategories,
+				hadError: toolResults.some((entry) => entry.result.isError),
+				finalResponse: fullText,
+			});
 		}
 
 		// Add tool results to message history
