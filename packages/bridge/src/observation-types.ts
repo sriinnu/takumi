@@ -84,19 +84,6 @@ export interface PatternDetectedNotification {
 	suggestion?: string;
 }
 
-/** Prediction notification — anticipates next action or needed files. */
-export interface PredictionNotification {
-	type: "next_action" | "likely_files" | "failure_warning";
-	/** For next_action: tool/command name. For likely_files: file paths. */
-	action?: string;
-	files?: string[];
-	/** Risk level for failure_warning */
-	risk?: number;
-	pastFailures?: number;
-	confidence: number;
-	reasoning: string;
-}
-
 /** Anomaly alert — error spikes, cost trajectory, infinite loops. */
 export interface AnomalyAlertNotification {
 	type: "error_spike" | "loop_detected" | "cost_trajectory";
@@ -143,11 +130,19 @@ export interface PredictionResult {
 	files?: string[];
 	risk?: number;
 	confidence: number;
-	reasoning: string;
+	reasoning?: string;
+	pastFailures?: number;
+	suggestion?: string;
 }
 
 /** predict.next() result */
 export interface PredictNextResult {
+	predictions: PredictionResult[];
+}
+
+/** Prediction notification — proactive envelope carrying one or more predictions. */
+export interface PredictionNotification {
+	type: "next_action" | "likely_files" | "failure_warning";
 	predictions: PredictionResult[];
 }
 
