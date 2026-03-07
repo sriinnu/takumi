@@ -1,0 +1,108 @@
+import { AgentRole } from "@takumi/agent";
+import type { ChitraguptaObserver, RoutingDecision } from "@takumi/bridge";
+import { describe, expect, it, vi } from "vitest";
+import { resolveRoutingOverrides } from "../src/coding-agent-routing.js";
+
+function makeDecision(overrides: Partial<RoutingDecision> = {}): RoutingDecision {
+	return {
+		request: {
+			consumer: "takumi",
+			sessionId: "s1",
+			capability: "coding.patch-and-validate",
+		},
+		selected: {
+			id: "llm.anthropic.sonnet",
+			kind: "llm",
+			label: "Anthropic Sonnet",
+			capabilities: ["coding.patch-and-validate"],
+			costClass: "medium",
+			trust: "cloud",
+			health: "healthy",
+			providerFamily: "anthropic",
+			invocation: {
+				id: "anthropic-api",
+				transport: "http",
+				entrypoint: "https://api.anthropic.com",
+				requestShape: "chat.completions",
+				responseShape: "stream",
+				timeoutMs: 30_000,
+				streaming: true,
+			},
+			tags: ["chat"],
+			metadata: { model: "claude-sonnet-4-5" },
+		},
+		reason: "Selected llm.anthropic.sonnet",
+		fallbackChain: [],
+		policyTrace: ["selected:llm.anthropic.sonnet"],
+		degraded: false,
+		...overrides,
+	};
+}
+
+describe("resolveRoutingOverrides", () => {
+	it("returns empty overrides when no observer is available", async () => {
+		const result = await resolveRoutingOverrides({
+			observer: null,
+			sessionId: "s1",
+			currentModel: "claude-sonnet-4-5",
+		});
+		expect(result).toEqual({ overrides: {}, decisions: [], notes: [] });
+	});
+
+	it("applies same-provider engine-selected models to matching roles", async () => {
+		const observer = {
+			routeResolve: vi
+				.fn()
+				.mockResolvedValueOnce(makeDecision())
+				.mockResolvedValueOnce(
+					makeDecision({
+						request: { consumer: "takumi", sessionId: "s1", capability: "chat.high-reliability" },
+						selected: {
+							...makeDecision().selected!,
+							id: "llm.anthropic.haiku",
+							metadata: { model: "claude-haiku-4-20250514" },
+						},
+					}),
+				),
+		} as unknown as ChitraguptaObserver;
+
+		const result = await resolveRoutingOverrides({
+			observer,
+			sessionId: "s1",
+			currentModel: "claude-sonnet-4-20250514",
+		});
+
+		expect(result.overrides[AgentRole.WORKER]).toBe("claude-sonnet-4-5");
+		expect(result.overrides[AgentRole.PLANNER]).toBe("claude-haiku-4-20250514");
+		expect(result.overrides[AgentRole.VALIDATOR_CODE]).toBe("claude-haiku-4-20250514");
+		expect(result.decisions).toHaveLength(2);
+		expect(result.notes).toContain("Engine route coding.patch-and-validate → llm.anthropic.sonnet");
+	});
+
+	it("keeps routing notes but skips cross-provider overrides", async () => {
+		const observer = {
+			routeResolve: vi
+				.fn()
+				.mockResolvedValueOnce(
+					makeDecision({
+						selected: {
+							...makeDecision().selected!,
+							providerFamily: "openai",
+							metadata: { model: "gpt-4o" },
+						},
+					}),
+				)
+				.mockResolvedValueOnce(null),
+		} as unknown as ChitraguptaObserver;
+
+		const result = await resolveRoutingOverrides({
+			observer,
+			sessionId: "s1",
+			currentModel: "claude-sonnet-4-20250514",
+		});
+
+		expect(result.overrides[AgentRole.WORKER]).toBeUndefined();
+		expect(result.decisions).toHaveLength(1);
+		expect(result.notes).toContain("Engine route coding.patch-and-validate → llm.anthropic.sonnet");
+	});
+});

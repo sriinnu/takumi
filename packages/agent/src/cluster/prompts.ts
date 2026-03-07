@@ -11,6 +11,8 @@
  * @see {@link AgentRole} for role definitions
  */
 
+import { getTopologyGuidance } from "./mesh-policy.js";
+import type { ClusterTopology } from "./types.js";
 import { AgentRole } from "./types.js";
 
 // ─── Base ────────────────────────────────────────────────────────────────────
@@ -35,7 +37,9 @@ const BASE =
  * @param role - The validator agent's assigned role.
  * @returns A fully formed system-prompt string ready to pass to the LLM.
  */
-export function getValidatorPrompt(role: AgentRole): string {
+
+export function getValidatorPrompt(role: AgentRole, topology: ClusterTopology = "hierarchical"): string {
+	const guidance = `\n\n${getTopologyGuidance(topology, "validator")}`;
 	switch (role) {
 		case AgentRole.VALIDATOR_REQUIREMENTS:
 			return (
@@ -44,7 +48,7 @@ export function getValidatorPrompt(role: AgentRole): string {
 				"Check for:\n" +
 				"- Completeness: are all requirements addressed?\n" +
 				"- Correctness: does it do exactly what was asked?\n" +
-				"- Edge cases: are boundary conditions handled?"
+				`- Edge cases: are boundary conditions handled?${guidance}`
 			);
 
 		case AgentRole.VALIDATOR_CODE:
@@ -55,7 +59,7 @@ export function getValidatorPrompt(role: AgentRole): string {
 				"- Style consistency and naming conventions\n" +
 				"- Error handling and null-safety\n" +
 				"- Code duplication and unnecessary complexity\n" +
-				"- JSDoc comments on public APIs"
+				`- JSDoc comments on public APIs${guidance}`
 			);
 
 		case AgentRole.VALIDATOR_SECURITY:
@@ -67,7 +71,7 @@ export function getValidatorPrompt(role: AgentRole): string {
 				"- Credential or secret exposure\n" +
 				"- Missing input validation or sanitisation\n" +
 				"- Auth/authorisation gaps\n" +
-				"- Dependency CVEs or unsafe APIs"
+				`- Dependency CVEs or unsafe APIs${guidance}`
 			);
 
 		case AgentRole.VALIDATOR_TESTS:
@@ -78,7 +82,7 @@ export function getValidatorPrompt(role: AgentRole): string {
 				"- Tests exist for every public function/class\n" +
 				"- Edge cases and unhappy paths are covered\n" +
 				"- Assertions are meaningful (not just truthy checks)\n" +
-				"- Integration or end-to-end coverage where relevant"
+				`- Integration or end-to-end coverage where relevant${guidance}`
 			);
 
 		case AgentRole.VALIDATOR_ADVERSARIAL:
@@ -90,11 +94,11 @@ export function getValidatorPrompt(role: AgentRole): string {
 				"- Race conditions and concurrency bugs\n" +
 				"- Resource exhaustion (memory leaks, infinite loops)\n" +
 				"- Error propagation and unhandled rejections\n" +
-				"- Failure modes that could cascade"
+				`- Failure modes that could cascade${guidance}`
 			);
 
 		default:
-			return BASE;
+			return `${BASE}${guidance}`;
 	}
 }
 
@@ -104,7 +108,7 @@ export function getValidatorPrompt(role: AgentRole): string {
  * System prompt for the planner agent.
  * Produces a structured plan consumed by the worker.
  */
-export const PLANNER_PROMPT =
+const PLANNER_PROMPT_BASE =
 	"You are a planning agent in a multi-agent coding system.\n" +
 	"Analyse the task and produce a detailed, step-by-step implementation plan.\n\n" +
 	"Break the plan into:\n" +
@@ -115,6 +119,10 @@ export const PLANNER_PROMPT =
 	"You can use the `akasha_deposit` tool to share important architectural decisions or context with the worker and validators.\n" +
 	"Be precise — the worker agent will execute your plan verbatim.";
 
+export function getPlannerPrompt(topology: ClusterTopology = "hierarchical"): string {
+	return `${PLANNER_PROMPT_BASE}\n\n${getTopologyGuidance(topology, "planner")}`;
+}
+
 // ─── Worker Prompt ───────────────────────────────────────────────────────────
 
 /**
@@ -123,7 +131,7 @@ export const PLANNER_PROMPT =
  * @param hasPlan - Whether a planner produced a plan to follow.
  * @returns System prompt string.
  */
-export function getWorkerPrompt(hasPlan: boolean): string {
+export function getWorkerPrompt(hasPlan: boolean, topology: ClusterTopology = "hierarchical"): string {
 	return (
 		"You are a worker agent in a multi-agent coding system.\n" +
 		"Implement the task precisely and thoroughly.\n\n" +
@@ -134,7 +142,7 @@ export function getWorkerPrompt(hasPlan: boolean): string {
 		"After implementation:\n" +
 		"1. Run the build to confirm zero type errors\n" +
 		"2. Run tests to verify correctness\n" +
-		"3. Summarise all files changed"
+		`3. Summarise all files changed\n\n${getTopologyGuidance(topology, "worker")}`
 	);
 }
 
@@ -143,6 +151,10 @@ export function getWorkerPrompt(hasPlan: boolean): string {
 /**
  * System prompt for the fixing phase (worker addressing validator rejections).
  */
-export const FIXER_PROMPT =
+const FIXER_PROMPT_BASE =
 	"You are fixing issues identified by independent validator agents.\n" +
 	"Address every issue carefully and thoroughly before re-submitting.";
+
+export function getFixerPrompt(topology: ClusterTopology = "hierarchical"): string {
+	return `${FIXER_PROMPT_BASE}\n\n${getTopologyGuidance(topology, "fixer")}`;
+}

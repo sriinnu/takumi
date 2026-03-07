@@ -28,6 +28,52 @@ ClusterOrchestrator.execute(task)
   └─ DONE / FAILED
 ```
 
+## From cluster to bounded mesh
+
+The current implementation is cluster-oriented, but the architectural direction
+should be a **bounded peer mesh**.
+
+That means the orchestrator is not only spawning roles; it is shaping a
+topology for how those roles exchange evidence and challenge one another.
+
+### Why mesh, not only hierarchy
+
+A strict hierarchy is simple, but brittle:
+
+- planners can become bottlenecks
+- validators arrive too late in the run
+- workers can optimize for planner approval rather than actual correctness
+
+A bounded mesh improves this by allowing controlled peer exchange during the
+run:
+
+- planner ↔ worker for intent clarification
+- worker ↔ validator for early correctness pressure
+- validator ↔ validator for adversarial comparison
+- specialist ↔ specialist for local evidence sharing
+
+### Topologies
+
+| Topology | Shape | Use when |
+|----------|-------|----------|
+| hierarchy | planner-centered tree | low ambiguity, cheap tasks |
+| council | deliberative peer rounds | architecture and design trade-offs |
+| swarm | many parallel workers with weak coupling | exploration and search |
+| adversarial mesh | workers under continuous validator pressure | correctness / security-critical tasks |
+| healing mesh | peers replaced or isolated dynamically | degraded runs, instability, anomaly recovery |
+
+The orchestrator should eventually choose topology the same way it chooses
+strategy: as a policy decision, not a hardcoded shape.
+
+### Mesh invariants
+
+Even in a mesh, four invariants remain:
+
+1. Chitragupta remains the control plane.
+2. Mesh coordination is runtime state, not canonical truth.
+3. Durable memory only receives promoted conclusions.
+4. Integrity signals can override mesh autonomy.
+
 ## Key Components
 
 ### ClusterOrchestrator (`cluster/orchestrator.ts`)
@@ -84,6 +130,49 @@ Six research-backed strategies are integrated and selectable per-run:
 
 All strategies are gated behind `OrchestrationConfig` flags and can be
 enabled/disabled independently.
+
+## Lucy and Scarlett in orchestration
+
+Multi-agent orchestration should not be thought of as raw parallelism.
+Two higher-order concepts govern where Takumi goes next.
+
+### Lucy — cognitive progression
+
+Lucy describes the maturity of orchestration behavior:
+
+| Lucy level | Orchestration meaning |
+|------------|------------------------|
+| reflex | route events and tools quickly |
+| learn | remember which topologies and validator mixes work |
+| evolve | generate better strategies, extension packs, or role mixes |
+| intuition | predict likely next failures or missing files before they happen |
+| self-heal | reconfigure or collapse the mesh when instability rises |
+
+Lucy is what turns orchestration from “many agents” into “cumulative collective reasoning.”
+
+### Scarlett — integrity supervision
+
+Scarlett is the guardrail over orchestration quality:
+
+- detects route degradation
+- detects peer instability
+- detects repeated-failure loops
+- detects anomalous cost or context growth
+- escalates weak consensus or compromised runs
+
+In practice, Scarlett should influence orchestration policy by:
+
+- reducing mesh width during degraded operation
+- requiring stronger consensus before promotion
+- quarantining unstable peers or tools
+- escalating to Sabha or human review when trust falls below threshold
+
+### Combined effect
+
+Lucy expands orchestration capability.
+Scarlett preserves orchestration trust.
+
+That pair is the real architectural upgrade path for Takumi's future mesh.
 
 ## Bandit Strategy Selection
 

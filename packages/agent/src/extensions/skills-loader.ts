@@ -1,10 +1,15 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
 
 const IGNORED_DIR_NAMES = new Set([".git", "node_modules", "dist", "build", "coverage", ".next"]);
 
-type SkillSource = "project" | "global";
+export type SkillSource = "project" | "global" | "package";
+
+export interface SkillRoot {
+	path: string;
+	source: SkillSource;
+}
 
 export interface LoadedSkill {
 	name: string;
@@ -29,9 +34,10 @@ interface SkillFrontmatter {
 	tags?: string[];
 }
 
-export function loadSkills(cwd: string): LoadedSkillsResult {
-	const roots: Array<{ path: string; source: SkillSource }> = [
+export function loadSkills(cwd: string, extraRoots: SkillRoot[] = []): LoadedSkillsResult {
+	const roots: SkillRoot[] = [
 		{ path: join(homedir(), ".takumi", "skills"), source: "global" },
+		...extraRoots,
 		{ path: join(cwd, ".takumi", "skills"), source: "project" },
 	];
 	const skillsByKey = new Map<string, LoadedSkill>();
@@ -41,7 +47,8 @@ export function loadSkills(cwd: string): LoadedSkillsResult {
 			continue;
 		}
 
-		for (const filePath of walkSkillFiles(root.path)) {
+		const skillFiles = statSync(root.path).isDirectory() ? walkSkillFiles(root.path) : [root.path];
+		for (const filePath of skillFiles) {
 			const skill = parseSkillFile(filePath, root.source);
 			if (!skill) {
 				continue;
@@ -72,7 +79,7 @@ export function buildSkillsPrompt(skills: LoadedSkill[], userText?: string, limi
 	if (selected.length > 0) {
 		lines.push("Activated skills:");
 		for (const skill of selected) {
-			const source = skill.source === "project" ? "project" : "global";
+			const source = skill.source === "project" ? "project" : skill.source === "package" ? "package" : "global";
 			lines.push(`- ${skill.name} (${source}): ${skill.description}`);
 			lines.push(indentBlock(trimForPrompt(skill.prompt, 700), "  "));
 		}

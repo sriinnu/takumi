@@ -347,7 +347,13 @@ export class ChitraguptaBridge {
 
 	/** Query sessions modified since a timestamp. */
 	async sessionModifiedSince(timestamp: number, project?: string): Promise<ChitraguptaSessionInfo[]> {
-		return ops.sessionModifiedSince(this._socket, this._socketMode, this.callTool.bind(this), timestamp, project);
+		return ops.sessionModifiedSince(
+			this._socket,
+			this._socketMode,
+			this.callTool.bind(this),
+			timestamp,
+			project ?? this.options.projectPath ?? process.cwd(),
+		);
 	}
 
 	/** Delete a session by ID. */

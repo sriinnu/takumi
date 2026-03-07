@@ -467,6 +467,8 @@ takumi (main) ──stdio──> chitragupta-mcp (child)
 
 Provides: memory search, session management, knowledge graph, behavioral patterns, handover protocol.
 
+The longer-term ownership model for providers, CLIs, routing, auth, and health is documented in [docs/control-plane-spec.md](docs/control-plane-spec.md).
+
 ### Darpana (LLM Proxy)
 
 Takumi connects to Darpana via HTTP for provider-agnostic LLM access:

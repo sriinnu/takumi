@@ -55,23 +55,55 @@ export async function loadDetachedJobs(): Promise<DetachedJobRecord[]> {
 	return records.sort((a, b) => b.startedAt - a.startedAt);
 }
 
-export async function cmdJobs(): Promise<void> {
+export interface DetachedJobView {
+	id: string;
+	pid: number;
+	state: string;
+	startedAt: number;
+	cwd: string;
+	logFile: string;
+	command?: string;
+	args?: string[];
+}
+
+export function toDetachedJobView(job: DetachedJobRecord): DetachedJobView {
+	const running = isProcessRunning(job.pid);
+	return {
+		id: job.id,
+		pid: job.pid,
+		state: running ? "running" : (job.status ?? "exited"),
+		startedAt: job.startedAt,
+		cwd: job.cwd,
+		logFile: job.logFile,
+		command: job.command,
+		args: job.args,
+	};
+}
+
+export async function cmdJobs(asJson = false): Promise<void> {
 	const jobs = await loadDetachedJobs();
 	if (jobs.length === 0) {
+		if (asJson) {
+			console.log(JSON.stringify([]));
+			return;
+		}
 		console.log("No detached jobs found.");
+		return;
+	}
+	if (asJson) {
+		console.log(JSON.stringify(jobs.map(toDetachedJobView), null, 2));
 		return;
 	}
 	console.log(`\nDetached jobs (${jobs.length}):\n`);
 	for (const j of jobs) {
-		const running = isProcessRunning(j.pid);
-		const state = running ? "running" : (j.status ?? "exited");
-		const date = new Date(j.startedAt).toLocaleString();
-		console.log(`  \x1b[1;36m${j.id}\x1b[0m`);
-		console.log(`    PID:     ${j.pid}`);
-		console.log(`    State:   ${state}`);
+		const view = toDetachedJobView(j);
+		const date = new Date(view.startedAt).toLocaleString();
+		console.log(`  \x1b[1;36m${view.id}\x1b[0m`);
+		console.log(`    PID:     ${view.pid}`);
+		console.log(`    State:   ${view.state}`);
 		console.log(`    Started: ${date}`);
-		console.log(`    CWD:     ${j.cwd}`);
-		console.log(`    Log:     ${j.logFile}`);
+		console.log(`    CWD:     ${view.cwd}`);
+		console.log(`    Log:     ${view.logFile}`);
 		console.log();
 	}
 }

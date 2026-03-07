@@ -4,6 +4,12 @@
  */
 
 import type { AppCommandContext } from "./app-command-context.js";
+import {
+	formatCapabilityHealthSnapshot,
+	formatRoutingDecision,
+	mergeControlPlaneCapabilities,
+} from "./control-plane-state.js";
+import { formatScarlettIntegrityReport } from "./scarlett-runtime.js";
 
 export function registerChitraguptaCommands(ctx: AppCommandContext): void {
 	ctx.commands.register("/day", "Temporal memory navigation", async (args) => {
@@ -326,11 +332,56 @@ export function registerChitraguptaCommands(ctx: AppCommandContext): void {
 				h.anomalies.length > 0
 					? h.anomalies.map((a) => `  • [${a.severity}] ${a.type}: ${a.details}`).join("\n")
 					: "  None";
+			const costTrajectory = `current=${h.costTrajectory.currentCost.toFixed(2)} dailyAvg=${h.costTrajectory.dailyAvg.toFixed(2)} projected=${h.costTrajectory.projectedCost.toFixed(2)}`;
 			ctx.addInfoMessage(
-				`## Extended Health\n• Error rate: ${(h.errorRate * 100).toFixed(1)}%\n• Cost trajectory: ${h.costTrajectory}\n• Anomalies:\n${anomalyLines}`,
+				`## Extended Health\n• Error rate: ${(h.errorRate * 100).toFixed(1)}%\n• Cost trajectory: ${costTrajectory}\n• Anomalies:\n${anomalyLines}`,
 			);
 		} catch (err) {
 			ctx.addInfoMessage(`❌ ${(err as Error).message}`);
 		}
 	});
+
+	ctx.commands.register("/capabilities", "Show current control-plane capabilities", async () => {
+		const observer = ctx.state.chitraguptaObserver.value;
+		if (!observer) return ctx.addInfoMessage("Chitragupta observer not available");
+
+		try {
+			const live = await observer.capabilities({ includeDegraded: true, includeDown: true, limit: 25 });
+			const capabilities = mergeControlPlaneCapabilities(live.capabilities);
+			ctx.state.controlPlaneCapabilities.value = capabilities;
+			if (capabilities.length === 0) return ctx.addInfoMessage("No capabilities available");
+			const lines = capabilities.map(
+				(capability) =>
+					`• **${capability.id}** — ${capability.kind} | ${capability.health} | ${capability.trust} | ${capability.capabilities.join(", ")}`,
+			);
+			ctx.addInfoMessage(`## Capabilities\n\n${lines.join("\n")}`);
+		} catch (err) {
+			ctx.addInfoMessage(`❌ ${(err as Error).message}`);
+		}
+	});
+
+	ctx.commands.register("/route", "Show recent routing decisions", async () => {
+		const decisions = ctx.state.routingDecisions.value;
+		if (decisions.length === 0) return ctx.addInfoMessage("No routing decisions recorded yet");
+		const lines = decisions
+			.slice(-5)
+			.reverse()
+			.map((decision, index) => `### ${index + 1}\n${formatRoutingDecision(decision)}`);
+		ctx.addInfoMessage(lines.join("\n\n"));
+	});
+
+	ctx.commands.register("/healthcaps", "Show capability health snapshots", async () => {
+		const snapshots = ctx.state.capabilityHealthSnapshots.value;
+		if (snapshots.length === 0) return ctx.addInfoMessage("No capability health snapshots available");
+		ctx.addInfoMessage(`## Capability Health\n\n${snapshots.map(formatCapabilityHealthSnapshot).join("\n\n")}`);
+	});
+
+	ctx.commands.register(
+		"/integrity",
+		"Show Scarlett integrity report",
+		async () => {
+			ctx.addInfoMessage(formatScarlettIntegrityReport(ctx.state.scarlettIntegrityReport.value));
+		},
+		["/scarlett"],
+	);
 }

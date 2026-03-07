@@ -1,6 +1,6 @@
 import type { CliArgs } from "./types.js";
 
-const SUBCOMMANDS = ["list", "status", "logs", "export", "delete", "jobs", "watch", "attach", "stop"];
+const SUBCOMMANDS = ["list", "status", "logs", "export", "delete", "jobs", "watch", "attach", "stop", "daemon", "doctor", "platform", "package"];
 
 export function parseArgs(argv: string[]): CliArgs {
 	const args: CliArgs = {
@@ -13,6 +13,8 @@ export function parseArgs(argv: string[]): CliArgs {
 		ship: false,
 		detach: false,
 		yes: false,
+		json: false,
+		fix: false,
 	};
 
 	let i = 2;
@@ -55,6 +57,12 @@ export function parseArgs(argv: string[]): CliArgs {
 				break;
 			case "--endpoint":
 				args.endpoint = argv[++i];
+				break;
+			case "--json":
+				args.json = true;
+				break;
+			case "--fix":
+				args.fix = true;
 				break;
 			case "--theme":
 				args.theme = argv[++i];

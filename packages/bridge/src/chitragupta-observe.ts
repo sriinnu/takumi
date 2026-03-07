@@ -4,10 +4,12 @@
  */
 
 import { createLogger } from "@takumi/core";
+import type { CapabilityQuery, CapabilityQueryResult, RoutingDecision, RoutingRequest } from "./control-plane.js";
 import type { DaemonSocketClient, NotificationHandler } from "./daemon-socket.js";
 import type {
 	AnomalyAlertNotification,
 	EvolveRequestNotification,
+	HealReportedNotification,
 	HealReportParams,
 	HealReportResult,
 	HealthStatusResult,
@@ -20,6 +22,20 @@ import type {
 	PredictNextParams,
 	PredictNextResult,
 	PreferenceUpdateNotification,
+	SabhaAskParams,
+	SabhaAskResult,
+	SabhaConsultNotification,
+	SabhaDeliberateParams,
+	SabhaDeliberateResult,
+	SabhaEscalatedNotification,
+	SabhaEscalateParams,
+	SabhaEscalateResult,
+	SabhaGatherParams,
+	SabhaGatherResult,
+	SabhaRecordedNotification,
+	SabhaRecordParams,
+	SabhaRecordResult,
+	SabhaUpdatedNotification,
 } from "./observation-types.js";
 
 const log = createLogger("chitragupta-observe");
@@ -129,6 +145,126 @@ export async function healReport(
 	return { recorded: false };
 }
 
+// ── Control-plane Queries ───────────────────────────────────────────────────
+
+/**
+ * Query engine-owned capabilities from Chitragupta.
+ */
+export async function capabilitiesQuery(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	query: CapabilityQuery = {},
+): Promise<CapabilityQueryResult> {
+	if (socketMode && socket?.isConnected) {
+		try {
+			return await socket.call<CapabilityQueryResult>("capabilities", { ...query });
+		} catch (err) {
+			log.debug(`capabilities not available: ${(err as Error).message}`);
+			return { capabilities: [] };
+		}
+	}
+	return { capabilities: [] };
+}
+
+/**
+ * Ask the engine to resolve a semantic capability request into a concrete lane.
+ */
+export async function routeResolve(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	request: RoutingRequest,
+): Promise<RoutingDecision | null> {
+	if (socketMode && socket?.isConnected) {
+		try {
+			return await socket.call<RoutingDecision>("route.resolve", { ...request });
+		} catch (err) {
+			log.debug(`route.resolve not available: ${(err as Error).message}`);
+			return null;
+		}
+	}
+	return null;
+}
+
+export async function sabhaAsk(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	params: SabhaAskParams,
+): Promise<SabhaAskResult | null> {
+	if (socketMode && socket?.isConnected) {
+		try {
+			return await socket.call<SabhaAskResult>("sabha.ask", { ...params });
+		} catch (err) {
+			log.debug(`sabha.ask not available: ${(err as Error).message}`);
+			return null;
+		}
+	}
+	return null;
+}
+
+export async function sabhaGather(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	params: SabhaGatherParams,
+): Promise<SabhaGatherResult | null> {
+	if (socketMode && socket?.isConnected) {
+		try {
+			return await socket.call<SabhaGatherResult>("sabha.gather", { ...params });
+		} catch (err) {
+			log.debug(`sabha.gather not available: ${(err as Error).message}`);
+			return null;
+		}
+	}
+	return null;
+}
+
+export async function sabhaDeliberate(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	params: SabhaDeliberateParams,
+): Promise<SabhaDeliberateResult | null> {
+	if (socketMode && socket?.isConnected) {
+		try {
+			return await socket.call<SabhaDeliberateResult>("sabha.deliberate", { ...params });
+		} catch (err) {
+			log.debug(`sabha.deliberate not available: ${(err as Error).message}`);
+			return null;
+		}
+	}
+	return null;
+}
+
+export async function sabhaRecord(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	params: SabhaRecordParams,
+): Promise<SabhaRecordResult | null> {
+	if (socketMode && socket?.isConnected) {
+		try {
+			return await socket.call<SabhaRecordResult>("sabha.record", { ...params });
+		} catch (err) {
+			log.debug(`sabha.record not available: ${(err as Error).message}`);
+			return null;
+		}
+	}
+	return null;
+}
+
+export async function sabhaEscalate(
+	socket: DaemonSocketClient | null,
+	socketMode: boolean,
+	params: SabhaEscalateParams,
+): Promise<SabhaEscalateResult | null> {
+	if (socketMode && socket?.isConnected) {
+		try {
+			return await socket.call<SabhaEscalateResult>("sabha.escalate", { ...params });
+		} catch (err) {
+			log.debug(`sabha.escalate not available: ${(err as Error).message}`);
+			return null;
+		}
+	}
+	return null;
+}
+
 // ── Notification Subscriptions (Phase 50) ─────────────────────────────────────
 
 /** Callback types for notification handlers */
@@ -136,6 +272,11 @@ export interface NotificationCallbacks {
 	onPatternDetected?: (params: PatternDetectedNotification) => void;
 	onPrediction?: (params: PredictionNotification) => void;
 	onAnomalyAlert?: (params: AnomalyAlertNotification) => void;
+	onHealReported?: (params: HealReportedNotification) => void;
+	onSabhaConsult?: (params: SabhaConsultNotification) => void;
+	onSabhaUpdated?: (params: SabhaUpdatedNotification) => void;
+	onSabhaRecorded?: (params: SabhaRecordedNotification) => void;
+	onSabhaEscalated?: (params: SabhaEscalatedNotification) => void;
 	onEvolveRequest?: (params: EvolveRequestNotification) => void;
 	onPreferenceUpdate?: (params: PreferenceUpdateNotification) => void;
 }
@@ -171,6 +312,41 @@ export function subscribeNotifications(
 			callbacks.onAnomalyAlert!(params as unknown as AnomalyAlertNotification);
 		};
 		unsubs.push(socket.onNotification("anomaly_alert", handler));
+	}
+
+	if (callbacks.onHealReported) {
+		const handler: NotificationHandler = (params) => {
+			callbacks.onHealReported!(params as unknown as HealReportedNotification);
+		};
+		unsubs.push(socket.onNotification("heal_reported", handler));
+	}
+
+	if (callbacks.onSabhaConsult) {
+		const handler: NotificationHandler = (params) => {
+			callbacks.onSabhaConsult!(params as unknown as SabhaConsultNotification);
+		};
+		unsubs.push(socket.onNotification("sabha.consult", handler));
+	}
+
+	if (callbacks.onSabhaUpdated) {
+		const handler: NotificationHandler = (params) => {
+			callbacks.onSabhaUpdated!(params as unknown as SabhaUpdatedNotification);
+		};
+		unsubs.push(socket.onNotification("sabha.updated", handler));
+	}
+
+	if (callbacks.onSabhaRecorded) {
+		const handler: NotificationHandler = (params) => {
+			callbacks.onSabhaRecorded!(params as unknown as SabhaRecordedNotification);
+		};
+		unsubs.push(socket.onNotification("sabha.recorded", handler));
+	}
+
+	if (callbacks.onSabhaEscalated) {
+		const handler: NotificationHandler = (params) => {
+			callbacks.onSabhaEscalated!(params as unknown as SabhaEscalatedNotification);
+		};
+		unsubs.push(socket.onNotification("sabha.escalated", handler));
 	}
 
 	if (callbacks.onEvolveRequest) {

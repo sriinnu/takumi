@@ -1,0 +1,23 @@
+{
+  "name": "@takumi/negative-space-radar",
+  "version": "0.1.0",
+  "description": "Finds the important work a run has not touched yet: validation, docs, reconnaissance, or breadth.",
+  "takumi": {
+    "extensions": ["./index.mjs"],
+    "skills": ["./skills"],
+    "systemPrompt": "./system-prompt.md",
+    "toolRules": "./tool-rules.json",
+    "provenance": "verified",
+    "capabilitiesRequested": ["workflow.audit", "strategy.gaps"],
+    "compatibility": {
+      "takumi": "^0.1.0",
+      "packageApi": "1"
+    },
+    "evals": {
+      "coverage": ["smoke", "behavior"],
+      "suite": "example-packages",
+      "score": 0.87
+    },
+    "maintainer": "Takumi Labs"
+  }
+}
