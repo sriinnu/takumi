@@ -28,6 +28,7 @@ export type {
 	MeshIntegrityStatus,
 	MeshPolicyDecision,
 	OrchestratorOptions,
+	TopologyWinRate,
 	ValidationFinding,
 	ValidationResult,
 	WorkProduct,
@@ -42,6 +43,7 @@ export {
 	ClusterPhase,
 	deriveClusterConfig,
 	getTopologyGuidance,
+	inferRoutingCaps,
 	shouldEscalateWeakConsensus,
 	ValidationDecision,
 } from "./cluster/index.js";
@@ -290,15 +292,23 @@ export { rankToolDefinitions, selectToolDefinitions } from "./tools/selection.js
 export type { SideAgentToolDeps } from "./tools/side-agent.js";
 export {
 	agentCheckDefinition,
+	agentQueryDefinition,
 	agentSendDefinition,
 	agentStartDefinition,
 	agentWaitAnyDefinition,
 	createAgentCheckHandler,
+	createAgentQueryHandler,
 	createAgentSendHandler,
 	createAgentStartHandler,
 	createAgentWaitAnyHandler,
 	registerSideAgentTools,
 } from "./tools/side-agent.js";
+export type { SideAgentBusDeps } from "./tools/side-agent-bus.js";
+export {
+	agentBusPublishDefinition,
+	createAgentBusPublishHandler,
+	registerSideAgentBusTools,
+} from "./tools/side-agent-bus.js";
 // Phase 40 — Tool Result Cache
 export type { CacheEntry as ToolCacheEntry, ToolCacheConfig, ToolCacheStats } from "./tools/tool-cache.js";
 export { ToolResultCache } from "./tools/tool-cache.js";

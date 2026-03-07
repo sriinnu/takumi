@@ -1,7 +1,9 @@
 import {
 	type ClassificationResult,
 	deriveClusterConfig,
+	inferRoutingCaps,
 	shouldEscalateWeakConsensus,
+	type TopologyWinRate,
 	type ValidationResult,
 } from "@takumi/agent";
 import type { ChitraguptaObserver } from "@takumi/bridge";
@@ -14,6 +16,8 @@ interface PrepareMeshClusterInput {
 	state: AppState;
 	orchestrationConfig?: OrchestrationConfig;
 	maxValidationRetries: number;
+	/** Historical topology win-rates used to bias Lucy's topology selection. */
+	profileBias?: TopologyWinRate[];
 }
 
 export function prepareMeshCluster(input: PrepareMeshClusterInput) {
@@ -25,6 +29,7 @@ export function prepareMeshCluster(input: PrepareMeshClusterInput) {
 		isolationMode: input.state.isolationMode.value,
 		orchestrationConfig: input.orchestrationConfig,
 		integrityStatus: input.state.scarlettIntegrityReport.value.status,
+		profileBias: input.profileBias,
 	});
 }
 

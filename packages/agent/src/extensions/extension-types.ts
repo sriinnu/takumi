@@ -3,25 +3,29 @@
  *
  * Defines the contract for Takumi extensions: lifecycle events,
  * tool/command/shortcut registration, and the context API.
- *
- * Design principles:
- * - Typed event system with discriminated unions (no `any`)
- * - Cancellable "before_*" events for intercepting lifecycle actions
- * - Result types for event handlers that can modify behavior
- * - Single `ExtensionAPI` surface passed to factory functions
- *
- * Extensions are TypeScript modules that export a factory function:
- * ```ts
- * import type { ExtensionFactory } from "@takumi/agent";
- * const activate: ExtensionFactory = (api) => {
- *   api.on("agent_start", () => { ... });
- *   api.registerTool({ name: "my_tool", ... });
- * };
- * export default activate;
- * ```
+ * Typed event system with discriminated unions, cancellable "before_*"
+ * events, and a single ExtensionAPI surface passed to factory functions.
  */
 
 import type { AgentEvent, ToolDefinition as CoreToolDef, Message, ToolResult, Usage } from "@takumi/core";
+
+export type {
+	AgentBusMessageEvent,
+	AgentCompleteEvent,
+	AgentSpawnEvent,
+	ClusterExtensionEvent,
+	ClusterPhaseChangeEvent,
+	ClusterStartEvent,
+} from "./cluster-events.js";
+
+import type {
+	AgentBusMessageEvent,
+	AgentCompleteEvent,
+	AgentSpawnEvent,
+	ClusterExtensionEvent,
+	ClusterPhaseChangeEvent,
+	ClusterStartEvent,
+} from "./cluster-events.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Session Events
@@ -133,9 +137,7 @@ export type AgentLoopEvent =
 	| TurnEndEvent
 	| MessageUpdateEvent;
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Tool Events
-// ═══════════════════════════════════════════════════════════════════════════════
+// ── Tool Events ──────────────────────────────────────────────────────────────
 
 /** Fired before a tool executes. Can block execution. */
 export interface ToolCallEvent {
@@ -156,9 +158,7 @@ export interface ToolResultEvent {
 
 export type ToolEvent = ToolCallEvent | ToolResultEvent;
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Model Events
-// ═══════════════════════════════════════════════════════════════════════════════
+// ── Model Events ─────────────────────────────────────────────────────────────
 
 /** Fired when a new model is selected. */
 export interface ModelSelectEvent {
@@ -168,9 +168,7 @@ export interface ModelSelectEvent {
 	source: "set" | "cycle" | "restore" | "failover";
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Input Events
-// ═══════════════════════════════════════════════════════════════════════════════
+// ── Input Events ─────────────────────────────────────────────────────────────
 
 /** Source of user input. */
 export type InputSource = "interactive" | "rpc" | "extension" | "one-shot";
@@ -187,7 +185,13 @@ export interface InputEvent {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /** Union of all extension events. */
-export type ExtensionEvent = SessionEvent | AgentLoopEvent | ToolEvent | ModelSelectEvent | InputEvent;
+export type ExtensionEvent =
+	| SessionEvent
+	| AgentLoopEvent
+	| ToolEvent
+	| ModelSelectEvent
+	| InputEvent
+	| ClusterExtensionEvent;
 
 /** Extract the event type string literal from an event. */
 export type ExtensionEventType = ExtensionEvent["type"];
@@ -376,6 +380,12 @@ export interface ExtensionAPI {
 
 	on(event: "model_select", handler: ExtensionHandler<ModelSelectEvent>): void;
 	on(event: "input", handler: ExtensionHandler<InputEvent, InputEventResult>): void;
+
+	on(event: "cluster_start", handler: ExtensionHandler<ClusterStartEvent>): void;
+	on(event: "cluster_phase_change", handler: ExtensionHandler<ClusterPhaseChangeEvent>): void;
+	on(event: "agent_spawn", handler: ExtensionHandler<AgentSpawnEvent>): void;
+	on(event: "agent_message", handler: ExtensionHandler<AgentBusMessageEvent>): void;
+	on(event: "agent_complete", handler: ExtensionHandler<AgentCompleteEvent>): void;
 
 	// ── Tool Registration ─────────────────────────────────────────────────────
 

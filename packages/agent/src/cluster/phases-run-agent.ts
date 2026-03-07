@@ -21,6 +21,7 @@ export async function runAgent(
 	attemptNumber = 1,
 ): Promise<string> {
 	updateAgentStatus(agent.id, AgentStatus.THINKING);
+	ctx.bus?.publish({ type: "heartbeat", from: agent.id, status: AgentStatus.THINKING, timestamp: Date.now() });
 	const enrichedSystem = ctx.chitraguptaMemory
 		? `${systemPrompt}\n\n## Project Memory (from Chitragupta)\n${ctx.chitraguptaMemory}`.trim()
 		: systemPrompt;
@@ -65,12 +66,14 @@ export async function runAgent(
 			{ role: "assistant", content: [{ type: "text", text }] },
 		);
 		updateAgentStatus(agent.id, AgentStatus.DONE);
+		ctx.bus?.publish({ type: "heartbeat", from: agent.id, status: AgentStatus.DONE, timestamp: Date.now() });
 		agent.completedAt = Date.now();
 		return text;
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
 		agent.error = msg;
 		updateAgentStatus(agent.id, AgentStatus.ERROR, msg);
+		ctx.bus?.publish({ type: "heartbeat", from: agent.id, status: AgentStatus.ERROR, timestamp: Date.now() });
 		throw err;
 	}
 }
