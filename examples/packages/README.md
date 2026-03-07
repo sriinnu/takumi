@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../../docs/logo.svg" alt="Takumi logo" width="140" />
+</p>
+
 # Takumi novel package experiments
 
 These packages are intentionally a little strange.
@@ -15,4 +19,12 @@ To try them, point `takumi.config.json` at this directory:
 {
   "packages": [{ "name": "./examples/packages" }]
 }
+```
+
+Then verify discovery from the CLI:
+
+```bash
+takumi package list
+takumi package inspect invariant-loom
+takumi package doctor
 ```

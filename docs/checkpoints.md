@@ -1,3 +1,7 @@
+<p align="center">
+     <img src="./logo.svg" alt="Takumi logo" width="160" />
+</p>
+
 # Checkpoint & Crash Recovery
 
 Long-running multi-agent tasks can be interrupted — network drops, OOM kills,

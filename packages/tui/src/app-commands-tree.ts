@@ -3,7 +3,7 @@
  *
  * Slash commands for session branching and tree navigation:
  * - /branch [label]   — Branch at current turn
- * - /tree             — Show session tree
+ * - /session-tree     — Show session tree
  * - /switch <id>      — Switch to a different session
  * - /siblings         — Show branches at the same level
  * - /parent           — Navigate to parent session
@@ -101,9 +101,9 @@ export function registerSessionTreeCommands(ctx: AppCommandContext): void {
 		["/br"],
 	);
 
-	// /tree — display the full session tree
+	// /session-tree — display the full session tree
 	ctx.commands.register(
-		"/tree",
+		"/session-tree",
 		"Show session tree",
 		async () => {
 			const sessionId = ctx.state.sessionId.value;
@@ -121,7 +121,7 @@ export function registerSessionTreeCommands(ctx: AppCommandContext): void {
 			const header = breadcrumb ? `📍 ${breadcrumb}\n\n` : "";
 			ctx.addInfoMessage(`${header}Session Tree:\n${tree}`);
 		},
-		[],
+		["/branches"],
 	);
 
 	// /switch <id> — switch to a different session

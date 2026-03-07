@@ -1,6 +1,12 @@
+<p align="center">
+  <img src="./logo.svg" alt="Takumi logo" width="160" />
+</p>
+
 # Architecture — Takumi (匠)
 
 > High-level architecture of the Takumi terminal coding agent.
+
+> Status note: this document mixes **current implementation** with **target architecture direction**. When a section says “should”, read it as intent rather than a claim that the migration is already complete.
 
 ## Overview
 
@@ -9,9 +15,15 @@ It owns the full rendering stack (no React/Ink dependency), speaks to LLMs via a
 provider-agnostic abstraction, and integrates with Chitragupta for persistent
 memory and session management.
 
+On `main` today, the system is in a **hybrid state**:
+
+- Takumi already has direct provider integrations and optional Darpana proxying.
+- Chitragupta already participates as the daemon-first memory/control-plane bridge.
+- The stronger model where Chitragupta fully owns more routing/auth authority is underway, but not complete.
+
 The important authority boundary is:
 
-- **Chitragupta is the integration control plane**
+- **Chitragupta is the emerging integration control plane**
 - **Takumi is a privileged consumer and coding executor**
 - **Vaayu is a consumer-facing UX layer**
 - **Scarlett is the integrity and health observer across the plane**
@@ -29,6 +41,12 @@ owner of durable routing, auth, provider inventory, or long-lived memory.
 | Scarlett | Monitors provider, CLI, bridge, auth, session, and memory integrity across the system |
 
 ### Authority split
+
+Current implementation reality:
+
+- Chitragupta already owns daemon-side memory, observations, prediction, health/status, and control-plane query surfaces.
+- Takumi still constructs providers and handles several auth paths locally.
+- Routing/capability surfaces now exist, but the full inversion of authority is still in progress.
 
 | Concern | Owner |
 |---|---|
@@ -407,8 +425,8 @@ core ←──── render ←──── tui ────► bin/takumi.ts
 - **render** — Depends on `core` + `yoga-wasm-web`. The Kagami rendering engine: Yoga-based flexbox
   layout, reactive signals (Myaku), double-buffered screen, cell-level diff, component model, and
   the `Renderer` orchestrator.
-- **bridge** — Depends on `core`. Integration layer: Chitragupta MCP client (stdio spawn),
-  Darpana HTTP health check / auto-launch, and Git operations (status, branch, diff, commit).
+- **bridge** — Depends on `core`. Integration layer: Chitragupta daemon-first socket client with stdio fallback,
+  control-plane types, Darpana HTTP health check / auto-launch, and Git operations (status, branch, diff, commit).
 - **agent** — Depends on `core`. The Shigoto agent loop: prompt construction, LLM streaming,
   tool registry and dispatch, permission engine, safety sandbox, model classification, and
   multi-agent cluster orchestration.
@@ -540,11 +558,13 @@ See [ALGORITHMS.md](ALGORITHMS.md) for detailed algorithm descriptions.
 
 ## Security Model
 
-- **API keys** never touch Takumi — all LLM calls go through Darpana
-- **File access** restricted to CWD tree; `.env` and credential files blocked
-- **Bash tool** sandboxed: allowlisted commands auto-approved, dangerous patterns denied
-- **Permission engine** supports scopes: `once`, `session`, `project`, `global`
-- **Process isolation**: main process, MCP child process, tool subprocesses are separate
+- **API keys may be used directly by Takumi** when direct providers are enabled; they may also be routed through Darpana when proxy mode is configured.
+- **File access** is restricted to the working tree; sensitive files such as `.env` and credential-like paths are guarded.
+- **Bash tool** execution is sandboxed with allowlist and permission gates.
+- **Permission engine** supports scoped decisions such as one-off and session-level approvals.
+- **Process isolation** separates the TUI runtime, Chitragupta bridge path, and short-lived tool subprocesses.
+
+If you want the target end-state for provider/auth/control-plane ownership, read [`control-plane-spec.md`](./control-plane-spec.md) as the intended direction rather than the already-complete state.
 
 ## Performance Targets
 

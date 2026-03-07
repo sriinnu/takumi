@@ -18,7 +18,7 @@ export function registerSteeringCommands(ctx: AppCommandContext): void {
 
 	// ── /steer — inject a normal-priority directive ───────────────────────────
 	commands.register(
-		"steer",
+		"/steer",
 		"Inject a directive into the agent's next turn",
 		(args: string) => {
 			const text = args.trim();
@@ -34,12 +34,12 @@ export function registerSteeringCommands(ctx: AppCommandContext): void {
 				addInfoMessage("⚠️ Steering queue is full — directive not enqueued.");
 			}
 		},
-		["st"],
+		["/st"],
 	);
 
 	// ── /interrupt — inject a highest-priority directive ──────────────────────
 	commands.register(
-		"interrupt",
+		"/interrupt",
 		"Inject an urgent interrupt directive",
 		(args: string) => {
 			const text = args.trim();
@@ -55,12 +55,12 @@ export function registerSteeringCommands(ctx: AppCommandContext): void {
 				addInfoMessage("⚠️ Steering queue is full — directive not enqueued.");
 			}
 		},
-		["int"],
+		["/int"],
 	);
 
 	// ── /steerq — show steering queue status ─────────────────────────────────
 	commands.register(
-		"steerq",
+		"/steerq",
 		"Show pending steering queue items",
 		() => {
 			const snapshot = state.steeringQueue.snapshot();
@@ -76,6 +76,6 @@ export function registerSteeringCommands(ctx: AppCommandContext): void {
 			});
 			addInfoMessage(`Steering queue (${snapshot.length} items):\n${lines.join("\n")}`);
 		},
-		["sq"],
+		["/sq"],
 	);
 }

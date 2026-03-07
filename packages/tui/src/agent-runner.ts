@@ -158,9 +158,11 @@ export class AgentRunner {
 			const collector = this.state.sessionId.value
 				? new ObservationCollector({ sessionId: this.state.sessionId.value })
 				: undefined;
+			const selectedModel = this.state.model.value.trim() || undefined;
 
 			const loop = agentLoop(text, this.history, {
 				sendMessage: this.sendMessageFn,
+				model: selectedModel,
 				tools: this.tools,
 				systemPrompt: enrichedPrompt,
 				maxTurns: this.config.maxTurns,

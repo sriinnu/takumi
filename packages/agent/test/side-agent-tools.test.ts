@@ -1,4 +1,5 @@
 import type { SideAgentInfo, SideAgentState, ToolResult } from "@takumi/core";
+import { describe, expect, it, vi } from "vitest";
 
 import type { SideAgentListener } from "../src/cluster/side-agent-registry.js";
 
@@ -145,6 +146,17 @@ describe("takumi_agent_start", () => {
 
 		const registerCall = (deps.agents.register as ReturnType<typeof vi.fn>).mock.calls[0][0] as SideAgentInfo;
 		expect(registerCall.model).toBe("claude-sonnet");
+	});
+
+	it("uses configured side-agent default model when provided", async () => {
+		const deps = createMockDeps();
+		deps.defaultModel = "gpt-4o-mini";
+		const handler = createAgentStartHandler(deps);
+
+		await handler({ description: "Review docs cheaply" });
+
+		const registerCall = (deps.agents.register as ReturnType<typeof vi.fn>).mock.calls[0][0] as SideAgentInfo;
+		expect(registerCall.model).toBe("gpt-4o-mini");
 	});
 
 	it("passes custom model through", async () => {

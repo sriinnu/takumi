@@ -1,6 +1,12 @@
+<p align="center">
+	<img src="./logo.svg" alt="Takumi logo" width="160" />
+</p>
+
 # Chitragupta Integration Control Plane Spec
 
 > Concrete control-plane spec for provider, CLI, routing, auth, health, and consumer constraints.
+
+> Status note: this document is primarily a **target control-plane contract**. Parts of it are already represented in the current bridge and TUI, but Takumi still owns some provider/auth/runtime behavior locally today.
 
 ## Purpose
 

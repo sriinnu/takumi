@@ -21,7 +21,10 @@ credentials.json
 
 # Local machine-specific config
 .mcp.json
+.vscode/mcp.json
 settings.local.json
+docs/PI_ECOSYSTEM_ANALYSIS.md
+docs/PI_ECOSYSTEM_REVIEW_SUMMARY.md
 
 # Compiled output in src/ (should only be in dist/)
 packages/*/src/**/*.js

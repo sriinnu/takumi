@@ -10,7 +10,7 @@ describe("registerSteeringCommands", () => {
 		expect(typeof registerSteeringCommands).toBe("function");
 	});
 
-	it("registers steer, interrupt, and steerq commands", () => {
+	it("registers slash-prefixed steer commands", () => {
 		const registered: string[] = [];
 		const fakeCtx = {
 			commands: {
@@ -23,8 +23,8 @@ describe("registerSteeringCommands", () => {
 		} as never;
 
 		registerSteeringCommands(fakeCtx);
-		expect(registered).toContain("steer");
-		expect(registered).toContain("interrupt");
-		expect(registered).toContain("steerq");
+		expect(registered).toContain("/steer");
+		expect(registered).toContain("/interrupt");
+		expect(registered).toContain("/steerq");
 	});
 });
