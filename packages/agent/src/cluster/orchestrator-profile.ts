@@ -61,7 +61,7 @@ export function getProfileBiasedModel(
 
 // ── Capability inference (lightweight, no classifier dependency) ─────────────
 
-function inferRoutingCaps(description: string): string[] {
+export function inferRoutingCaps(description: string): string[] {
 	const caps: string[] = [];
 	if (/test|spec|tdd/i.test(description)) caps.push("testing");
 	if (/security|auth|cve|vuln/i.test(description)) caps.push("security");

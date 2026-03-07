@@ -40,7 +40,7 @@ export type { OrchestratorOptions } from "./orchestrator.js";
 // ── Orchestrator ──────────────────────────────────────────────────────────────
 export { ClusterOrchestrator } from "./orchestrator.js";
 // ── Orchestrator Profile Helpers ──────────────────────────────────────────────
-export { getProfileBiasedModel, lucyBiasTopology } from "./orchestrator-profile.js";
+export { getProfileBiasedModel, inferRoutingCaps, lucyBiasTopology } from "./orchestrator-profile.js";
 // ── Side Agent Registry ───────────────────────────────────────────────────────
 export type { SideAgentListener } from "./side-agent-registry.js";
 export { SideAgentRegistry } from "./side-agent-registry.js";

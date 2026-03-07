@@ -28,6 +28,7 @@ export type {
 	MeshIntegrityStatus,
 	MeshPolicyDecision,
 	OrchestratorOptions,
+	TopologyWinRate,
 	ValidationFinding,
 	ValidationResult,
 	WorkProduct,
@@ -42,6 +43,7 @@ export {
 	ClusterPhase,
 	deriveClusterConfig,
 	getTopologyGuidance,
+	inferRoutingCaps,
 	shouldEscalateWeakConsensus,
 	ValidationDecision,
 } from "./cluster/index.js";

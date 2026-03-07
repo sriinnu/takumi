@@ -147,12 +147,13 @@ export class AgentBus {
 	 */
 	async request(msg: AgentTaskRequest | AgentCapabilityQuery, signal?: AbortSignal): Promise<AgentMessage> {
 		return new Promise<AgentMessage>((resolve, reject) => {
+			let sub: Subscription;
 			const timeout = setTimeout(() => {
 				sub.unsubscribe();
 				reject(new Error(`Bus request ${msg.id} timed out after ${this.requestTimeoutMs}ms`));
 			}, this.requestTimeoutMs);
 
-			const sub = this.subscribe(
+			sub = this.subscribe(
 				null,
 				(reply) => {
 					if (msg.type === "task_request" && reply.type === "task_result") {

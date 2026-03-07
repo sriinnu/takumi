@@ -18,7 +18,7 @@ import {
 	recordBanditOutcome,
 	registerStrategies,
 } from "./orchestrator-bandit.js";
-import { getProfileBiasedModel, lucyBiasTopology } from "./orchestrator-profile.js";
+import { getProfileBiasedModel, inferRoutingCaps, lucyBiasTopology } from "./orchestrator-profile.js";
 import { ClusterPhaseRunner, type PhaseContext } from "./phases.js";
 import {
 	type AgentInstance,
@@ -373,8 +373,11 @@ export class ClusterOrchestrator {
 	private recordAgentProfiles(success: boolean): void {
 		if (!this.state) return;
 		const durationMs = Date.now() - this.runStartMs;
-		const taskCaps = this.inferCapabilities(this.state.config.taskDescription);
+		const taskCaps = inferRoutingCaps(this.state.config.taskDescription);
 		this.profileStore.recordTopologyOutcome(this.state.config.topology, success);
+		const agentCount = this.state.agents.size;
+		const tokensPerAgent =
+			agentCount > 0 ? Math.round((this.totalInputTokens + this.totalOutputTokens) / agentCount) : 0;
 		for (const agent of this.state.agents.values()) {
 			const model = this.modelOverrides?.[agent.role] ?? "default";
 			const outcome: TaskOutcome = {
@@ -383,27 +386,11 @@ export class ClusterOrchestrator {
 				success,
 				capabilities: taskCaps,
 				durationMs,
-				tokensUsed: this.totalInputTokens + this.totalOutputTokens,
+				tokensUsed: tokensPerAgent,
 			};
 			this.profileStore.recordOutcome(outcome);
 		}
-		this.profileStore.save();
-	}
-
-	private inferCapabilities(description: string): string[] {
-		const caps: string[] = [];
-		const lower = description.toLowerCase();
-		if (/test|spec|tdd/i.test(lower)) caps.push("testing");
-		if (/security|auth|cve|vuln/i.test(lower)) caps.push("security");
-		if (/refactor|clean|modular/i.test(lower)) caps.push("refactoring");
-		if (/typescript|ts\b/i.test(lower)) caps.push("typescript");
-		if (/python|py\b/i.test(lower)) caps.push("python");
-		if (/react|component|jsx/i.test(lower)) caps.push("react");
-		if (/bug|fix|debug/i.test(lower)) caps.push("debugging");
-		if (/doc|readme|comment/i.test(lower)) caps.push("documentation");
-		if (/perf|optimi|fast/i.test(lower)) caps.push("performance");
-		if (caps.length === 0) caps.push("general");
-		return caps;
+		// save() is also called in shutdown(); skip the extra sync write here
 	}
 
 	private async saveCheckpoint(): Promise<void> {

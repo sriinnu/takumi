@@ -93,8 +93,6 @@ function ema(prev: number, next: number): number {
 	return EMA_ALPHA * next + (1 - EMA_ALPHA) * prev;
 }
 
-// ── AgentProfileStore ────────────────────────────────────────────────────────
-
 // ── Topology win-rate entry ─────────────────────────────────────────────────
 
 export interface TopologyWinRate {
