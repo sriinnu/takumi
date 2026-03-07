@@ -1,5 +1,6 @@
 import type { DockerIsolationConfig, MeshTopologyMode, OrchestrationConfig } from "@takumi/core";
 import { type AgentTopology, type TaskClassification, TaskComplexity, TaskType } from "../classifier.js";
+import type { TopologyWinRate } from "./agent-identity.js";
 import { AgentRole, type ClusterConfig, type ClusterTopology } from "./types.js";
 
 export type MeshIntegrityStatus = "healthy" | "warning" | "critical";
@@ -13,6 +14,12 @@ export interface DeriveClusterConfigInput {
 	dockerConfig?: DockerIsolationConfig;
 	orchestrationConfig?: OrchestrationConfig;
 	integrityStatus?: MeshIntegrityStatus;
+	/**
+	 * Profile win-rates from AgentProfileStore — lets Lucy bias her topology
+	 * selection toward topologies that have historically succeeded.
+	 * Provided by ClusterOrchestrator at spawn time.
+	 */
+	profileBias?: TopologyWinRate[];
 }
 
 export interface MeshPolicyDecision extends ClusterConfig {
@@ -34,6 +41,17 @@ export function deriveClusterConfig(input: DeriveClusterConfigInput): MeshPolicy
 		reasons.push(
 			`Lucy selected ${baseline} topology for ${input.classification.complexity}/${input.classification.type}`,
 		);
+		// Profile bias: prefer a topology with a proven track record
+		if (input.profileBias && input.profileBias.length > 0) {
+			const qualified = input.profileBias.filter((r) => r.total >= 3 && r.winRate >= 0.65);
+			if (qualified.length > 0 && qualified[0].topology !== baseline) {
+				topology = qualified[0].topology as MeshTopologyMode;
+				reasons.push(
+					`Lucy profile-biased topology: ${baseline} → ${topology} ` +
+						`(win=${(qualified[0].winRate * 100).toFixed(0)}% n=${qualified[0].total})`,
+				);
+			}
+		}
 	} else if (meshConfig?.defaultTopology) {
 		reasons.push(`Mesh topology pinned to ${meshConfig.defaultTopology} by config`);
 	}

@@ -3,6 +3,7 @@ import type { AgentEvent, OrchestrationConfig } from "@takumi/core";
 import type { AgentEvaluator } from "@yugenlab/chitragupta/niyanta";
 import type { MessagePayload, SendMessageOptions } from "../loop.js";
 import type { ToolRegistry } from "../tools/registry.js";
+import type { AgentBus } from "./agent-bus.js";
 import { runExecutionPhase, runPlanningPhase } from "./phases-execution.js";
 import { runFixingPhase } from "./phases-fixing.js";
 import { runAgent } from "./phases-run-agent.js";
@@ -40,6 +41,8 @@ export interface PhaseContext {
 	onAgentText?: (agentId: string, delta: string) => void;
 	onTokenUsage?: (inputTokens: number, outputTokens: number) => void;
 	orchestrationConfig?: OrchestrationConfig;
+	/** Shared agent bus — used for heartbeat publishing during agent execution. */
+	bus?: AgentBus;
 }
 
 export class ClusterPhaseRunner {

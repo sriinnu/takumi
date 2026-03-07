@@ -5,7 +5,10 @@ import type { OrchestratorTask } from "@yugenlab/chitragupta/niyanta";
 import { AgentEvaluator, AutonomousOrchestrator } from "@yugenlab/chitragupta/niyanta";
 import type { MessagePayload } from "../loop.js";
 import type { ToolRegistry } from "../tools/registry.js";
+import { AgentBus, buildTaskResult } from "./agent-bus.js";
+import { AgentProfileStore, type TaskOutcome } from "./agent-identity.js";
 import { CheckpointManager } from "./checkpoint.js";
+import { ChitraguptaBusBridge } from "./chitragupta-bus-bridge.js";
 import { createIsolationContext, type IsolationContext } from "./isolation.js";
 import { adaptTopologyAfterRejection } from "./mesh-policy.js";
 import {
@@ -15,6 +18,7 @@ import {
 	recordBanditOutcome,
 	registerStrategies,
 } from "./orchestrator-bandit.js";
+import { getProfileBiasedModel, lucyBiasTopology } from "./orchestrator-profile.js";
 import { ClusterPhaseRunner, type PhaseContext } from "./phases.js";
 import {
 	type AgentInstance,
@@ -45,6 +49,10 @@ export interface OrchestratorOptions {
 	banditStatePath?: string;
 	onMeshSizeChange?: (size: number) => void;
 	orchestrationConfig?: OrchestrationConfig;
+	/** Shared agent message bus (created if not provided). */
+	bus?: AgentBus;
+	/** Persistent agent profile store (created if not provided). */
+	profileStore?: AgentProfileStore;
 }
 
 export class ClusterOrchestrator {
@@ -59,6 +67,9 @@ export class ClusterOrchestrator {
 	private readonly evaluator: AgentEvaluator;
 	private readonly runner: ClusterPhaseRunner;
 	private readonly checkpoints: CheckpointManager;
+	readonly bus: AgentBus;
+	readonly profileStore: AgentProfileStore;
+	private readonly busBridge: ChitraguptaBusBridge | null;
 	private state: ClusterState | null = null;
 	private isolationCtx: IsolationContext | null = null;
 	private eventListeners: Array<(event: ClusterEvent) => void> = [];
@@ -78,6 +89,9 @@ export class ClusterOrchestrator {
 		this.tools = options.tools;
 		this.orchestrationConfig = options.orchestrationConfig;
 		this.onMeshSizeChange = options.onMeshSizeChange;
+		this.bus = options.bus ?? new AgentBus();
+		this.profileStore = options.profileStore ?? new AgentProfileStore();
+		this.busBridge = options.chitragupta != null ? new ChitraguptaBusBridge(this.bus, options.chitragupta) : null;
 
 		const statePath = options.banditStatePath ?? `${process.env.HOME ?? "~"}/.takumi/bandit-state.json`;
 		this.autonomous = new AutonomousOrchestrator({
@@ -113,33 +127,38 @@ export class ClusterOrchestrator {
 			get tools() {
 				return orch.tools;
 			},
-			getModelForRole: (role) => orch.modelOverrides?.[role],
+			getModelForRole: (role) =>
+				getProfileBiasedModel(role, orch.modelOverrides, orch.profileStore, orch.state?.config.taskDescription ?? ""),
 			onAgentText: (id, delta) => orch.onAgentText?.(id, delta),
 			onTokenUsage: (i, o) => {
 				orch.totalInputTokens += i;
 				orch.totalOutputTokens += o;
 			},
 			orchestrationConfig: orch.orchestrationConfig,
+			bus: orch.bus,
 		};
 		this.runner = new ClusterPhaseRunner(phaseCtx, this.evaluator);
 	}
 
 	async spawn(config: ClusterConfig): Promise<ClusterState> {
-		log.info(`Spawning cluster: ${config.roles.length} agents, strategy=${config.validationStrategy}`);
+		// Lucy profile bias: if we have reliable topology history, use it
+		const biasedTopology = lucyBiasTopology(config.topology, this.profileStore);
+		const finalConfig = biasedTopology !== config.topology ? { ...config, topology: biasedTopology } : config;
+		log.info(`Spawning cluster: ${finalConfig.roles.length} agents, strategy=${finalConfig.validationStrategy}`);
 
 		const clusterId = `cluster-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 		const now = Date.now();
 
-		const isoMode = config.isolationMode ?? "none";
-		this.isolationCtx = await createIsolationContext(isoMode, process.cwd(), clusterId, config.dockerConfig);
+		const isoMode = finalConfig.isolationMode ?? "none";
+		this.isolationCtx = await createIsolationContext(isoMode, process.cwd(), clusterId, finalConfig.dockerConfig);
 		log.info(`Isolation mode: ${this.isolationCtx.mode}, workDir: ${this.isolationCtx.workDir}`);
 
-		this.niyantaTask = createNiyantaTask(clusterId, config.taskDescription);
+		this.niyantaTask = createNiyantaTask(clusterId, finalConfig.taskDescription);
 		this.runStartMs = now;
 
 		this.state = {
 			id: clusterId,
-			config,
+			config: finalConfig,
 			phase: ClusterPhase.INITIALIZING,
 			agents: new Map(),
 			validationAttempt: 0,
@@ -151,12 +170,13 @@ export class ClusterOrchestrator {
 			updatedAt: now,
 		};
 
-		for (const role of config.roles) {
-			const agent = this.createAgent(role, config.taskDescription);
+		for (const role of finalConfig.roles) {
+			const agent = this.createAgent(role, finalConfig.taskDescription);
 			this.state.agents.set(agent.id, agent);
 		}
 
 		this.onMeshSizeChange?.(1 + this.state.agents.size);
+		this.busBridge?.attach();
 
 		this.emitEvent({
 			type: "phase_change",
@@ -220,6 +240,7 @@ export class ClusterOrchestrator {
 				strategy,
 				log,
 			);
+			this.recordAgentProfiles(validationPassed);
 			yield {
 				type: "cluster_complete",
 				clusterId: this.state.id,
@@ -241,6 +262,7 @@ export class ClusterOrchestrator {
 				strategy,
 				log,
 			);
+			this.recordAgentProfiles(false);
 			yield {
 				type: "cluster_error",
 				clusterId: this.state.id,
@@ -276,6 +298,9 @@ export class ClusterOrchestrator {
 			await this.isolationCtx.cleanup();
 			this.isolationCtx = null;
 		}
+		this.busBridge?.detach();
+		this.bus.reset();
+		this.profileStore.save();
 		this.eventListeners = [];
 		this.niyantaTask = null;
 	}
@@ -334,6 +359,51 @@ export class ClusterOrchestrator {
 				log.error("Event listener threw", err);
 			}
 		}
+		// Mirror cluster events onto the agent bus as discovery shares
+		this.bus.publish({
+			type: "discovery_share",
+			id: `cls-${Date.now()}`,
+			from: this.state?.id ?? "orchestrator",
+			topic: `cluster.${event.type}`,
+			payload: event as unknown as Record<string, unknown>,
+			timestamp: Date.now(),
+		});
+	}
+
+	private recordAgentProfiles(success: boolean): void {
+		if (!this.state) return;
+		const durationMs = Date.now() - this.runStartMs;
+		const taskCaps = this.inferCapabilities(this.state.config.taskDescription);
+		this.profileStore.recordTopologyOutcome(this.state.config.topology, success);
+		for (const agent of this.state.agents.values()) {
+			const model = this.modelOverrides?.[agent.role] ?? "default";
+			const outcome: TaskOutcome = {
+				role: agent.role,
+				model,
+				success,
+				capabilities: taskCaps,
+				durationMs,
+				tokensUsed: this.totalInputTokens + this.totalOutputTokens,
+			};
+			this.profileStore.recordOutcome(outcome);
+		}
+		this.profileStore.save();
+	}
+
+	private inferCapabilities(description: string): string[] {
+		const caps: string[] = [];
+		const lower = description.toLowerCase();
+		if (/test|spec|tdd/i.test(lower)) caps.push("testing");
+		if (/security|auth|cve|vuln/i.test(lower)) caps.push("security");
+		if (/refactor|clean|modular/i.test(lower)) caps.push("refactoring");
+		if (/typescript|ts\b/i.test(lower)) caps.push("typescript");
+		if (/python|py\b/i.test(lower)) caps.push("python");
+		if (/react|component|jsx/i.test(lower)) caps.push("react");
+		if (/bug|fix|debug/i.test(lower)) caps.push("debugging");
+		if (/doc|readme|comment/i.test(lower)) caps.push("documentation");
+		if (/perf|optimi|fast/i.test(lower)) caps.push("performance");
+		if (caps.length === 0) caps.push("general");
+		return caps;
 	}
 
 	private async saveCheckpoint(): Promise<void> {
