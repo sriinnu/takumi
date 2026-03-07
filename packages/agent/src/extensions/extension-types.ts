@@ -12,19 +12,31 @@ import type { AgentEvent, ToolDefinition as CoreToolDef, Message, ToolResult, Us
 export type {
 	AgentBusMessageEvent,
 	AgentCompleteEvent,
+	AgentProfileUpdatedEvent,
 	AgentSpawnEvent,
+	ClusterBudgetEvent,
+	ClusterEndEvent,
 	ClusterExtensionEvent,
 	ClusterPhaseChangeEvent,
 	ClusterStartEvent,
+	ClusterTopologyAdaptEvent,
+	ClusterValidationAttemptEvent,
+	SabhaEscalationEvent,
 } from "./cluster-events.js";
 
 import type {
 	AgentBusMessageEvent,
 	AgentCompleteEvent,
+	AgentProfileUpdatedEvent,
 	AgentSpawnEvent,
+	ClusterBudgetEvent,
+	ClusterEndEvent,
 	ClusterExtensionEvent,
 	ClusterPhaseChangeEvent,
 	ClusterStartEvent,
+	ClusterTopologyAdaptEvent,
+	ClusterValidationAttemptEvent,
+	SabhaEscalationEvent,
 } from "./cluster-events.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -382,10 +394,16 @@ export interface ExtensionAPI {
 	on(event: "input", handler: ExtensionHandler<InputEvent, InputEventResult>): void;
 
 	on(event: "cluster_start", handler: ExtensionHandler<ClusterStartEvent>): void;
+	on(event: "cluster_end", handler: ExtensionHandler<ClusterEndEvent>): void;
 	on(event: "cluster_phase_change", handler: ExtensionHandler<ClusterPhaseChangeEvent>): void;
+	on(event: "cluster_topology_adapt", handler: ExtensionHandler<ClusterTopologyAdaptEvent>): void;
+	on(event: "cluster_validation_attempt", handler: ExtensionHandler<ClusterValidationAttemptEvent>): void;
+	on(event: "cluster_budget", handler: ExtensionHandler<ClusterBudgetEvent>): void;
 	on(event: "agent_spawn", handler: ExtensionHandler<AgentSpawnEvent>): void;
 	on(event: "agent_message", handler: ExtensionHandler<AgentBusMessageEvent>): void;
 	on(event: "agent_complete", handler: ExtensionHandler<AgentCompleteEvent>): void;
+	on(event: "agent_profile_updated", handler: ExtensionHandler<AgentProfileUpdatedEvent>): void;
+	on(event: "sabha_escalation", handler: ExtensionHandler<SabhaEscalationEvent>): void;
 
 	// ── Tool Registration ─────────────────────────────────────────────────────
 
@@ -418,33 +436,9 @@ export interface ExtensionAPI {
 	exec(command: string, args?: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Extension Factory & Loaded State
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/** Extension factory — the default export of an extension module. */
-export type ExtensionFactory = (api: ExtensionAPI) => void | Promise<void>;
-
-/** Loaded extension with all registered items. */
-export interface LoadedExtension {
-	path: string;
-	resolvedPath: string;
-	handlers: Map<string, Array<(...args: unknown[]) => unknown>>;
-	tools: Map<string, ExtensionToolDefinition>;
-	commands: Map<string, RegisteredCommand>;
-	shortcuts: Map<string, RegisteredShortcut>;
-}
-
-/** Result of loading extensions. */
-export interface LoadExtensionsResult {
-	extensions: LoadedExtension[];
-	errors: Array<{ path: string; error: string }>;
-}
-
-/** Error from extension execution. */
-export interface ExtensionError {
-	extensionPath: string;
-	event: string;
-	error: string;
-	stack?: string;
-}
+export type {
+	ExtensionError,
+	ExtensionFactory,
+	LoadExtensionsResult,
+	LoadedExtension,
+} from "./extension-loader-types.js";

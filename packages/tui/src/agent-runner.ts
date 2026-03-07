@@ -10,6 +10,7 @@ import {
 	type ConventionFiles,
 	calculateContextPressure,
 	ExperienceMemory,
+	type ExtensionEvent,
 	type ExtensionRunner,
 	MemoryHooks,
 	type MessagePayload,
@@ -85,6 +86,8 @@ export class AgentRunner {
 	getTools(): ToolRegistry {
 		return this.tools;
 	}
+
+	emitExtensionEvent = (event: ExtensionEvent): Promise<void> => this.extensionRunner?.emit(event) ?? Promise.resolve();
 
 	/** Submit a user message and start the agent loop. */
 	async submit(text: string): Promise<void> {
