@@ -61,6 +61,7 @@
 	"dependencies": {
 		"@clack/prompts": "^1.0.1",
 		"@takumi/agent": "workspace:*",
+		"@takumi/bridge": "workspace:*",
 		"@takumi/core": "workspace:*",
 		"@takumi/tui": "workspace:*",
 		"kosha-discovery": "^0.3.0",

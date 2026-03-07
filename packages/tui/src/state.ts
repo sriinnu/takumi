@@ -4,11 +4,21 @@
  */
 
 import { SteeringQueue } from "@takumi/agent";
-import type { ChitraguptaBridge, ChitraguptaHealth, ChitraguptaObserver, VasanaTendency } from "@takumi/bridge";
+import type {
+	CapabilityDescriptor,
+	CapabilityHealthSnapshot,
+	ChitraguptaBridge,
+	ChitraguptaHealth,
+	ChitraguptaObserver,
+	RoutingDecision,
+	VasanaTendency,
+} from "@takumi/bridge";
 import type { Message, PermissionDecision, Size, Usage } from "@takumi/core";
 import type { ReadonlySignal, Signal } from "@takumi/render";
 import { computed, signal } from "@takumi/render";
 import { ValidationResultsDialog } from "./dialogs/validation-results.js";
+import type { ScarlettIntegrityReport } from "./scarlett-runtime.js";
+import { buildScarlettIntegrityReport } from "./scarlett-runtime.js";
 import { ToolSpinner } from "./spinner.js";
 
 // ── Cluster command channel type ──────────────────────────────────────────────
@@ -134,6 +144,23 @@ export class AppState {
 	readonly chitraguptaObserver: Signal<ChitraguptaObserver | null> = signal(null);
 	/** Number of observation batches flushed to Chitragupta in this session. */
 	readonly observationFlushCount: Signal<number> = signal(0);
+	/** Latest capability inventory known from the Chitragupta control plane. */
+	readonly controlPlaneCapabilities: Signal<CapabilityDescriptor[]> = signal<CapabilityDescriptor[]>([]);
+	/** Latest capability health snapshots, including Takumi's local adapter health. */
+	readonly capabilityHealthSnapshots: Signal<CapabilityHealthSnapshot[]> = signal<CapabilityHealthSnapshot[]>([]);
+	/** Recent routing decisions retained for diagnostics and Scarlett-style integrity views. */
+	readonly routingDecisions: Signal<RoutingDecision[]> = signal<RoutingDecision[]>([]);
+	/** Derived Scarlett integrity report over bridge, routing, anomaly, and capability state. */
+	readonly scarlettIntegrityReport: ReadonlySignal<ScarlettIntegrityReport> = computed(() =>
+		buildScarlettIntegrityReport({
+			connected: this.chitraguptaConnected.value,
+			capabilities: this.controlPlaneCapabilities.value,
+			snapshots: this.capabilityHealthSnapshots.value,
+			routingDecisions: this.routingDecisions.value,
+			anomaly: this.chitraguptaAnomaly.value,
+			health: this.chitraguptaHealth.value,
+		}),
+	);
 
 	// ── Chitragupta push notification state (Phase 45) ────────────────────────
 	/** Latest anomaly alert from Chitragupta daemon. */
@@ -312,6 +339,9 @@ export class AppState {
 		this.vasanaTendencies.value = [];
 		this.chitraguptaHealth.value = null;
 		this.vasanaLastRefresh.value = 0;
+		this.controlPlaneCapabilities.value = [];
+		this.capabilityHealthSnapshots.value = [];
+		this.routingDecisions.value = [];
 		this.dialogStack.value = [];
 		this.clusterCommand.value = null;
 		this.akashaDeposits.value = 0;

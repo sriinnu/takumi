@@ -191,6 +191,23 @@ describe("StatusBarPanel — Context Pressure (Phase 20.4)", () => {
 	});
 
 	describe("widget configuration", () => {
+		it("renders Scarlett widget when configured", () => {
+			const { panel, state } = createStatusBar({
+				statusBar: {
+					left: ["scarlett", "model"],
+					center: ["status"],
+					right: ["metrics"],
+				},
+			});
+			state.chitraguptaConnected.value = false;
+
+			const screen = new Screen(80, 1);
+			panel.render(screen, { x: 0, y: 0, width: 80, height: 1 });
+
+			const text = getLineText(screen, 0);
+			expect(text).toContain("crit");
+		});
+
 		it("includes context widget in right section by default", () => {
 			const { panel, state } = createStatusBar();
 			state.contextPercent.value = 75;

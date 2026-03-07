@@ -18,9 +18,15 @@ export type { CheckpointSummary, ClusterCheckpoint } from "./checkpoint.js";
 // ── Checkpoint ────────────────────────────────────────────────────────────────
 export { CheckpointManager } from "./checkpoint.js";
 export type { IsolationContext, IsolationMode } from "./isolation.js";
-
 // ── Isolation ─────────────────────────────────────────────────────────────────
 export { createIsolationContext } from "./isolation.js";
+export type { DeriveClusterConfigInput, MeshIntegrityStatus, MeshPolicyDecision } from "./mesh-policy.js";
+export {
+	adaptTopologyAfterRejection,
+	deriveClusterConfig,
+	getTopologyGuidance,
+	shouldEscalateWeakConsensus,
+} from "./mesh-policy.js";
 export type { OrchestratorOptions } from "./orchestrator.js";
 // ── Orchestrator ──────────────────────────────────────────────────────────────
 export { ClusterOrchestrator } from "./orchestrator.js";

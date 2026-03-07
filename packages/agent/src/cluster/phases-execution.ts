@@ -4,7 +4,7 @@ import type { AgentEvaluator } from "@yugenlab/chitragupta/niyanta";
 import { type EnsembleConfig, ensembleExecute } from "./ensemble.js";
 import type { PhaseContext } from "./phases.js";
 import { progressiveRefine } from "./progressive-refinement.js";
-import { getWorkerPrompt, PLANNER_PROMPT } from "./prompts.js";
+import { getPlannerPrompt, getWorkerPrompt } from "./prompts.js";
 import { type AgentInstance, AgentRole, type ClusterEvent, ClusterPhase, type ClusterState } from "./types.js";
 
 const log = createLogger("cluster-phases-exec");
@@ -32,7 +32,7 @@ export async function* runPlanningPhase({
 	const planner = getAgentByRole(state, AgentRole.PLANNER);
 	if (!planner) return;
 	const userMsg = `Task: ${state.config.taskDescription}\n\nWorking directory: ${ctx.workDir}\n\nCreate a detailed implementation plan.`;
-	state.plan = await runAgent(planner, PLANNER_PROMPT, userMsg, ClusterPhase.PLANNING, 1);
+	state.plan = await runAgent(planner, getPlannerPrompt(state.config.topology), userMsg, ClusterPhase.PLANNING, 1);
 	await ctx.saveCheckpoint();
 	yield {
 		type: "phase_change",
@@ -48,8 +48,20 @@ export async function* runExecutionPhase(deps: ExecutionDeps): AsyncGenerator<Cl
 	const state = ctx.getState();
 	ctx.setPhase(ClusterPhase.EXECUTING);
 	const config = ctx.orchestrationConfig;
-	if (config?.ensemble?.enabled) yield* runEnsembleExecution(deps, config.ensemble);
-	else if (config?.progressiveRefinement?.enabled) yield* runProgressiveExecution(deps, config.progressiveRefinement);
+	const explicitEnsembleConfig = config?.ensemble;
+	const ensembleConfig =
+		explicitEnsembleConfig ??
+		(state.config.topology === "swarm"
+			? {
+					enabled: true,
+					workerCount: 3,
+					temperature: 0.9,
+					parallel: true,
+				}
+			: undefined);
+	if (ensembleConfig?.enabled) {
+		yield* runEnsembleExecution(deps, ensembleConfig);
+	} else if (config?.progressiveRefinement?.enabled) yield* runProgressiveExecution(deps, config.progressiveRefinement);
 	else await runStandardExecution(deps);
 	await ctx.saveCheckpoint();
 	yield {
@@ -68,7 +80,13 @@ async function runStandardExecution({ ctx, runAgent, getAgentByRole }: Execution
 	const userMsg = state.plan
 		? `Plan:\n${state.plan}\n\nWorking directory: ${ctx.workDir}\n\nImplement this plan now.`
 		: `Task: ${state.config.taskDescription}\n\nWorking directory: ${ctx.workDir}\n\nImplement this task.`;
-	const response = await runAgent(worker, getWorkerPrompt(!!state.plan), userMsg, ClusterPhase.EXECUTING, 1);
+	const response = await runAgent(
+		worker,
+		getWorkerPrompt(!!state.plan, state.config.topology),
+		userMsg,
+		ClusterPhase.EXECUTING,
+		1,
+	);
 	state.workProduct = {
 		filesModified: [],
 		diff: "",
@@ -119,7 +137,13 @@ async function* runProgressiveExecution(
 	const userMsg = state.plan
 		? `Plan:\n${state.plan}\n\nWorking directory: ${ctx.workDir}\n\nImplement this plan now.`
 		: `Task: ${state.config.taskDescription}\n\nWorking directory: ${ctx.workDir}\n\nImplement this task.`;
-	const initialDraft = await runAgent(worker, getWorkerPrompt(!!state.plan), userMsg, ClusterPhase.EXECUTING, 1);
+	const initialDraft = await runAgent(
+		worker,
+		getWorkerPrompt(!!state.plan, state.config.topology),
+		userMsg,
+		ClusterPhase.EXECUTING,
+		1,
+	);
 	const result = await progressiveRefine(ctx, evaluator, state.config.taskDescription, initialDraft, {
 		maxIterations: config.maxIterations,
 		minImprovement: config.minImprovement,

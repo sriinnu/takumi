@@ -6,7 +6,7 @@ import { execSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { reviewDiff } from "../src/tools/diff-review.js";
 
 const TEST_DIR = join(tmpdir(), "takumi-diff-review-test");
@@ -107,6 +107,20 @@ describe("reviewDiff", () => {
 		expect(result.passed).toBe(true);
 		expect(result.findings).toHaveLength(0);
 
+		rmSync(nonGitDir, { recursive: true, force: true });
+	});
+
+	it("does not emit git noise for non-git directories", () => {
+		const nonGitDir = join(tmpdir(), "takumi-no-git-review-quiet");
+		mkdirSync(nonGitDir, { recursive: true });
+
+		const stderrSpy = vi.spyOn(process.stderr, "write");
+		const result = reviewDiff({ cwd: nonGitDir });
+
+		expect(result.passed).toBe(true);
+		expect(stderrSpy).not.toHaveBeenCalled();
+
+		stderrSpy.mockRestore();
 		rmSync(nonGitDir, { recursive: true, force: true });
 	});
 });

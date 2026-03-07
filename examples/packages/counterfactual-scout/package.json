@@ -1,0 +1,23 @@
+{
+  "name": "@takumi/counterfactual-scout",
+  "version": "0.1.0",
+  "description": "Turns repeated tool failures into counterfactual guidance and retry-loop guardrails.",
+  "takumi": {
+    "extensions": ["./index.mjs"],
+    "skills": ["./skills"],
+    "systemPrompt": "./system-prompt.md",
+    "toolRules": "./tool-rules.json",
+    "provenance": "verified",
+    "capabilitiesRequested": ["workflow.stabilize", "tool.guardrails"],
+    "compatibility": {
+      "takumi": "^0.1.0",
+      "packageApi": "1"
+    },
+    "evals": {
+      "coverage": ["smoke", "behavior"],
+      "suite": "example-packages",
+      "score": 0.88
+    },
+    "maintainer": "Takumi Labs"
+  }
+}

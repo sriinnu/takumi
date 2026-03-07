@@ -59,8 +59,8 @@ Examples:
 		process.exit(0);
 	}
 
-	// Create bridge (stdio mode, no MCP server needed for telemetry)
-	const bridge = new ChitraguptaBridge({ transport: "stdio" });
+	// Create bridge (telemetry snapshot is file-based)
+	const bridge = new ChitraguptaBridge();
 
 	try {
 		// Get snapshot (no need to connect, telemetry is file-based)

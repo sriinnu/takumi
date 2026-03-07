@@ -24,6 +24,8 @@ export interface CliArgs {
 	detach: boolean;
 	issue?: string;
 	yes: boolean;
+	json: boolean;
+	fix: boolean;
 	stream?: "text" | "ndjson";
 }
 

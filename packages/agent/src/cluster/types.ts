@@ -2,7 +2,7 @@
  * Cluster Types - Core types for multi-agent orchestration
  */
 
-import type { DockerIsolationConfig } from "@takumi/core";
+import type { DockerIsolationConfig, MeshTopologyMode } from "@takumi/core";
 import type { MessagePayload } from "../loop.js";
 
 // ── Agent Roles ──────────────────────────────────────────────────────────────
@@ -26,7 +26,7 @@ export enum AgentRole {
 
 // ── Cluster Configuration ────────────────────────────────────────────────────
 
-export type ClusterTopology = "sequential" | "parallel" | "hierarchical";
+export type ClusterTopology = MeshTopologyMode;
 
 export type ValidationStrategy = "none" | "single" | "majority" | "all_approve";
 

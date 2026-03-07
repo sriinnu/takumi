@@ -14,73 +14,8 @@
 
 import { fork } from "node:child_process";
 import fs from "node:fs";
-import net from "node:net";
-import os from "node:os";
 import path from "node:path";
-
-// ── Inline path resolution (mirrors @chitragupta/daemon/paths) ───────────────
-
-function getSocketPath(): string {
-	if (process.env.CHITRAGUPTA_SOCKET) return process.env.CHITRAGUPTA_SOCKET;
-	const home = process.env.HOME ?? os.homedir();
-	let dir: string;
-	if (process.env.CHITRAGUPTA_DAEMON_DIR) {
-		dir = process.env.CHITRAGUPTA_DAEMON_DIR;
-	} else if (process.platform === "darwin") {
-		dir = path.join(home, "Library", "Caches", "chitragupta", "daemon");
-	} else if (process.env.XDG_RUNTIME_DIR) {
-		dir = path.join(process.env.XDG_RUNTIME_DIR, "chitragupta");
-	} else {
-		dir = path.join(process.env.CHITRAGUPTA_HOME ?? path.join(home, ".chitragupta"), "daemon");
-	}
-	return path.join(dir, "chitragupta.sock");
-}
-
-function getPidPath(): string {
-	if (process.env.CHITRAGUPTA_PID) return process.env.CHITRAGUPTA_PID;
-	const home = process.env.HOME ?? os.homedir();
-	return path.join(process.env.CHITRAGUPTA_HOME ?? path.join(home, ".chitragupta"), "daemon.pid");
-}
-
-function getLogDir(): string {
-	const home = process.env.HOME ?? os.homedir();
-	return path.join(process.env.CHITRAGUPTA_HOME ?? path.join(home, ".chitragupta"), "logs");
-}
-
-function readPid(pidFile: string): number | null {
-	try {
-		const n = parseInt(fs.readFileSync(pidFile, "utf-8").trim(), 10);
-		return Number.isFinite(n) && n > 0 ? n : null;
-	} catch {
-		return null;
-	}
-}
-
-function isAlive(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-function probeSocketSync(socketPath: string): Promise<boolean> {
-	return new Promise<boolean>((resolve) => {
-		let settled = false;
-		const done = (v: boolean) => {
-			if (!settled) {
-				settled = true;
-				s.destroy();
-				resolve(v);
-			}
-		};
-		const s = net.createConnection(socketPath);
-		s.once("connect", () => done(true));
-		s.once("error", () => done(false));
-		setTimeout(() => done(false), 600);
-	});
-}
+import { getDaemonStatus, getLogDir, getPidPath, getSocketPath, isAlive, probeSocket, readPid } from "./daemon-status.js";
 
 // ── Resolve daemon entry.js ──────────────────────────────────────────────────
 
@@ -115,7 +50,7 @@ async function doStart(): Promise<void> {
 	const socketPath = getSocketPath();
 	const pidPath = getPidPath();
 
-	if (await probeSocketSync(socketPath)) {
+	if (await probeSocket(socketPath)) {
 		const pid = readPid(pidPath);
 		console.log(`chitragupta daemon is already running${pid ? ` (pid ${pid})` : ""}`);
 		console.log(`  socket: ${socketPath}`);
@@ -193,17 +128,18 @@ async function doStop(): Promise<void> {
 }
 
 async function doStatus(): Promise<void> {
-	const socketPath = getSocketPath();
-	const pidPath = getPidPath();
-	const pid = readPid(pidPath);
-	const alive = pid ? isAlive(pid) : false;
-	const listening = await probeSocketSync(socketPath);
+	const status = await getDaemonStatus();
 
 	console.log(`chitragupta daemon status:`);
-	console.log(`  running:  ${alive && listening ? "yes" : "no"}`);
-	if (pid) console.log(`  pid:      ${pid}${alive ? "" : " (stale)"}`);
-	console.log(`  socket:   ${socketPath} (${listening ? "listening" : "not found"})`);
-	console.log(`  logs:     ${getLogDir()}/daemon.out.log`);
+	console.log(`  running:  ${status.healthy ? "yes" : "no"}`);
+	if (status.pid) console.log(`  pid:      ${status.pid}${status.alive ? "" : " (stale)"}`);
+	console.log(`  socket:   ${status.socketPath} (${status.listening ? "listening" : "not found"})`);
+	console.log(`  logs:     ${status.logDir}/daemon.out.log`);
+}
+
+async function doStatusJson(): Promise<void> {
+	const status = await getDaemonStatus();
+	console.log(JSON.stringify(status, null, 2));
 }
 
 async function doLogs(lines = 50): Promise<void> {
@@ -219,7 +155,7 @@ async function doLogs(lines = 50): Promise<void> {
 
 // ── Entry point ──────────────────────────────────────────────────────────────
 
-export async function cmdDaemon(action = "status"): Promise<void> {
+export async function cmdDaemon(action = "status", asJson = false): Promise<void> {
 	switch (action) {
 		case "start":
 			await doStart();
@@ -235,6 +171,10 @@ export async function cmdDaemon(action = "status"): Promise<void> {
 			await doLogs();
 			return;
 		default:
+			if (asJson) {
+				await doStatusJson();
+				return;
+			}
 			await doStatus();
 	}
 }

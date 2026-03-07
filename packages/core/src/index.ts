@@ -9,7 +9,6 @@ export {
 	TELEMETRY_NEAR_PERCENT,
 	TELEMETRY_STALE_MS,
 } from "./constants.js";
-
 export {
 	AgentError as AgentErrorClass,
 	ConfigError,
@@ -19,8 +18,13 @@ export {
 	ToolError,
 } from "./errors.js";
 export type { Logger } from "./logger.js";
-
 export { createLogger, setLogLevel } from "./logger.js";
+export type {
+	DockerIsolationConfig,
+	MeshTopologyMode,
+	OrchestrationConfig,
+	OrchestrationMeshConfig,
+} from "./orchestration-types.js";
 export type {
 	BranchResult,
 	FlatTreeEntry,
@@ -69,12 +73,11 @@ export type {
 	AgentUsageUpdate,
 	Cell,
 	ContentBlock,
-	DockerIsolationConfig,
 	ImageBlock,
 	KeyEvent,
 	Message,
 	MouseEvent,
-	OrchestrationConfig,
+	PackageConfig,
 	PermissionDecision,
 	PermissionEngine,
 	PermissionRule,
