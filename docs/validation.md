@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./logo.svg" alt="Takumi logo" width="160" />
+</p>
+
 # Blind Validation Pattern
 
 Takumi validators are deliberately **blind** — they receive only the task
@@ -32,7 +36,7 @@ Task description + Work product
   │    • Work product summary               │
   │    • Role-specific system prompt        │
   │  Each returns:                          │
-  │    • APPROVE / REJECT / NEEDS_REVISION  │
+  │    • APPROVE / REJECT / NEEDS_INFO      │
   │    • Confidence (0–1)                   │
   │    • Findings list                      │
   └─────────────┬───────────────────────────┘
@@ -59,8 +63,8 @@ import { weightedMajority, type ValidatorVote } from "./weighted-voting.js";
 
 const votes: ValidatorVote[] = [
   { decision: ValidationDecision.APPROVE, confidence: 0.92, validatorId: "req" },
-  { decision: ValidationDecision.REJECT,  confidence: 0.45, validatorId: "code" },
-  { decision: ValidationDecision.APPROVE, confidence: 0.88, validatorId: "sec" },
+  { decision: ValidationDecision.REJECT,     confidence: 0.45, validatorId: "code" },
+  { decision: ValidationDecision.APPROVE,    confidence: 0.88, validatorId: "sec" },
 ];
 
 const result = weightedMajority(votes);
@@ -104,12 +108,14 @@ Each `ValidationResult` contains:
 interface ValidationResult {
   validatorId: string;
   validatorRole: AgentRole;
-  decision: ValidationDecision;   // APPROVE | REJECT | NEEDS_REVISION
+  decision: ValidationDecision;   // APPROVE | REJECT | NEEDS_INFO
   confidence: number;             // 0–1
   findings: string[];             // Specific issues found
   timestamp: number;
 }
 ```
+
+`NEEDS_INFO` means the output is directionally viable but not yet strong enough to approve without more fixes, context, or verification.
 
 Results accumulate in `ClusterState.validationResults` across retry attempts.
 

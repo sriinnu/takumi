@@ -10,13 +10,64 @@ import type { MessagePayload } from "../src/loop.js";
 describe("TaskClassifier", () => {
 	// Mock sendMessage function
 	const mockSendMessage = (responseJson: string) => {
-		return vi.fn(async function* (_messages: MessagePayload[], _system: string): AsyncGenerator<AgentEvent> {
+		return vi.fn(async function* (
+			_messages: MessagePayload[],
+			_system: string,
+			_options?: { model?: string },
+		): AsyncGenerator<AgentEvent> {
 			yield { type: "text_delta", text: responseJson };
 			yield { type: "done", stopReason: "end_turn" };
 		});
 	};
 
 	describe("classify", () => {
+		it("uses the router fast model for the classifier by default", async () => {
+			const sendMessage = mockSendMessage(
+				JSON.stringify({
+					complexity: "SIMPLE",
+					type: "REVIEW",
+					estimatedFiles: 2,
+					riskLevel: 2,
+					confidence: 0.8,
+					reasoning: "Cheap review task",
+				}),
+			);
+
+			const classifier = new TaskClassifier({
+				sendMessage,
+				currentModel: "claude-sonnet-4-20250514",
+			});
+
+			await classifier.classify("Review the README wording");
+
+			expect(sendMessage).toHaveBeenCalledWith(expect.any(Array), expect.any(String), {
+				model: "claude-haiku-4-20250514",
+			});
+		});
+
+		it("honors an explicit classifier model override", async () => {
+			const sendMessage = mockSendMessage(
+				JSON.stringify({
+					complexity: "SIMPLE",
+					type: "DEBUG",
+					estimatedFiles: 2,
+					riskLevel: 3,
+					confidence: 0.85,
+					reasoning: "Custom classifier model",
+				}),
+			);
+
+			const classifier = new TaskClassifier({
+				sendMessage,
+				currentModel: "claude-sonnet-4-20250514",
+				classificationModel: "claude-sonnet-4-5",
+			});
+
+			await classifier.classify("Debug the retry logic");
+
+			expect(sendMessage).toHaveBeenCalledWith(expect.any(Array), expect.any(String), { model: "claude-sonnet-4-5" });
+		});
+
 		it("classifies a trivial task correctly", async () => {
 			const response = JSON.stringify({
 				complexity: "TRIVIAL",

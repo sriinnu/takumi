@@ -179,6 +179,95 @@ function envOverrides(): Partial<TakumiConfig> {
 	return overrides;
 }
 
+function mergeTakumiConfig(base: TakumiConfig, override: Partial<TakumiConfig>): TakumiConfig {
+	const merged: TakumiConfig = {
+		...base,
+		...override,
+	};
+
+	if (base.orchestration || override.orchestration) {
+		const baseOrchestration = base.orchestration;
+		const overrideOrchestration = override.orchestration;
+		merged.orchestration = {
+			...baseOrchestration,
+			...overrideOrchestration,
+			...(baseOrchestration || overrideOrchestration
+				? {
+						ensemble: {
+							...baseOrchestration?.ensemble,
+							...overrideOrchestration?.ensemble,
+						},
+						weightedVoting: {
+							...baseOrchestration?.weightedVoting,
+							...overrideOrchestration?.weightedVoting,
+						},
+						reflexion: {
+							...baseOrchestration?.reflexion,
+							...overrideOrchestration?.reflexion,
+						},
+						moA: {
+							...baseOrchestration?.moA,
+							...overrideOrchestration?.moA,
+						},
+						progressiveRefinement: {
+							...baseOrchestration?.progressiveRefinement,
+							...overrideOrchestration?.progressiveRefinement,
+						},
+						adaptiveTemperature: {
+							...baseOrchestration?.adaptiveTemperature,
+							...overrideOrchestration?.adaptiveTemperature,
+							baseTemperatures: {
+								...baseOrchestration?.adaptiveTemperature?.baseTemperatures,
+								...overrideOrchestration?.adaptiveTemperature?.baseTemperatures,
+							},
+						},
+						modelRouting: {
+							...baseOrchestration?.modelRouting,
+							...overrideOrchestration?.modelRouting,
+							taskTypes: {
+								...baseOrchestration?.modelRouting?.taskTypes,
+								...overrideOrchestration?.modelRouting?.taskTypes,
+							},
+						},
+						mesh: {
+							...baseOrchestration?.mesh,
+							...overrideOrchestration?.mesh,
+							sabhaEscalation: {
+								...baseOrchestration?.mesh?.sabhaEscalation,
+								...overrideOrchestration?.mesh?.sabhaEscalation,
+							},
+						},
+					}
+				: {}),
+		} as OrchestrationConfig;
+	}
+
+	if (base.statusBar || override.statusBar) {
+		merged.statusBar = {
+			...base.statusBar,
+			...override.statusBar,
+		};
+	}
+
+	if (base.sideAgent || override.sideAgent) {
+		merged.sideAgent = {
+			maxConcurrent: 2,
+			tmux: false,
+			...base.sideAgent,
+			...override.sideAgent,
+		};
+	}
+
+	if (base.chitraguptaDaemon || override.chitraguptaDaemon) {
+		merged.chitraguptaDaemon = {
+			...base.chitraguptaDaemon,
+			...override.chitraguptaDaemon,
+		};
+	}
+
+	return merged;
+}
+
 /**
  * Auto-detect provider from model name when no explicit provider is set.
  * Returns the provider name if detected, undefined otherwise.
@@ -276,18 +365,18 @@ export function loadConfig(cliOverrides?: Partial<TakumiConfig>): TakumiConfig {
 	for (const path of configPaths()) {
 		const fileConfig = readConfigFile(path);
 		if (fileConfig !== null) {
-			config = { ...config, ...fileConfig };
+			config = mergeTakumiConfig(config, fileConfig);
 			break;
 		}
 	}
 
 	// 3. Merge environment variables
 	const env = envOverrides();
-	config = { ...config, ...env };
+	config = mergeTakumiConfig(config, env);
 
 	// 4. Merge CLI overrides
 	if (cliOverrides) {
-		config = { ...config, ...cliOverrides };
+		config = mergeTakumiConfig(config, cliOverrides);
 	}
 
 	// 5. Auto-detect provider from model name if provider is still the default

@@ -24,6 +24,7 @@ export interface SideAgentToolDeps {
 	tmux: TmuxOrchestrator;
 	agents: SideAgentRegistry;
 	repoRoot: string;
+	defaultModel?: string;
 }
 
 // ── Default wait targets ──────────────────────────────────────────────────────
@@ -62,7 +63,7 @@ export const agentStartDefinition: ToolDefinition = {
 export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 	return async (input) => {
 		const description = input.description as string;
-		const model = (input.model as string | undefined) ?? "claude-sonnet";
+		const model = (input.model as string | undefined) ?? deps.defaultModel ?? "claude-sonnet";
 
 		if (!description) {
 			return { output: "Error: description is required", isError: true };

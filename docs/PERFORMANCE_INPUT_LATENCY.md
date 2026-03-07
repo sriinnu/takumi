@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./logo.svg" alt="Takumi logo" width="160" />
+</p>
+
 # Input Latency Optimization — Takumi Performance Critical Path
 
 **Issue:** Typing latency perceived by user ("keystrokes took like forever")  

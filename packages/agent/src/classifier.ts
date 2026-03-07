@@ -167,16 +167,19 @@ Respond ONLY with valid JSON in this exact format:
 
 export interface ClassifierOptions {
 	/** Function to send messages to LLM */
-	sendMessage: (messages: MessagePayload[], system: string) => AsyncIterable<AgentEvent>;
+	sendMessage: (messages: MessagePayload[], system: string, options?: { model?: string }) => AsyncIterable<AgentEvent>;
 	/**
 	 * Current model string (e.g. `"claude-sonnet-4-20250514"`) used to infer
 	 * the provider family for smart model routing.  Defaults to Anthropic.
 	 */
 	currentModel?: string;
+	/** Optional model override for the classifier's own cheap routing pass. */
+	classificationModel?: string;
 }
 
 export class TaskClassifier {
 	private sendMessage: ClassifierOptions["sendMessage"];
+	private classificationModel?: string;
 	/** Smart model router — maps complexity + role → recommended model. */
 	readonly router: ModelRouter;
 
@@ -185,6 +188,7 @@ export class TaskClassifier {
 		// Infer provider from the model string so the router picks the right family
 		const provider = options.currentModel ? inferProvider(options.currentModel) : "anthropic";
 		this.router = new ModelRouter(provider);
+		this.classificationModel = options.classificationModel ?? this.router.getTierMap().fast;
 	}
 
 	/**
@@ -204,7 +208,11 @@ export class TaskClassifier {
 		let responseText = "";
 
 		try {
-			const stream = this.sendMessage(messages, CLASSIFICATION_PROMPT);
+			const stream = this.sendMessage(
+				messages,
+				CLASSIFICATION_PROMPT,
+				this.classificationModel ? { model: this.classificationModel } : undefined,
+			);
 
 			for await (const event of stream) {
 				if (event.type === "text_delta") {

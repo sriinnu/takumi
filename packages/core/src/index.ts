@@ -24,6 +24,9 @@ export type {
 	MeshTopologyMode,
 	OrchestrationConfig,
 	OrchestrationMeshConfig,
+	OrchestrationModelRoleOverrides,
+	OrchestrationModelRoutingConfig,
+	OrchestrationTaskType,
 } from "./orchestration-types.js";
 export type {
 	BranchResult,

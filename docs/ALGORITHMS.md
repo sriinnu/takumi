@@ -1,3 +1,7 @@
+<p align="center">
+    <img src="./logo.svg" alt="Takumi logo" width="160" />
+</p>
+
 # Algorithms — Kagami Renderer (鏡)
 
 > Rendering algorithms, layout computation, diffing strategy, and

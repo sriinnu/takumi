@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../logo.svg" alt="Takumi logo" width="140" />
+</p>
+
 # multi-agent workflow example
 
 ## basic usage
@@ -45,17 +49,34 @@ Add to `takumi.config.json`:
     "isolationMode": "worktree",
     "ensemble": {
       "enabled": false,
-      "k": 3,
-      "votingStrategy": "majority"
+      "workerCount": 3,
+      "temperature": 0.7,
+      "parallel": true
+    },
+    "weightedVoting": {
+      "minConfidenceThreshold": 0.6
     },
     "reflexion": {
       "enabled": true,
-      "maxReflections": 3,
+      "maxHistorySize": 3,
       "useAkasha": true
     },
     "moA": {
       "enabled": false,
-      "rounds": 2
+      "rounds": 2,
+      "validatorCount": 3,
+      "allowCrossTalk": true,
+      "temperatures": [0.2, 0.4]
+    },
+    "mesh": {
+      "defaultTopology": "hierarchical",
+      "lucyAdaptiveTopology": true,
+      "scarlettAdaptiveTopology": true,
+      "sabhaEscalation": {
+        "enabled": true,
+        "integrityThreshold": "critical",
+        "minValidationAttempts": 1
+      }
     },
     "adaptiveTemperature": {
       "enabled": true
@@ -102,3 +123,9 @@ pnpm takumi
 ```
 
 The orchestrator picks up from the last completed phase.
+
+Related docs:
+
+- [`../orchestration.md`](../orchestration.md)
+- [`../validation.md`](../validation.md)
+- [`../checkpoints.md`](../checkpoints.md)

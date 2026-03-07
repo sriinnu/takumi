@@ -4,10 +4,24 @@ import { formatMessagesAsMarkdown } from "./app-export.js";
 
 export function registerCodingCommands(ctx: AppCommandContext): void {
 	ctx.commands.register("/memory", "Search project memory", async (args) => {
-		if (!args) return ctx.addInfoMessage("Usage: /memory <search query>");
 		const bridge = ctx.state.chitraguptaBridge.value;
 		if (!bridge || !ctx.state.chitraguptaConnected.value) {
 			ctx.addInfoMessage("Memory search requires Chitragupta connection (not connected)");
+			return;
+		}
+		if (!args) {
+			ctx.addInfoMessage("Usage: /memory <search query>\n       /memory scopes");
+			return;
+		}
+		if (args.trim() === "scopes") {
+			try {
+				const scopes = await bridge.memoryScopes();
+				if (scopes.length === 0) return ctx.addInfoMessage("No memory scopes found");
+				const lines = scopes.map((s, i) => `${i + 1}. **${s.type}**${s.path ? ` — ${s.path}` : ""}`);
+				ctx.addInfoMessage(`Memory scopes (${scopes.length}):\n${lines.join("\n")}`);
+			} catch (err) {
+				ctx.addInfoMessage(`Failed to load memory scopes: ${(err as Error).message}`);
+			}
 			return;
 		}
 		ctx.addInfoMessage(`Searching memory for: ${args}...`);

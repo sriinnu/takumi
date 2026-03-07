@@ -1,3 +1,7 @@
+<p align="center">
+    <img src="./logo.svg" alt="Takumi logo" width="160" />
+</p>
+
 # Takumi (匠) — Architecture Diagrams
 
 > All diagrams use Mermaid syntax. Render with any Mermaid-compatible viewer
