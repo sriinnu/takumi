@@ -7,6 +7,7 @@ import type { MessagePayload } from "../loop.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import { CheckpointManager } from "./checkpoint.js";
 import { createIsolationContext, type IsolationContext } from "./isolation.js";
+import { adaptTopologyAfterRejection } from "./mesh-policy.js";
 import {
 	applyStrategy,
 	buildStats,
@@ -194,6 +195,15 @@ export class ClusterOrchestrator {
 				if (this.state.finalDecision === ValidationDecision.APPROVE) {
 					validationPassed = true;
 				} else if (this.state.finalDecision === ValidationDecision.REJECT) {
+					const nextTopology = adaptTopologyAfterRejection(
+						this.state.config.topology,
+						this.state.validationAttempt,
+						this.orchestrationConfig?.mesh,
+					);
+					if (nextTopology !== this.state.config.topology) {
+						log.info(`Lucy adapted mesh topology: ${this.state.config.topology} -> ${nextTopology}`);
+						this.state.config.topology = nextTopology;
+					}
 					yield* this.runner.runFixingPhase();
 				}
 			}

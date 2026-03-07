@@ -22,8 +22,11 @@ export type {
 	ClusterConfig,
 	ClusterEvent,
 	ClusterState,
+	DeriveClusterConfigInput,
 	IsolationContext,
 	IsolationMode,
+	MeshIntegrityStatus,
+	MeshPolicyDecision,
 	OrchestratorOptions,
 	ValidationFinding,
 	ValidationResult,
@@ -33,9 +36,13 @@ export type {
 export {
 	AgentRole,
 	AgentStatus,
+	adaptTopologyAfterRejection,
 	CheckpointManager,
 	ClusterOrchestrator,
 	ClusterPhase,
+	deriveClusterConfig,
+	getTopologyGuidance,
+	shouldEscalateWeakConsensus,
 	ValidationDecision,
 } from "./cluster/index.js";
 // Phase 41 — Adaptive System Prompt
@@ -178,6 +185,13 @@ export type {
 	TurnEndEvent,
 	TurnStartEvent,
 } from "./extensions/extension-types.js";
+export type {
+	LoadedTakumiPackage,
+	LoadTakumiPackagesResult,
+	TakumiPackageResources,
+	TakumiPackageSource,
+} from "./extensions/package-loader.js";
+export { discoverTakumiPackages } from "./extensions/package-loader.js";
 // Phase 53 — Extension Self-Authoring
 export type {
 	AuthorResult,
@@ -190,7 +204,7 @@ export type {
 	ValidationResult as ExtensionValidationResult,
 } from "./extensions/self-author.js";
 export { generateExtensionSource, SelfAuthor, validateExtensionSource } from "./extensions/self-author.js";
-export type { LoadedSkill, LoadedSkillsResult } from "./extensions/skills-loader.js";
+export type { LoadedSkill, LoadedSkillsResult, SkillRoot, SkillSource } from "./extensions/skills-loader.js";
 export { buildSkillsPrompt, loadSkills, selectSkillsForPrompt } from "./extensions/skills-loader.js";
 // Phase 26 — Guardian daemon
 export type { GuardianConfig, GuardianEvent, GuardianSuggestion } from "./guardian.js";

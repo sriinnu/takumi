@@ -4,14 +4,17 @@ import { loadConfig } from "@takumi/core";
 import type { TakumiConfig } from "@takumi/core";
 import { parseArgs } from "./cli/args.js";
 import { cmdAttach, cmdJobs, cmdStop, cmdWatch, startDetachedJob } from "./cli/detached-jobs.js";
+import { cmdDoctor } from "./cli/doctor.js";
 import { printHelp } from "./cli/help.js";
 import { fetchIssueContext, readStdin, runOneShot } from "./cli/one-shot.js";
+import { cmdPlatform } from "./cli/platform.js";
 import { buildSingleProvider, canSkipApiKey, createProvider } from "./cli/provider.js";
 import { autoDetectAuth } from "./cli/cli-auth.js";
 import { koshaProviderModels, koshaProviders } from "./cli/kosha-bridge.js";
 import { cmdDelete, cmdExport, cmdList, cmdLogs, cmdStatus } from "./cli/session-commands.js";
 import { cmdDaemon } from "./cli/daemon.js";
 import { printSplash } from "./cli/splash.js";
+import { cmdPackage } from "./cli/packages.js";
 
 const VERSION = "0.1.0";
 
@@ -214,17 +217,18 @@ async function runInteractiveApp(config: TakumiConfig, args: ReturnType<typeof p
 	// Phase 45 — Discover and load extensions
 	const cwd = process.cwd();
 	const configuredPaths = config.plugins?.map((p) => p.name) ?? [];
-	const extResult = await discoverAndLoadExtensions(configuredPaths, cwd);
-	const extensionRunner = extResult.loaded.length > 0 ? new ExtensionRunner(extResult.loaded) : undefined;
-	if (extResult.loaded.length > 0) {
-		process.stderr.write(`\x1b[2m⚡ Loaded ${extResult.loaded.length} extension(s)\x1b[0m\n`);
+	const configuredPackagePaths = config.packages?.map((pkg) => pkg.name) ?? [];
+	const extResult = await discoverAndLoadExtensions(configuredPaths, cwd, configuredPackagePaths);
+	const extensionRunner = extResult.extensions.length > 0 ? new ExtensionRunner(extResult.extensions) : undefined;
+	if (extResult.extensions.length > 0) {
+		process.stderr.write(`\x1b[2m⚡ Loaded ${extResult.extensions.length} extension(s)\x1b[0m\n`);
 	}
 	for (const err of extResult.errors) {
-		process.stderr.write(`\x1b[33m⚠ Extension error: ${err}\x1b[0m\n`);
+		process.stderr.write(`\x1b[33m⚠ Extension error (${err.path}): ${err.error}\x1b[0m\n`);
 	}
 
 	// Phase 45 — Load convention files (.takumi/system-prompt.md, .takumi/tool-rules.json)
-	const conventionFiles = loadConventionFiles(cwd);
+	const conventionFiles = loadConventionFiles(cwd, configuredPackagePaths);
 	if (conventionFiles.loadedFiles.length > 0) {
 		process.stderr.write(`\x1b[2m⚡ Loaded ${conventionFiles.loadedFiles.length} convention file(s)\x1b[0m\n`);
 	}
@@ -263,17 +267,38 @@ async function main(): Promise<void> {
 		process.exit(0);
 	}
 
+	if (args.workingDirectory) {
+		process.chdir(args.workingDirectory);
+	}
+
+	const overrides: Partial<TakumiConfig> = {};
+	if (args.model) overrides.model = args.model;
+	if (args.thinking) overrides.thinking = true;
+	if (args.thinkingBudget) overrides.thinkingBudget = args.thinkingBudget;
+	if (args.proxy) overrides.proxyUrl = args.proxy;
+	if (args.provider) overrides.provider = args.provider;
+	if (args.apiKey) overrides.apiKey = args.apiKey;
+	if (args.endpoint) overrides.endpoint = args.endpoint;
+	if (args.theme) overrides.theme = args.theme;
+	if (args.logLevel) overrides.logLevel = args.logLevel as TakumiConfig["logLevel"];
+	if (args.workingDirectory) overrides.workingDirectory = args.workingDirectory;
+
+	const config = loadConfig(overrides);
+	if (config.workingDirectory && process.cwd() !== config.workingDirectory) {
+		process.chdir(config.workingDirectory);
+	}
+
 	if (args.subcommand) {
 		switch (args.subcommand) {
 			case "list":
-				await cmdList();
+					await cmdList(args.json);
 				return;
 			case "status":
 				if (!args.subcommandArg) {
 					console.error("Usage: takumi status <id>");
 					process.exit(1);
 				}
-				await cmdStatus(args.subcommandArg);
+					await cmdStatus(args.subcommandArg, args.json);
 				return;
 			case "logs":
 				if (!args.subcommandArg) {
@@ -297,7 +322,7 @@ async function main(): Promise<void> {
 				await cmdDelete(args.subcommandArg);
 				return;
 			case "jobs":
-				await cmdJobs();
+					await cmdJobs(args.json);
 				return;
 			case "watch":
 				await cmdWatch(args.subcommandArg);
@@ -317,24 +342,19 @@ async function main(): Promise<void> {
 				await cmdStop(args.subcommandArg);
 				return;
 			case "daemon":
-				await cmdDaemon(args.subcommandArg ?? "status");
+					await cmdDaemon(args.subcommandArg ?? "status", args.json);
+				return;
+			case "doctor":
+					await cmdDoctor(config, VERSION, args.json, args.fix);
+				return;
+			case "platform":
+					await cmdPlatform(config, VERSION, args.json, args.fix, args.subcommandArg);
+				return;
+			case "package":
+					await cmdPackage(config, args.subcommandArg ?? "list", args.prompt, args.json);
 				return;
 		}
 	}
-
-	const overrides: Partial<TakumiConfig> = {};
-	if (args.model) overrides.model = args.model;
-	if (args.thinking) overrides.thinking = true;
-	if (args.thinkingBudget) overrides.thinkingBudget = args.thinkingBudget;
-	if (args.proxy) overrides.proxyUrl = args.proxy;
-	if (args.provider) overrides.provider = args.provider;
-	if (args.apiKey) overrides.apiKey = args.apiKey;
-	if (args.endpoint) overrides.endpoint = args.endpoint;
-	if (args.theme) overrides.theme = args.theme;
-	if (args.logLevel) overrides.logLevel = args.logLevel as TakumiConfig["logLevel"];
-	if (args.workingDirectory) overrides.workingDirectory = args.workingDirectory;
-
-	const config = loadConfig(overrides);
 	const prompt = args.prompt.join(" ");
 	const isNonTTY = !process.stdin.isTTY;
 	const isOneShot = prompt.length > 0 || args.print || isNonTTY;

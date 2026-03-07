@@ -212,5 +212,72 @@ describe("Orchestration validation", () => {
 			expect(config.orchestration?.progressiveRefinement?.enabled).toBe(false);
 			expect(config.orchestration?.adaptiveTemperature?.enabled).toBe(true);
 		});
+
+		it("should load mesh defaults", () => {
+			const config = loadConfig();
+			expect(config.orchestration?.mesh?.defaultTopology).toBe("hierarchical");
+			expect(config.orchestration?.mesh?.lucyAdaptiveTopology).toBe(true);
+			expect(config.orchestration?.mesh?.scarlettAdaptiveTopology).toBe(true);
+			expect(config.orchestration?.mesh?.sabhaEscalation?.enabled).toBe(true);
+		});
+	});
+
+	describe("mesh validation", () => {
+		it("should reject invalid sabha minValidationAttempts", () => {
+			expect(() =>
+				loadConfig({
+					orchestration: {
+						enabled: true,
+						defaultMode: "multi",
+						complexityThreshold: "STANDARD",
+						maxValidationRetries: 3,
+						isolationMode: "none",
+						mesh: {
+							sabhaEscalation: {
+								enabled: true,
+								minValidationAttempts: 0,
+							},
+						},
+					},
+				}),
+			).toThrow(ConfigError);
+		});
+
+		it("should reject invalid mesh topology", () => {
+			expect(() =>
+				loadConfig({
+					orchestration: {
+						enabled: true,
+						defaultMode: "multi",
+						complexityThreshold: "STANDARD",
+						maxValidationRetries: 3,
+						isolationMode: "none",
+						mesh: {
+							defaultTopology: "lattice" as never,
+						},
+					},
+				}),
+			).toThrow(ConfigError);
+		});
+
+		it("should reject invalid mesh integrity threshold", () => {
+			expect(() =>
+				loadConfig({
+					orchestration: {
+						enabled: true,
+						defaultMode: "multi",
+						complexityThreshold: "STANDARD",
+						maxValidationRetries: 3,
+						isolationMode: "none",
+						mesh: {
+							sabhaEscalation: {
+								enabled: true,
+								integrityThreshold: "severe" as never,
+							},
+						},
+					},
+				}),
+			).toThrow(ConfigError);
+		});
 	});
 });

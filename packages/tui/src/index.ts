@@ -57,6 +57,13 @@ export { ToolOutputPanel } from "./panels/tool-output.js";
 export type { ReplayKeyContext } from "./replay-keybinds.js";
 // Replay
 export { handleReplayKey } from "./replay-keybinds.js";
+export type {
+	BuildScarlettIntegrityReportInput,
+	ScarlettIntegrityFinding,
+	ScarlettIntegrityReport,
+	ScarlettIntegrityState,
+} from "./scarlett-runtime.js";
+export { buildScarlettIntegrityReport, formatScarlettIntegrityReport } from "./scarlett-runtime.js";
 export type { SpinnerLine, ToolSpinnerEntry } from "./spinner.js";
 // Spinner
 export { TOOL_SPINNER_FRAMES, ToolSpinner } from "./spinner.js";

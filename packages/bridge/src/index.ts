@@ -40,11 +40,37 @@ export type {
 	VidhiInfo,
 	VidhiMatch,
 } from "./chitragupta-types.js";
+export type {
+	CapabilityDescriptor,
+	CapabilityHealthSnapshot,
+	CapabilityHealthState,
+	CapabilityKind,
+	CapabilityQuery,
+	CapabilityQueryResult,
+	ConsumerConstraint,
+	CostClass,
+	CredentialAccessEvent,
+	CredentialProvider,
+	CredentialRef,
+	InvocationContract,
+	InvocationTransport,
+	RoutingDecision,
+	RoutingRequest,
+	TrustLevel,
+} from "./control-plane.js";
+export {
+	capabilitySupports,
+	chooseCapability,
+	compareCapabilities,
+	filterCapabilities,
+	getCapabilityTier,
+	isCapabilityName,
+	LOCAL_FIRST_TIERS,
+} from "./control-plane.js";
 export type { NotificationHandler } from "./daemon-socket.js";
 export { DaemonSocketClient, probeSocket, resolveLogDir, resolvePidPath, resolveSocketPath } from "./daemon-socket.js";
 export type { DarpanaConfig } from "./darpana.js";
 export { DarpanaClient } from "./darpana.js";
-// Phase 54 — Darpana Evolution Hooks
 export type {
 	CostRouteAdvice,
 	CostRouterConfig,
@@ -82,6 +108,7 @@ export type {
 	HealReportParams,
 	HealReportResult,
 	HealthStatusResult,
+	NyayaSyllogismInput,
 	ObservationEvent,
 	ObserveBatchResult,
 	PatternDetectedNotification,
@@ -93,11 +120,35 @@ export type {
 	PredictNextResult,
 	PreferenceEvent,
 	PreferenceUpdateNotification,
+	SabhaAskParams,
+	SabhaAskResult,
+	SabhaChallengeInput,
+	SabhaConsultNotification,
+	SabhaCurrentRoundState,
+	SabhaDeliberateParams,
+	SabhaDeliberateResult,
+	SabhaEscalatedNotification,
+	SabhaEscalateParams,
+	SabhaEscalateResult,
+	SabhaGatherParams,
+	SabhaGatherResult,
+	SabhaParticipantSpec,
+	SabhaRecordedNotification,
+	SabhaRecordParams,
+	SabhaRecordResult,
+	SabhaResponseInput,
+	SabhaRoundState,
+	SabhaState,
+	SabhaUpdatedNotification,
+	SabhaVoteInput,
+	SabhaVoteState,
 	ToolUsageEvent,
 	UserCorrectionEvent,
 } from "./observation-types.js";
 export { NOTIFICATION_METHODS } from "./observation-types.js";
 export type { RecoveredSession } from "./session-recovery.js";
 export { forkSessionAtTurn, reconstructFromDaemon } from "./session-recovery.js";
+export type { BuildTakumiCapabilityHealthOptions } from "./takumi-capability.js";
+export { buildTakumiCapabilityHealth, TAKUMI_CAPABILITY } from "./takumi-capability.js";
 export { telemetryCleanup, telemetryHeartbeat, telemetrySnapshot } from "./telemetry.js";
 export { messageToTurn, turnsToMessages, turnToMessage } from "./turn-mapper.js";

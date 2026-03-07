@@ -1,3 +1,5 @@
+import type { OrchestrationConfig } from "./orchestration-types.js";
+
 // ── Terminal cell ──────────────────────────────────────────────────────────────
 
 export interface Cell {
@@ -232,108 +234,6 @@ export interface SessionInfo {
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
-/**
- * Docker-specific options for cluster isolation.
- * Only used when `OrchestrationConfig.isolationMode` is `"docker"`.
- */
-export interface DockerIsolationConfig {
-	/** Docker image to run (e.g. `"node:22-alpine"`). */
-	image: string;
-	/** Short-name bind-mounts: `"git"`, `"ssh"`, `"gh"`, `"npm"`. */
-	mounts: string[];
-	/** Environment-variable glob patterns forwarded into the container (e.g. `"AWS_*"`). */
-	envPassthrough: string[];
-}
-
-/**
- * Multi-agent orchestration settings.
- * Stored under the `"orchestration"` key in `takumi.config.json`.
- */
-export interface OrchestrationConfig {
-	/** Enable multi-agent orchestration (default: `true`). */
-	enabled: boolean;
-	/** Execution mode applied when complexity classifier has not overridden it. */
-	defaultMode: "single" | "multi";
-	/**
-	 * Minimum complexity level that triggers multi-agent mode.
-	 * Tasks below this threshold run with a single agent.
-	 */
-	complexityThreshold: "TRIVIAL" | "SIMPLE" | "STANDARD" | "CRITICAL";
-	/** Maximum validation-retry attempts per cluster run. */
-	maxValidationRetries: number;
-	/** Sandbox mode applied to cluster worker execution. */
-	isolationMode: "none" | "worktree" | "docker";
-	/** Docker configuration — only used when `isolationMode = "docker"`. */
-	docker?: DockerIsolationConfig;
-
-	/**
-	 * Ensemble execution: spawn K workers in parallel, select best via voting.
-	 * Based on "Self-Consistency Improves Chain of Thought" (Wang et al., arXiv:2203.11171)
-	 */
-	ensemble?: {
-		enabled: boolean;
-		workerCount: number;
-		temperature: number;
-		parallel: boolean;
-	};
-
-	/**
-	 * Weighted voting: aggregate validator decisions by confidence scores.
-	 */
-	weightedVoting?: {
-		minConfidenceThreshold: number;
-	};
-
-	/**
-	 * Reflexion: self-critique and learning from past failures.
-	 * Based on "Reflexion: Language Agents with Verbal Reinforcement Learning"
-	 * (Shinn et al., arXiv:2303.11366)
-	 */
-	reflexion?: {
-		enabled: boolean;
-		maxHistorySize: number;
-		useAkasha: boolean;
-	};
-
-	/**
-	 * Mixture-of-Agents: multi-round collaborative validation with cross-talk.
-	 * Based on "Mixture-of-Agents Enhances LLM Capabilities"
-	 * (Wang et al., arXiv:2406.04692)
-	 */
-	moA?: {
-		enabled: boolean;
-		rounds: number;
-		validatorCount: number;
-		allowCrossTalk: boolean;
-		temperatures: number[];
-	};
-
-	/**
-	 * Progressive refinement: iterative improvement via critic feedback.
-	 * Inspired by AlphaCodium (arXiv:2401.08500) and Reflexion.
-	 */
-	progressiveRefinement?: {
-		enabled: boolean;
-		maxIterations: number;
-		minImprovement: number;
-		useCriticModel: boolean;
-		targetScore: number;
-	};
-
-	/**
-	 * Adaptive temperature sampling: dynamic temperature per task complexity/phase.
-	 */
-	adaptiveTemperature?: {
-		enabled: boolean;
-		baseTemperatures?: {
-			TRIVIAL?: number;
-			SIMPLE?: number;
-			STANDARD?: number;
-			CRITICAL?: number;
-		};
-	};
-}
-
 export interface StatusBarConfig {
 	left?: string[];
 	center?: string[];
@@ -341,6 +241,11 @@ export interface StatusBarConfig {
 }
 
 export interface PluginConfig<TOptions = Record<string, unknown>> {
+	name: string;
+	options?: TOptions;
+}
+
+export interface PackageConfig<TOptions = Record<string, unknown>> {
 	name: string;
 	options?: TOptions;
 }
@@ -423,27 +328,22 @@ export interface TakumiConfig {
 	/** Plugins configuration */
 	plugins?: PluginConfig[];
 
+	/** Takumi package configuration */
+	packages?: PackageConfig[];
+
 	/** Maximum total spend in USD before the session is halted. */
 	maxCostUsd?: number;
 
 	/** Side agent configuration (Phase 21). */
 	sideAgent?: import("./side-agent-types.js").SideAgentConfig;
-
 	/**
 	 * Chitragupta daemon configuration.
 	 * When set, takumi will attempt socket-mode connection before MCP subprocess.
 	 */
 	chitraguptaDaemon?: {
-		/**
-		 * Override the daemon Unix socket path.
-		 * Default: platform-resolved path (mirrors @chitragupta/daemon).
-		 * Set to "" to disable socket mode entirely.
-		 */
+		/** Override the daemon Unix socket path. Set to "" to disable socket mode entirely. */
 		socketPath?: string;
-		/**
-		 * Path to chitragupta-daemon dist/entry.js for `takumi daemon start`.
-		 * Falls back to CHITRAGUPTA_DAEMON_ENTRY env var.
-		 */
+		/** Path to chitragupta-daemon dist/entry.js for `takumi daemon start`. */
 		daemonEntry?: string;
 	};
 }

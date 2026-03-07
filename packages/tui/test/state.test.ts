@@ -445,6 +445,45 @@ describe("AppState", () => {
 			state.reset();
 			expect(state.model.value).toBe("claude-opus-4-20250514");
 		});
+
+		it("derives Scarlett integrity from control-plane state", () => {
+			const state = new AppState();
+			state.chitraguptaConnected.value = false;
+
+			expect(state.scarlettIntegrityReport.value.status).toBe("critical");
+
+			state.chitraguptaConnected.value = true;
+			state.controlPlaneCapabilities.value = [
+				{
+					id: "adapter.takumi.executor",
+					kind: "adapter",
+					label: "Takumi",
+					capabilities: ["coding.patch-and-validate"],
+					costClass: "medium",
+					trust: "privileged",
+					health: "healthy",
+					invocation: {
+						id: "takumi-agent-loop",
+						transport: "inproc",
+						entrypoint: "@takumi/agent/loop",
+						requestShape: "RoutingRequest",
+						responseShape: "AgentEvent stream",
+						timeoutMs: 120_000,
+						streaming: true,
+					},
+					tags: ["coding"],
+				},
+			];
+			state.capabilityHealthSnapshots.value = [
+				{
+					capabilityId: "adapter.takumi.executor",
+					state: "healthy",
+					errorRate: 0,
+				},
+			];
+
+			expect(state.scarlettIntegrityReport.value.status).toBe("healthy");
+		});
 	});
 
 	/* ---- signal reactivity ----------------------------------------------- */

@@ -312,9 +312,10 @@ export async function sessionModifiedSince(
 	project?: string,
 ): Promise<ChitraguptaSessionInfo[]> {
 	if (socketMode && socket) {
+		const effectiveProject = project ?? process.cwd();
 		const result = await socket.call<{ sessions: ChitraguptaSessionInfo[] }>("session.modified_since", {
-			timestamp,
-			project,
+			sinceMs: timestamp,
+			project: effectiveProject,
 		});
 		return result.sessions;
 	}
@@ -349,7 +350,7 @@ export async function turnList(
 	sessionId: string,
 ): Promise<Turn[]> {
 	if (socketMode && socket) {
-		const result = await socket.call<{ turns: Turn[] }>("turn.list", { session_id: sessionId });
+		const result = await socket.call<{ turns: Turn[] }>("turn.list", { sessionId });
 		return result.turns;
 	}
 	const result = await callTool("turn_list", { session_id: sessionId });
@@ -367,8 +368,9 @@ export async function turnSince(
 	sessionId?: string,
 ): Promise<Turn[]> {
 	if (socketMode && socket) {
-		const result = await socket.call<{ turns: Turn[] }>("turn.since", { timestamp, sessionId });
-		return result.turns;
+		if (!sessionId) return [];
+		const result = await socket.call<{ turns: Turn[] }>("turn.list", { sessionId });
+		return (result.turns ?? []).filter((turn) => Number(turn.timestamp ?? 0) >= timestamp);
 	}
 	const result = await callTool("turn_since", { timestamp, session_id: sessionId });
 	const content = result.content?.[0]?.text;

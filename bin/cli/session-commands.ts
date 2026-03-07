@@ -7,41 +7,115 @@ function formatAge(ts: number): string {
 	return `${Math.floor(hrs / 24)}d ago`;
 }
 
-export async function cmdList(): Promise<void> {
+export interface SessionListEntry {
+	id: string;
+	title: string;
+	model: string;
+	messageCount: number;
+	updatedAt: number;
+	updatedAge: string;
+}
+
+export interface SessionStatusView {
+	id: string;
+	title: string;
+	model: string;
+	createdAt: number;
+	updatedAt: number;
+	messageCount: number;
+	inputTokens: number;
+	outputTokens: number;
+	totalCost: number;
+}
+
+export function toSessionListEntry(session: {
+	id: string;
+	title?: string;
+	model: string;
+	messageCount: number;
+	updatedAt: number;
+}): SessionListEntry {
+	return {
+		id: session.id,
+		title: session.title || "(untitled)",
+		model: session.model,
+		messageCount: session.messageCount,
+		updatedAt: session.updatedAt,
+		updatedAge: formatAge(session.updatedAt),
+	};
+}
+
+export function toSessionStatusView(session: {
+	id: string;
+	title?: string;
+	model: string;
+	createdAt: number;
+	updatedAt: number;
+	messages: unknown[];
+	tokenUsage: { inputTokens: number; outputTokens: number; totalCost: number };
+}): SessionStatusView {
+	return {
+		id: session.id,
+		title: session.title || "(untitled)",
+		model: session.model,
+		createdAt: session.createdAt,
+		updatedAt: session.updatedAt,
+		messageCount: session.messages.length,
+		inputTokens: session.tokenUsage.inputTokens,
+		outputTokens: session.tokenUsage.outputTokens,
+		totalCost: session.tokenUsage.totalCost,
+	};
+}
+
+export async function cmdList(asJson = false): Promise<void> {
 	const { listSessions } = await import("@takumi/core");
 	const sessions = await listSessions(50);
 	if (sessions.length === 0) {
+		if (asJson) {
+			console.log(JSON.stringify([]));
+			return;
+		}
 		console.log("No sessions found.");
+		return;
+	}
+	if (asJson) {
+		console.log(JSON.stringify(sessions.map(toSessionListEntry), null, 2));
 		return;
 	}
 	console.log(`\nSessions (${sessions.length}):\n`);
 	for (const s of sessions) {
-		const date = new Date(s.updatedAt).toLocaleString();
+		const entry = toSessionListEntry(s);
+		const date = new Date(entry.updatedAt).toLocaleString();
 		console.log(`  \x1b[1;36m${s.id}\x1b[0m`);
-		console.log(`    Title:    ${s.title || "(untitled)"}`);
-		console.log(`    Model:    ${s.model}`);
-		console.log(`    Messages: ${s.messageCount}`);
-		console.log(`    Updated:  ${date} (${formatAge(s.updatedAt)})`);
+		console.log(`    Title:    ${entry.title}`);
+		console.log(`    Model:    ${entry.model}`);
+		console.log(`    Messages: ${entry.messageCount}`);
+		console.log(`    Updated:  ${date} (${entry.updatedAge})`);
 		console.log();
 	}
 }
 
-export async function cmdStatus(id: string): Promise<void> {
+export async function cmdStatus(id: string, asJson = false): Promise<void> {
 	const { loadSession } = await import("@takumi/core");
 	const session = await loadSession(id);
 	if (!session) {
 		console.error(`Session not found: ${id}`);
 		process.exit(1);
 	}
+	if (asJson) {
+		console.log(JSON.stringify(toSessionStatusView(session), null, 2));
+		return;
+	}
+	const view = toSessionStatusView(session);
 	console.log(`\n\x1b[1mSession:\x1b[0m ${session.id}`);
-	console.log(`  Title:         ${session.title || "(untitled)"}`);
-	console.log(`  Model:         ${session.model}`);
-	console.log(`  Created:       ${new Date(session.createdAt).toLocaleString()}`);
-	console.log(`  Updated:       ${new Date(session.updatedAt).toLocaleString()}`);
-	console.log(`  Messages:      ${session.messages.length}`);
-	console.log(`  Input tokens:  ${session.tokenUsage.inputTokens.toLocaleString()}`);
-	console.log(`  Output tokens: ${session.tokenUsage.outputTokens.toLocaleString()}`);
-	console.log(`  Est. cost:     $${session.tokenUsage.totalCost.toFixed(4)}`);
+	console.log(`  Title:         ${view.title}`);
+	console.log(`  Model:         ${view.model}`);
+	console.log(`  Created:       ${new Date(view.createdAt).toLocaleString()}`);
+	console.log(`  Updated:       ${new Date(view.updatedAt).toLocaleString()}`);
+	console.log(`  Messages:      ${view.messageCount}`);
+	console.log(`  Input tokens:  ${view.inputTokens.toLocaleString()}`);
+	console.log(`  Output tokens: ${view.outputTokens.toLocaleString()}`);
+	console.log(`  Est. cost:     $${view.totalCost.toFixed(4)}`);
 	console.log();
 }
 

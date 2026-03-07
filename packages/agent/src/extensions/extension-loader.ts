@@ -4,7 +4,8 @@
  * Discovers and loads TypeScript extension modules from:
  * 1. Project-local: `<cwd>/.takumi/extensions/`
  * 2. Global: `~/.config/takumi/extensions/`
- * 3. Explicitly configured paths from takumi.config.json
+ * 3. Project/global Takumi packages
+ * 4. Explicitly configured paths from takumi.config.json
  *
  * Extensions are loaded via dynamic `import()` and must export a default
  * factory function matching `ExtensionFactory`.
@@ -30,6 +31,7 @@ import type {
 	LoadedExtension,
 	RegisteredCommand,
 } from "./extension-types.js";
+import { discoverTakumiPackages } from "./package-loader.js";
 
 const log = createLogger("extension-loader");
 
@@ -262,11 +264,16 @@ export async function loadExtensions(paths: string[], cwd: string): Promise<Load
  * Discovery order:
  * 1. `<cwd>/.takumi/extensions/` — project-local
  * 2. `~/.config/takumi/extensions/` — global
- * 3. Explicitly configured paths
+ * 3. Package-provided extension entry points
+ * 4. Explicitly configured paths
  *
  * Deduplicates by resolved absolute path.
  */
-export async function discoverAndLoadExtensions(configuredPaths: string[], cwd: string): Promise<LoadExtensionsResult> {
+export async function discoverAndLoadExtensions(
+	configuredPaths: string[],
+	cwd: string,
+	configuredPackagePaths: string[] = [],
+): Promise<LoadExtensionsResult> {
 	const allPaths: string[] = [];
 	const seen = new Set<string>();
 
@@ -286,7 +293,13 @@ export async function discoverAndLoadExtensions(configuredPaths: string[], cwd: 
 	// 2. Global
 	addPaths(discoverInDir(globalExtensionsDir()));
 
-	// 3. Configured paths (may be files or directories)
+	// 3. Package-provided extension entry points
+	const packageResult = discoverTakumiPackages(configuredPackagePaths, cwd);
+	for (const pkg of packageResult.packages) {
+		addPaths(pkg.extensions);
+	}
+
+	// 4. Configured paths (may be files or directories)
 	for (const p of configuredPaths) {
 		const resolved = resolvePath(p, cwd);
 		if (existsSync(resolved) && statSync(resolved).isDirectory()) {
@@ -302,7 +315,11 @@ export async function discoverAndLoadExtensions(configuredPaths: string[], cwd: 
 	}
 
 	log.info(`Discovered ${allPaths.length} extension entry points`);
-	return loadExtensions(allPaths, cwd);
+	const loadResult = await loadExtensions(allPaths, cwd);
+	return {
+		extensions: loadResult.extensions,
+		errors: [...packageResult.errors, ...loadResult.errors],
+	};
 }
 
 /**

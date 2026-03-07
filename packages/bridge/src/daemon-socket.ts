@@ -8,12 +8,14 @@
  * @module
  */
 
+import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { createLogger } from "@takumi/core";
 
 const log = createLogger("daemon-socket");
+const BRIDGE_KEY_PATTERN = /^chg_[0-9a-f]{32}$/;
 
 // ── Path resolution ──────────────────────────────────────────────────────────
 
@@ -68,6 +70,41 @@ export function resolveLogDir(): string {
 	return path.join(chitHome, "logs");
 }
 
+/** Resolve the daemon bridge token path. */
+export function resolveApiKeyPath(): string {
+	if (process.env.CHITRAGUPTA_DAEMON_API_KEY_PATH) return process.env.CHITRAGUPTA_DAEMON_API_KEY_PATH;
+	return path.join(path.dirname(resolvePidPath()), "daemon.api-key");
+}
+
+function normalizeBridgeKey(value: string | undefined): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	if (!trimmed || !BRIDGE_KEY_PATTERN.test(trimmed)) return undefined;
+	return trimmed;
+}
+
+function readApiKeyFile(apiKeyPath: string): string | undefined {
+	try {
+		return normalizeBridgeKey(fs.readFileSync(apiKeyPath, "utf-8"));
+	} catch {
+		return undefined;
+	}
+}
+
+/** Resolve the daemon bridge token from env or the shared token file. */
+export function resolveDaemonApiKey(): string | undefined {
+	for (const key of [
+		"CHITRAGUPTA_MCP_BRIDGE_API_KEY",
+		"CHITRAGUPTA_DAEMON_API_KEY",
+		"CHITRAGUPTA_API_KEY",
+		"CHITRAGUPTA_BRIDGE_API_KEY",
+	]) {
+		const value = normalizeBridgeKey(process.env[key]);
+		if (value) return value;
+	}
+	return readApiKeyFile(resolveApiKeyPath());
+}
+
 /**
  * Non-blocking probe: returns true if a daemon is listening on socketPath.
  * Times out after 500 ms to avoid blocking the TUI startup.
@@ -86,7 +123,6 @@ export function probeSocket(socketPath: string): Promise<boolean> {
 		const s = net.createConnection(socketPath);
 		s.once("connect", () => done(true));
 		s.once("error", () => done(false));
-		// Hard timeout — daemon probe must not block TUI startup
 		setTimeout(() => done(false), 500);
 	});
 }
@@ -112,26 +148,32 @@ export class DaemonSocketClient {
 
 	readonly socketPath: string;
 	readonly timeout: number;
+	private readonly apiKey?: string;
 
-	constructor(socketPath?: string, timeoutMs = 10_000) {
+	constructor(socketPath?: string, timeoutMs = 10_000, apiKey?: string) {
 		this.socketPath = socketPath ?? resolveSocketPath();
 		this.timeout = timeoutMs;
+		this.apiKey = normalizeBridgeKey(apiKey);
 	}
 
 	/** Connect to the daemon socket. */
 	connect(): Promise<void> {
 		return new Promise<void>((resolve, reject) => {
+			let settled = false;
+			const fail = (err: Error) => {
+				if (!settled) {
+					settled = true;
+					reject(err);
+				}
+			};
+			const succeed = () => {
+				if (!settled) {
+					settled = true;
+					resolve();
+				}
+			};
+
 			const s = net.createConnection(this.socketPath);
-
-			s.once("connect", () => {
-				this.sock = s;
-				log.debug("Connected to chitragupta daemon socket");
-				resolve();
-			});
-
-			s.once("error", (err) => {
-				reject(err);
-			});
 
 			s.on("data", (chunk: Buffer) => {
 				this.buf += chunk.toString("utf-8");
@@ -141,6 +183,24 @@ export class DaemonSocketClient {
 			s.on("close", () => {
 				this.sock = null;
 				log.debug("Daemon socket closed");
+				if (!settled) {
+					fail(new Error("Daemon socket closed during connect"));
+				}
+			});
+
+			s.once("error", (err) => {
+				if (!settled) {
+					fail(err as Error);
+				}
+			});
+
+			s.once("connect", () => {
+				this.sock = s;
+				log.debug("Connected to chitragupta daemon socket");
+				void this.performHandshakeIfNeeded().then(succeed, (err) => {
+					this.disconnect();
+					fail(err instanceof Error ? err : new Error(String(err)));
+				});
 			});
 		});
 	}
@@ -174,7 +234,7 @@ export class DaemonSocketClient {
 			} catch (err) {
 				this.pending.delete(id);
 				clearTimeout(timer);
-				reject(err);
+				reject(err as Error);
 			}
 		});
 	}
@@ -240,7 +300,6 @@ export class DaemonSocketClient {
 							}
 						}
 					} else if (msg.method) {
-						// Server-push notification (no id)
 						const handlers = this.notificationHandlers.get(msg.method);
 						if (handlers) {
 							for (const handler of handlers) {
@@ -258,6 +317,17 @@ export class DaemonSocketClient {
 			}
 
 			idx = this.buf.indexOf("\n");
+		}
+	}
+
+	private async performHandshakeIfNeeded(): Promise<void> {
+		const apiKey = this.apiKey ?? resolveDaemonApiKey();
+		if (!apiKey) {
+			throw new Error("Missing daemon bridge token for auth.handshake");
+		}
+		const result = await this.call<{ authenticated?: boolean }>("auth.handshake", { apiKey });
+		if (result?.authenticated !== true) {
+			throw new Error("Daemon bridge authentication failed");
 		}
 	}
 }

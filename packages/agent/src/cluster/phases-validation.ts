@@ -71,7 +71,19 @@ export async function* runValidationPhase(deps: ValidationDeps): AsyncGenerator<
 		return;
 	}
 
-	const moaConfig = ctx.orchestrationConfig?.moA;
+	const explicitMoAConfig = ctx.orchestrationConfig?.moA;
+	const shouldUseAdversarialDefaultMoA = state.config.topology === "adversarial" && explicitMoAConfig === undefined;
+	const moaConfig =
+		explicitMoAConfig ??
+		(shouldUseAdversarialDefaultMoA
+			? {
+					enabled: true,
+					rounds: 2,
+					validatorCount: 3,
+					allowCrossTalk: true,
+					temperatures: [0.2, 0.1, 0.05],
+				}
+			: undefined);
 	if (moaConfig?.enabled) yield* runMoAValidation(deps, state, moaConfig);
 	else yield* runStandardValidation(deps, state, validators);
 	await ctx.saveCheckpoint();
@@ -148,7 +160,7 @@ export async function runValidator(
 	validator: AgentInstance,
 	workProduct: WorkProduct,
 ): Promise<ValidationResult> {
-	const systemPrompt = getValidatorPrompt(validator.role);
+	const systemPrompt = getValidatorPrompt(validator.role, deps.ctx.getState().config.topology);
 	const testLine = workProduct.testResults
 		? `Tests: ${workProduct.testResults.passed ? "PASSED" : "FAILED"}\n${workProduct.testResults.output}`
 		: "";

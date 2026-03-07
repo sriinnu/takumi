@@ -1,25 +1,25 @@
-/**
- * CodingAgent -- structured coding workflow.
- * Plan -> Branch -> Execute -> Validate -> Review -> Commit
- *
- * Supports both single-agent and multi-agent orchestration modes.
- */
-
 import {
 	AgentRole,
-	type ClusterConfig,
+	type ClassificationResult,
 	ClusterOrchestrator,
 	TaskClassifier,
 	TaskComplexity,
 	type ValidationResult,
 } from "@takumi/agent";
-import type { Message, ToolDefinition } from "@takumi/core";
+import type { Message, OrchestrationConfig, ToolDefinition } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import { effect } from "@takumi/render";
 import type { AgentRunner } from "./agent-runner.js";
 import { handleClusterCommand } from "./coding-agent-cluster-command.js";
 import { createPullRequestViaGh } from "./coding-agent-gh.js";
+import { maybeEscalateMeshSabha, maybeEscalateWeakConsensusToSabha, prepareMeshCluster } from "./coding-agent-mesh.js";
+import { resolveRoutingOverrides } from "./coding-agent-routing.js";
 import { PHASE_LABELS, runSingleAgentFlow } from "./coding-agent-single-flow.js";
+import {
+	appendRoutingDecisions,
+	summarizeTakumiCapabilityHealth,
+	upsertCapabilityHealthSnapshot,
+} from "./control-plane-state.js";
 import type { AppState, ClusterCommandEvent } from "./state.js";
 
 const log = createLogger("coding-agent");
@@ -59,6 +59,8 @@ export interface CodingAgentOptions {
 	autoPr?: boolean;
 	/** Auto-create + auto-merge PR (implies autoPr, default: false) */
 	autoShip?: boolean;
+	/** Full orchestration config for topology / Lucy / Scarlett policy. */
+	orchestrationConfig?: OrchestrationConfig;
 }
 
 export class CodingAgent {
@@ -69,7 +71,6 @@ export class CodingAgent {
 	private options: CodingAgentOptions;
 	private classifier: TaskClassifier | null = null;
 	private orchestrator: ClusterOrchestrator | null = null;
-	/** Dispose fn for the clusterCommand signal effect. */
 	private _disposeCommandEffect: (() => void) | null = null;
 
 	constructor(state: AppState, runner: AgentRunner, options: CodingAgentOptions = {}) {
@@ -80,15 +81,13 @@ export class CodingAgent {
 			maxValidationRetries: options.maxValidationRetries ?? 3,
 			autoPr: options.autoPr ?? false,
 			autoShip: options.autoShip ?? false,
+			orchestrationConfig: options.orchestrationConfig,
 		};
 
-		// Initialize classifier and orchestrator if orchestration is enabled
 		if (this.options.enableOrchestration) {
-			// Use the public getter — avoids unsafe bracket-notation private access
 			const sendFn = this.runner.getSendMessageFn();
 			this.classifier = new TaskClassifier({
 				sendMessage: (messages, system) => sendFn(messages, system),
-				// Pass active model so router infers the right provider family
 				currentModel: this.state.model.value,
 			});
 
@@ -100,15 +99,13 @@ export class CodingAgent {
 				enableCheckpoints: true,
 				chitraguptaMemory: this.state.chitraguptaMemory.value || undefined,
 				tools: this.runner.getTools(),
+				orchestrationConfig: this.options.orchestrationConfig,
 				onMeshSizeChange: (size: number) => {
 					this.state.akashaMeshSize.value = size;
 				},
 			});
 		}
 
-		// Subscribe to cluster commands dispatched from slash commands / dialogs.
-		// Observes state.clusterCommand via an effect; clears it immediately so
-		// the same event type can be re-sent without stale-signal issues.
 		this._disposeCommandEffect = effect(() => {
 			const cmd = this.state.clusterCommand.value;
 			if (!cmd) return undefined;
@@ -117,7 +114,6 @@ export class CodingAgent {
 			return undefined;
 		});
 
-		// Wire ValidationResultsDialog callbacks.
 		const vd = this.state.validationResultsDialog;
 		vd.onRetry = () => {
 			this.state.clusterCommand.value = { type: "retry" };
@@ -139,21 +135,39 @@ export class CodingAgent {
 		return this.task !== null && this.task.phase !== "idle" && this.task.phase !== "done";
 	}
 
-	/** Start a new coding task. */
 	async start(description: string, forceMode?: "single" | "multi"): Promise<void> {
-		// Determine orchestration mode
 		let orchestrationMode: "single" | "multi" = "single";
 		let complexity: TaskComplexity | undefined;
+		let classificationResult: ClassificationResult | null = null;
 
 		if (forceMode) {
 			orchestrationMode = forceMode;
 		} else if (this.options.enableOrchestration && this.classifier) {
-			// Auto-classify using niyanta plan + LLM complexity classification in parallel
 			try {
 				const result = await this.classifier.classifyAndGetTopology(description);
+				classificationResult = result;
 				complexity = result.classification.complexity;
+				const routingPlan = await resolveRoutingOverrides({
+					observer: this.state.chitraguptaObserver.value,
+					sessionId: this.state.sessionId.value,
+					currentModel: this.state.model.value,
+				});
+				this.state.routingDecisions.value = appendRoutingDecisions(
+					this.state.routingDecisions.value,
+					routingPlan.decisions,
+				);
+				this.state.capabilityHealthSnapshots.value = upsertCapabilityHealthSnapshot(
+					this.state.capabilityHealthSnapshots.value,
+					summarizeTakumiCapabilityHealth({
+						connected: this.state.chitraguptaConnected.value,
+						anomalySeverity: this.state.chitraguptaAnomaly.value?.severity,
+						routingDecisions: this.state.routingDecisions.value,
+					}),
+				);
+				for (const note of routingPlan.notes) {
+					this.addSystemMessage(note);
+				}
 
-				// Apply per-role model overrides from the router
 				if (this.orchestrator && complexity) {
 					const router = this.classifier.router;
 					this.orchestrator.setModelOverrides({
@@ -164,15 +178,14 @@ export class CodingAgent {
 						[AgentRole.VALIDATOR_SECURITY]: router.recommend(complexity, "VALIDATOR_SECURITY").model,
 						[AgentRole.VALIDATOR_TESTS]: router.recommend(complexity, "VALIDATOR_TESTS").model,
 						[AgentRole.VALIDATOR_ADVERSARIAL]: router.recommend(complexity, "VALIDATOR_ADVERSARIAL").model,
+						...routingPlan.overrides,
 					});
 				}
 
-				// Use multi-agent for STANDARD and CRITICAL tasks
 				if (complexity === TaskComplexity.STANDARD || complexity === TaskComplexity.CRITICAL) {
 					orchestrationMode = "multi";
 				}
 
-				// Log niyanta's recommended coordination strategy for observability
 				const strategy = result.plan.strategy;
 				const subtaskCount = result.subtasks.length;
 				this.addSystemMessage(
@@ -199,24 +212,31 @@ export class CodingAgent {
 			validationResults: [],
 		};
 
-		// Wire cluster signals when running in multi-agent mode
 		if (orchestrationMode === "multi" && this.orchestrator) {
-			// Refresh Chitragupta memory before spawning
 			this.orchestrator.setChitraguptaMemory(this.state.chitraguptaMemory.value || undefined);
-			const cfg: ClusterConfig = {
-				roles: [AgentRole.PLANNER, AgentRole.WORKER, AgentRole.VALIDATOR_CODE, AgentRole.VALIDATOR_REQUIREMENTS],
-				topology: "hierarchical",
-				validationStrategy: "majority",
-				maxRetries: this.options.maxValidationRetries ?? 3,
-				taskDescription: description,
-				isolationMode: this.state.isolationMode.value,
-			};
+			const cfg = prepareMeshCluster({
+				description,
+				result: classificationResult ?? (await this.classifier!.classifyAndGetTopology(description)),
+				state: this.state,
+				orchestrationConfig: this.options.orchestrationConfig,
+				maxValidationRetries: this.options.maxValidationRetries ?? 3,
+			});
+			for (const reason of cfg.reasons) {
+				this.addSystemMessage(reason);
+			}
+			if (cfg.escalateToSabha) {
+				const escalated = await maybeEscalateMeshSabha(
+					this.state.chitraguptaObserver.value,
+					`Mesh integrity escalation: ${description}`,
+					this.state.scarlettIntegrityReport.value.summary,
+				);
+				if (escalated) this.addSystemMessage("Scarlett requested Sabha oversight before mesh execution.");
+			}
 			const cs = await this.orchestrator.spawn(cfg);
 			this.task.clusterId = cs.id;
 			this.state.clusterId.value = cs.id;
 			this.state.clusterAgentCount.value = cs.agents.size;
 			this.state.clusterPhase.value = cs.phase;
-			// Keep signals in sync with cluster events
 			this.orchestrator.on((evt) => {
 				if (evt.type === "phase_change") {
 					this.state.clusterPhase.value = evt.newPhase;
@@ -233,9 +253,6 @@ export class CodingAgent {
 
 		try {
 			if (orchestrationMode === "multi" && this.orchestrator && this.task.clusterId) {
-				// ── Multi-agent path ─────────────────────────────────────────────
-				// Drive the cluster through PLANNING → EXECUTING → VALIDATING → DONE.
-				// Events are forwarded to state signals so the TUI stays in sync.
 				this.addSystemMessage(PHASE_LABELS.planning);
 				this.state.isStreaming.value = true;
 				this.state.streamingText.value = "";
@@ -257,6 +274,17 @@ export class CodingAgent {
 						this.addSystemMessage(
 							`Validation attempt ${evt.attempt}: ${passed ? "✓ Approved" : `✗ Rejected by ${rejections.length} validator(s)`}`,
 						);
+						if (!passed) {
+							void maybeEscalateWeakConsensusToSabha({
+								observer: this.state.chitraguptaObserver.value,
+								description,
+								results: evt.results,
+								attempt: evt.attempt,
+								orchestrationConfig: this.options.orchestrationConfig,
+							}).then((escalated) => {
+								if (escalated) this.addSystemMessage("Weak mesh consensus escalated to Sabha.");
+							});
+						}
 						// Surface results dialog when any validator rejects
 						if (!passed) {
 							this.state.validationResultsDialog.open(evt.results);
@@ -285,7 +313,6 @@ export class CodingAgent {
 			this.task.phase = "done";
 			this.state.codingPhase.value = "done";
 			this.addSystemMessage("Coding task complete!");
-			// ── Auto PR / ship (N-3 / N-8) ──────────────────────────────────────
 			if (this.options.autoPr || this.options.autoShip) {
 				await createPullRequestViaGh(
 					this.task?.description ?? "Automated changes",
@@ -301,7 +328,6 @@ export class CodingAgent {
 			this.addSystemMessage(`Coding task failed: ${message}`);
 			log.error("Coding task failed", err);
 		} finally {
-			// Clear cluster signals and clean up orchestrator
 			if (this.orchestrator && this.task?.clusterId) {
 				await this.orchestrator.shutdown();
 			}
@@ -315,12 +341,6 @@ export class CodingAgent {
 		}
 	}
 
-	/**
-	 * Resume a previously checkpointed cluster and continue execution.
-	 * If the orchestrator is not enabled, shows an error message.
-	 *
-	 * @param clusterId - The cluster ID from a prior checkpoint.
-	 */
 	async resume(clusterId: string): Promise<void> {
 		if (!this.orchestrator) {
 			this.addSystemMessage("Orchestration is not enabled — use /code with orchestration.");
@@ -332,7 +352,6 @@ export class CodingAgent {
 			this.addSystemMessage(`No checkpoint found for cluster: ${clusterId}`);
 			return;
 		}
-		// Update signals to reflect resumed state
 		this.state.clusterId.value = state.id;
 		this.state.clusterPhase.value = state.phase;
 		this.state.clusterAgentCount.value = state.agents.size;
@@ -367,7 +386,6 @@ export class CodingAgent {
 		}
 	}
 
-	/** Cleanly shut down the orchestrator (used by /code guard). */
 	async shutdown(): Promise<void> {
 		this._disposeCommandEffect?.();
 		this._disposeCommandEffect = null;
@@ -376,25 +394,16 @@ export class CodingAgent {
 		}
 	}
 
-	/** Expose the orchestrator for TUI commands (e.g. /cluster status). */
 	getOrchestrator(): ClusterOrchestrator | null {
 		return this.orchestrator;
 	}
 
-	/**
-	 * Dispose the clusterCommand observer effect and shut down the orchestrator.
-	 * Call this when removing the CodingAgent instance (e.g., before creating a new one).
-	 */
 	async dispose(): Promise<void> {
 		this._disposeCommandEffect?.();
 		this._disposeCommandEffect = null;
 		await this.shutdown();
 	}
 
-	/**
-	 * Handle a ClusterCommandEvent dispatched by slash commands or dialogs.
-	 * Each case corresponds to a user-initiated control action on the active cluster.
-	 */
 	private async handleClusterCommand(cmd: ClusterCommandEvent): Promise<void> {
 		await handleClusterCommand(
 			{

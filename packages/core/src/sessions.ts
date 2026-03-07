@@ -205,20 +205,33 @@ export function createAutoSaver(
 	sessionsDir?: string,
 ): AutoSaver {
 	let timer: ReturnType<typeof setInterval> | null = null;
+	let inFlight: Promise<void> | null = null;
 
 	const save = async (): Promise<void> => {
-		try {
-			const data = getState();
-			// Update the timestamp on every save
-			data.updatedAt = Date.now();
-			await saveSession(data, sessionsDir);
-		} catch {
-			// Auto-save failures are non-fatal; silently continue
+		if (inFlight) {
+			return inFlight;
 		}
+
+		inFlight = (async () => {
+			try {
+				const data = getState();
+				// Update the timestamp on every save
+				data.updatedAt = Date.now();
+				await saveSession(data, sessionsDir);
+			} catch {
+				// Auto-save failures are non-fatal; silently continue
+			} finally {
+				inFlight = null;
+			}
+		})();
+
+		return inFlight;
 	};
 
-	timer = setInterval(save, interval);
-	// Don't keep the process alive just for auto-save
+	timer = setInterval(() => {
+		void save();
+	}, interval);
+
 	if (timer && typeof timer === "object" && "unref" in timer) {
 		timer.unref();
 	}

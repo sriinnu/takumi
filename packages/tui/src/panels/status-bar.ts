@@ -25,6 +25,7 @@ export class StatusBarPanel extends Component {
 		this.disposeEffect = effect(() => {
 			const _status = this.state.statusText.value;
 			const _chi = this.state.chitraguptaConnected.value;
+			const _scarlett = this.state.scarlettIntegrityReport.value;
 			// Cluster signals — trigger re-render when active cluster state changes
 			const _clusterId = this.state.clusterId.value;
 			const _clusterPhase = this.state.clusterPhase.value;
@@ -80,6 +81,12 @@ export class StatusBarPanel extends Component {
 					const meshSize = this.state.akashaMeshSize.value;
 					const meshIndicator = chiConnected ? ` \u0293 ${meshSize}\u2191 ${deposits}\u29BF ` : " \u0293 ";
 					return { text: meshIndicator, fg: chiConnected ? 2 : 8, bg: 236, bold: chiConnected, dim: !chiConnected };
+				}
+				case "scarlett": {
+					const report = this.state.scarlettIntegrityReport.value;
+					const text = report.status === "critical" ? " 🛡 crit " : report.status === "warning" ? " 🛡 warn " : " 🛡 ok ";
+					const fg = report.status === "critical" ? 1 : report.status === "warning" ? 3 : 2;
+					return { text, fg, bg: 236, bold: report.status !== "healthy" };
 				}
 				case "cluster": {
 					if (clusterId) {

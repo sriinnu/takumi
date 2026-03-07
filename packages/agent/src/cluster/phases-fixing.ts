@@ -1,6 +1,6 @@
 import { createLogger } from "@takumi/core";
 import type { PhaseContext } from "./phases.js";
-import { FIXER_PROMPT } from "./prompts.js";
+import { getFixerPrompt } from "./prompts.js";
 import { augmentPromptWithReflexion, generateSelfCritique, retrievePastCritiques, storeCritique } from "./reflexion.js";
 import {
 	type AgentInstance,
@@ -38,7 +38,7 @@ export async function* runFixingPhase({ ctx, runAgent, getAgentByRole }: FixingD
 		)
 		.join("\n\n");
 	const userMsg = `The validators rejected your work:\n\n${findingsSummary}\n\nFix all issues and re-run tests.`;
-	let systemPrompt = FIXER_PROMPT;
+	let systemPrompt = getFixerPrompt(state.config.topology);
 	const reflexionConfig = ctx.orchestrationConfig?.reflexion;
 	if (reflexionConfig?.enabled && ctx.chitragupta && state.workProduct) {
 		try {
@@ -54,7 +54,7 @@ export async function* runFixingPhase({ ctx, runAgent, getAgentByRole }: FixingD
 				state.config.taskDescription,
 				reflexionConfig.maxHistorySize ?? 3,
 			);
-			systemPrompt = augmentPromptWithReflexion(FIXER_PROMPT, [critique, ...past]);
+			systemPrompt = augmentPromptWithReflexion(getFixerPrompt(state.config.topology), [critique, ...past]);
 		} catch (err) {
 			log.error("Reflexion failed, continuing without self-critique", err);
 		}
