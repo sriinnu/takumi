@@ -1192,7 +1192,6 @@ Add to `takumi.config.json`:
 **Status:** Phase 20 🎯 READY TO START (Phase 13-16 complete)  
 **Rationale:** Ecosystem interoperability enables external tools (pi-statusbar), remote monitoring, and hybrid orchestration patterns
 
-**See Also:** `docs/PI_ECOSYSTEM_ANALYSIS.md` (comprehensive analysis of pi-mono, pi-statusbar, pi-telemetry, pi-side-agents, pi-design-deck)  
 **See Also:** `docs/PHASE_14_PLAN.md` (renamed to PHASE_20_PLAN.md) — detailed implementation guide
 
 ### Phase 20: Telemetry & Observability 🎯 NEXT UP (1-2 weeks)

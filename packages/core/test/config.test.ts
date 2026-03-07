@@ -48,6 +48,26 @@ describe("loadConfig", () => {
 		expect(config.model).toBe("claude-opus-4");
 	});
 
+	it("deep-merges orchestration overrides so model routing does not wipe defaults", () => {
+		const config = loadConfig({
+			orchestration: {
+				modelRouting: {
+					classifier: "gpt-4o-mini",
+					taskTypes: {
+						REVIEW: {
+							worker: "gpt-4o-mini",
+						},
+					},
+				},
+			},
+		} as any);
+
+		expect(config.orchestration?.enabled).toBe(true);
+		expect(config.orchestration?.mesh?.defaultTopology).toBe("hierarchical");
+		expect(config.orchestration?.modelRouting?.classifier).toBe("gpt-4o-mini");
+		expect(config.orchestration?.modelRouting?.taskTypes?.REVIEW?.worker).toBe("gpt-4o-mini");
+	});
+
 	it("parses numeric env vars correctly", () => {
 		process.env.TAKUMI_MAX_TOKENS = "8192";
 		const config = loadConfig();

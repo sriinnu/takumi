@@ -4,6 +4,26 @@ export interface DockerIsolationConfig {
 	envPassthrough: string[];
 }
 
+export type OrchestrationTaskType = "CODING" | "REFACTOR" | "DEBUG" | "RESEARCH" | "REVIEW";
+
+export interface OrchestrationModelRoleOverrides {
+	classifier?: string;
+	planner?: string;
+	worker?: string;
+	validators?: string;
+	validatorRequirements?: string;
+	validatorCode?: string;
+	validatorSecurity?: string;
+	validatorTests?: string;
+	validatorAdversarial?: string;
+	sideAgent?: string;
+}
+
+export interface OrchestrationModelRoutingConfig extends OrchestrationModelRoleOverrides {
+	mode?: "balanced" | "economy";
+	taskTypes?: Partial<Record<OrchestrationTaskType, OrchestrationModelRoleOverrides>>;
+}
+
 export type MeshTopologyMode =
 	| "sequential"
 	| "parallel"
@@ -68,5 +88,6 @@ export interface OrchestrationConfig {
 			CRITICAL?: number;
 		};
 	};
+	modelRouting?: OrchestrationModelRoutingConfig;
 	mesh?: OrchestrationMeshConfig;
 }

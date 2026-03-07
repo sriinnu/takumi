@@ -1,3 +1,7 @@
+<p align="center">
+	<img src="./logo.svg" alt="Takumi logo" width="160" />
+</p>
+
 # Takumi packages
 
 Takumi packages are the app-side packaging layer for reusable workflow customizations.
@@ -64,6 +68,23 @@ This is the first slice of the broader ecosystem lifecycle. The intended directi
 4. scaffold
 5. eventually add enable, verify, evaluate, and publish flows
 
+## What is true today
+
+What exists on `main` right now:
+
+- package discovery
+- package inspection
+- package doctor/validation output
+- package scaffolding
+- package-provided extensions, skills, system prompt add-ons, and tool rules
+
+What is still directional rather than fully shipped:
+
+- package enable / disable flows
+- quarantine / promote flows
+- publishing pipeline
+- formal evaluation execution for packages
+
 ## Beyond plugins: Takumi-native governance
 
 Takumi packages are not meant to be anonymous prompt blobs. The package manifest
@@ -109,3 +130,13 @@ example package root:
 	"packages": [{ "name": "./examples/packages" }]
 }
 ```
+
+Then verify them with:
+
+```bash
+takumi package list
+takumi package inspect counterfactual-scout
+takumi package doctor
+```
+
+The example package manifests intentionally include governance metadata such as evaluation coverage and scores. Treat those as example metadata for the package system, not as an external certification badge.

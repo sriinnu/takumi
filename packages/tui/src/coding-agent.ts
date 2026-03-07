@@ -13,6 +13,7 @@ import type { AgentRunner } from "./agent-runner.js";
 import { handleClusterCommand } from "./coding-agent-cluster-command.js";
 import { createPullRequestViaGh } from "./coding-agent-gh.js";
 import { maybeEscalateMeshSabha, maybeEscalateWeakConsensusToSabha, prepareMeshCluster } from "./coding-agent-mesh.js";
+import { resolveTaskModelPlan } from "./coding-agent-model-routing.js";
 import { resolveRoutingOverrides } from "./coding-agent-routing.js";
 import { PHASE_LABELS, runSingleAgentFlow } from "./coding-agent-single-flow.js";
 import {
@@ -87,8 +88,9 @@ export class CodingAgent {
 		if (this.options.enableOrchestration) {
 			const sendFn = this.runner.getSendMessageFn();
 			this.classifier = new TaskClassifier({
-				sendMessage: (messages, system) => sendFn(messages, system),
+				sendMessage: (messages, system, options) => sendFn(messages, system, undefined, undefined, options),
 				currentModel: this.state.model.value,
+				classificationModel: this.options.orchestrationConfig?.modelRouting?.classifier,
 			});
 
 			const chitragupta = this.state.chitraguptaBridge.value;
@@ -169,15 +171,19 @@ export class CodingAgent {
 				}
 
 				if (this.orchestrator && complexity) {
-					const router = this.classifier.router;
+					const modelPlan = resolveTaskModelPlan(
+						this.classifier.router,
+						result.classification,
+						this.options.orchestrationConfig,
+					);
 					this.orchestrator.setModelOverrides({
-						[AgentRole.WORKER]: result.recommendedModel.model,
-						[AgentRole.PLANNER]: router.recommend(complexity, "PLANNER").model,
-						[AgentRole.VALIDATOR_REQUIREMENTS]: router.recommend(complexity, "VALIDATOR_REQUIREMENTS").model,
-						[AgentRole.VALIDATOR_CODE]: router.recommend(complexity, "VALIDATOR_CODE").model,
-						[AgentRole.VALIDATOR_SECURITY]: router.recommend(complexity, "VALIDATOR_SECURITY").model,
-						[AgentRole.VALIDATOR_TESTS]: router.recommend(complexity, "VALIDATOR_TESTS").model,
-						[AgentRole.VALIDATOR_ADVERSARIAL]: router.recommend(complexity, "VALIDATOR_ADVERSARIAL").model,
+						[AgentRole.WORKER]: modelPlan.roleOverrides[AgentRole.WORKER] ?? result.recommendedModel.model,
+						[AgentRole.PLANNER]: modelPlan.roleOverrides[AgentRole.PLANNER],
+						[AgentRole.VALIDATOR_REQUIREMENTS]: modelPlan.roleOverrides[AgentRole.VALIDATOR_REQUIREMENTS],
+						[AgentRole.VALIDATOR_CODE]: modelPlan.roleOverrides[AgentRole.VALIDATOR_CODE],
+						[AgentRole.VALIDATOR_SECURITY]: modelPlan.roleOverrides[AgentRole.VALIDATOR_SECURITY],
+						[AgentRole.VALIDATOR_TESTS]: modelPlan.roleOverrides[AgentRole.VALIDATOR_TESTS],
+						[AgentRole.VALIDATOR_ADVERSARIAL]: modelPlan.roleOverrides[AgentRole.VALIDATOR_ADVERSARIAL],
 						...routingPlan.overrides,
 					});
 				}

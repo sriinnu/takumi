@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./logo.svg" alt="Takumi logo" width="160" />
+</p>
+
 # Multi-Agent Orchestration Architecture
 
 Takumi's orchestration layer spawns and coordinates multiple LLM agents for a
@@ -192,24 +196,84 @@ State is persisted to `~/.takumi/bandit-state.json`.
 // takumi.config.json (orchestration section)
 {
   "orchestration": {
-    "ensemble": { "enabled": true, "k": 3, "votingMethod": "weighted" },
-    "weightedVoting": { "enabled": true, "minConfidence": 0.6 },
-    "reflexion": { "enabled": true, "useAkasha": true, "maxReflections": 3 },
-    "moA": { "enabled": false, "rounds": 3, "consensusThreshold": 0.7 },
-    "progressiveRefinement": { "enabled": true, "maxIterations": 5 },
-    "adaptiveTemperature": { "enabled": true }
+    "enabled": true,
+    "defaultMode": "multi",
+    "complexityThreshold": "STANDARD",
+    "maxValidationRetries": 3,
+    "isolationMode": "worktree",
+    "ensemble": {
+      "enabled": false,
+      "workerCount": 3,
+      "temperature": 0.7,
+      "parallel": true
+    },
+    "weightedVoting": {
+      "minConfidenceThreshold": 0.6
+    },
+    "reflexion": {
+      "enabled": true,
+      "useAkasha": true,
+      "maxHistorySize": 3
+    },
+    "moA": {
+      "enabled": false,
+      "rounds": 2,
+      "validatorCount": 3,
+      "allowCrossTalk": true,
+      "temperatures": [0.2, 0.4]
+    },
+    "progressiveRefinement": {
+      "enabled": false,
+      "maxIterations": 3,
+      "minImprovement": 0.05,
+      "useCriticModel": true,
+      "targetScore": 0.9
+    },
+    "adaptiveTemperature": {
+      "enabled": true
+    },
+    "modelRouting": {
+      "classifier": "claude-haiku-4-20250514",
+      "validators": "claude-haiku-4-20250514",
+      "taskTypes": {
+        "REVIEW": {
+          "worker": "claude-sonnet-4-20250514"
+        },
+        "RESEARCH": {
+          "worker": "claude-sonnet-4-20250514"
+        }
+      }
+    },
+    "mesh": {
+      "defaultTopology": "hierarchical",
+      "lucyAdaptiveTopology": true,
+      "scarlettAdaptiveTopology": true,
+      "sabhaEscalation": {
+        "enabled": true,
+        "integrityThreshold": "critical",
+        "minValidationAttempts": 1
+      }
+    }
   }
 }
 ```
+
+### Model routing notes
+
+- `modelRouting.classifier` lets the task-classification pass run on a cheaper model.
+- `modelRouting.validators` can pin all validators to an inexpensive review model.
+- `modelRouting.taskTypes.REVIEW` and `modelRouting.taskTypes.RESEARCH` let helper agents stay cheaper than the main interactive model.
+- If no override is provided, Takumi now defaults the classifier to the provider's fast tier and automatically downgrades planner/worker models for review-heavy or research-heavy tasks.
 
 ## Slash Commands
 
 | Command              | Action                                    |
 |----------------------|-------------------------------------------|
 | `/cluster`           | Show current cluster status               |
+| `/code <task>`       | Start a coding run through the orchestrator |
 | `/validate`          | Trigger manual validation round           |
 | `/retry`             | Retry last rejected validation            |
-| `/checkpoint`        | Save checkpoint manually                  |
+| `/checkpoint`        | List or save checkpoints                  |
 | `/resume <id>`       | Resume from a saved checkpoint            |
 | `/isolation <mode>`  | Switch isolation mode (none/worktree/docker) |
 

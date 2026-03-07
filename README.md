@@ -1,633 +1,467 @@
 <p align="center">
-  <img src="docs/logo.svg" alt="Takumi" width="200" />
+  <img src="https://raw.githubusercontent.com/sriinnu/takumi/main/docs/logo.svg" alt="Takumi logo" width="200" />
 </p>
 
 <h1 align="center">Takumi (匠)</h1>
 
 <p align="center">
-  <strong>A high-performance terminal coding agent — custom renderer, reactive signals, provider-agnostic.</strong>
+  <strong>Terminal-native AI coding agent with a custom renderer, multi-agent orchestration, and deep Chitragupta integration.</strong>
 </p>
 
 <p align="center">
-  <img src="docs/badge.svg" alt="takumi badge" />
+  <img src="https://raw.githubusercontent.com/sriinnu/takumi/main/docs/badge.svg" alt="takumi badge" />
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> &bull;
+  <a href="#what-is-live-today">What is live today</a> &bull;
   <a href="#quickstart">Quickstart</a> &bull;
-  <a href="#architecture">Architecture</a> &bull;
-  <a href="#usage">Usage</a> &bull;
-  <a href="#packages">Packages</a> &bull;
-  <a href="#development">Development</a> &bull;
-  <a href="#roadmap">Roadmap</a>
+  <a href="#runtime-modes">Runtime modes</a> &bull;
+  <a href="#commands-and-keys">Commands and keys</a> &bull;
+  <a href="#docs-map">Docs map</a> &bull;
+  <a href="#development">Development</a>
 </p>
 
 ---
 
-## What is Takumi?
+## What is live today
 
-Takumi is a terminal-based AI coding agent built from the ground up in TypeScript. Unlike tools built on React + Ink, Takumi uses its own rendering engine (**Kagami 鏡**), signal-based reactivity, and multi-agent orchestration to achieve sub-16ms keystroke-to-display latency with under 50MB memory footprint.
+Takumi is a TypeScript monorepo for a terminal coding agent with:
 
-It integrates with **[Chitragupta](https://github.com/yugenlab/chitragupta)** — a complete AI agent platform (`AUriva/chitragupta`) with 17 packages covering memory (Akasha), procedures (Vidhi), tendencies (Vasana), and orchestration (Niyanta). Takumi is the terminal UI layer on top of Chitragupta's cognitive engine.
+- a custom renderer (`@takumi/render`) instead of React/Ink
+- a streaming agent loop and built-in tool runtime (`@takumi/agent`)
+- Chitragupta bridge integration for memory, predictions, routing, and health (`@takumi/bridge`)
+- a full-screen terminal UI (`@takumi/tui`)
+- operational CLI surfaces for sessions, jobs, daemon health, platform checks, and packages
 
-**Architecture:**
-```
-Takumi TUI (this repo) → @takumi/bridge → @yugenlab/chitragupta (npm) → daemon/MCP
-     ↓                                                ↓
- Kagami renderer                            Smriti (memory system)
- Terminal panels                            Akasha (knowledge graph)
- Chat interface                             Vidhi (learned procedures)
-                                           Vasana (behavioral patterns)
-```
+### Truth-first note
 
-### Why not React + Ink?
+This README describes what is implemented on `main` today.
 
-| | React + Ink | Takumi (Kagami) |
-|---|---|---|
-| Render overhead | ~8ms (VDOM reconciler) | <2ms (signal-based dirty tracking) |
-| Memory per component | ~2KB (fiber nodes) | ~200B (signals + Yoga node) |
-| Dependency weight | ~40 packages | 1 external dep (yoga-wasm-web) |
-| Update granularity | Component tree re-render | Individual cell diff |
+- **Current reality:** Takumi already supports direct providers, optional Darpana proxying, and daemon-first Chitragupta integration.
+- **Architecture direction:** some docs describe a stronger future control-plane model where Chitragupta owns more routing/auth authority than it does today.
 
----
+When a doc is aspirational, it should be read as design direction, not as a claim that the migration is fully complete.
 
-## Features
+## Highlights
 
-- **Custom Renderer (Kagami 鏡)** — Yoga WASM flexbox layout, double-buffered ANSI output, cell-level diff
-- **Reactive Signals (Myaku 脈)** — Fine-grained Preact-style signals with auto-dependency tracking (~150 lines)
-- **Agent Loop (Shigoto 仕事)** — ReAct reasoning + tool execution, streaming responses, indexed context compaction
-- **Multi-Agent Orchestration** — Task classifier → planner + workers + 5 specialized validators in parallel
-- **Strategy-Guided Turns** — Short plan-first prompting, dynamic tool ranking, verification-biased execution
-- **Skills System** — Drop-in `.takumi/skills/*.md` prompt skills with always-on and catalog modes
-- **Stateful Tool Runtime** — Carries forward recent tool outcomes, file hints, and compacted experience summaries
-- **ArXiv Research Strategies** — Self-Consistency ensemble, Reflexion self-critique, Mixture-of-Agents, Tree-of-Thoughts, Progressive Refinement, Adaptive Temperature
-- **Blind Validation** — Validators receive only task + output, never worker conversation history
-- **Checkpoint & Resume** — Crash recovery for long-running multi-agent tasks (local + Akasha)
-- **Isolation Modes** — Git worktree or Docker container isolation for risky operations
-- **Zero-Config Auth** — Automatically extracts API keys from existing CLI tools (`gh`, `gcloud`, `claude`)
-- **Configurable UI** — Dynamic status bar and plugin system foundation
-- **Rich Components** — Box, Text, Input, Scroll, List, Markdown, Syntax Highlighter, Diff Viewer, Spinner
-- **7 Built-in Tools** — Read, Write, Edit, Bash (sandboxed), Glob, Grep, Ask
-- **Permission System** — Pattern-matched allow/ask/deny rules with session scoping
-- **Provider-Agnostic** — Any LLM via Darpana proxy (OpenAI, Gemini, Groq, Ollama, Anthropic)
-- **Memory & Sessions** — Full Chitragupta integration (GraphRAG, knowledge traces, behavioral patterns)
-- **Git-Aware** — Branch, status, diff shown in sidebar and status bar
-- **Slash Commands** — `/model`, `/clear`, `/compact`, `/session`, `/diff`, `/help`, and more
-- **@ References** — `@file.ts`, `@src/`, `@file.ts#10-20` to attach context
-- **! Shell** — `!git status`, `!npm test` inline shell execution
+- **Custom renderer** with Yoga layout, reactive signals, double-buffered ANSI output, and diff-based screen updates
+- **Streaming coding agent** with read/write/edit/bash/glob/grep plus higher-level orchestration tools
+- **Multi-agent orchestration** with planner/worker/validator roles, blind validation, checkpointing, and mesh policy
+- **Operational CLI** with `doctor`, `platform`, `daemon`, `jobs`, `watch`, `attach`, `stop`, and package management commands
+- **Live runtime switching** so you can change provider and model after launch with `/provider` and `/model`
+- **Takumi packages** discovered from `.takumi/packages`, global package roots, and configured paths
+- **Chitragupta integration** for session tracking, observations, predictions, routing decisions, and integrity signals
+- **Scarlett integrity surface** in the TUI status bar and diagnostic commands
 
----
+### At a glance
+
+| Area | Current reality on `main` |
+|---|---|
+| UI stack | custom terminal renderer, not React/Ink |
+| model access | direct providers, optional Darpana proxy, daemon-first bridge path, and in-app provider/model switching |
+| execution style | single-agent and multi-agent coding flows |
+| extensibility | packages, slash commands, prompt/config surfaces |
+| docs stance | tries to separate shipped behavior from target direction |
+
+## Why Takumi
+
+Choose Takumi if you want a coding agent that is:
+
+- **terminal-native** rather than a web app wrapped in a shell
+- **renderer-first** with its own UI stack instead of React/Ink
+- **orchestration-aware** for planner / worker / validator flows on harder tasks
+- **truthful about runtime reality**: direct providers, optional proxying, and daemon-first bridge mode all exist today
+- **extensible** through packages, prompt assets, command surfaces, and control-plane integrations
+
+### Good fit
+
+Takumi is a strong fit when you want to:
+
+- work mostly from the terminal
+- inspect and edit real files with explicit tool/runtime visibility
+- use multi-agent validation on non-trivial coding tasks
+- keep a path open for Chitragupta-backed memory and control-plane features
+
+If you mainly want a browser-first chat product, Takumi is probably not the cozy couch. It is much more workshop than lounge.
 
 ## Quickstart
 
 ### Prerequisites
 
-- **Node.js** 22+ (LTS)
-- An LLM API key (Anthropic, OpenAI, Gemini, etc.) **or** a local Ollama instance
+- Node.js 22+
+- one of:
+  - a supported authenticated CLI (`claude`, `gh`, `gcloud`, `codex`)
+  - a provider API key
+  - a local Ollama instance
 
-### Global install (recommended)
+### Install
 
 ```bash
 npm install -g takumi
 takumi --help
 ```
 
-That's it. No clone, no build. Takumi auto-detects your API key from any CLI tool already on the machine (`gh`, `gcloud`, `claude`, `codex`, Ollama).
-
-### From source (developers)
+### Run from source
 
 ```bash
-# Clone
 git clone https://github.com/sriinnu/takumi.git
 cd takumi
-
-# Install dependencies
 pnpm install
-
-# Build all packages
 pnpm build
-
-# Bundle CLI binary
-pnpm bundle
-
-# Run via source
 pnpm takumi
 ```
 
-### Quick Start with API Key
-
-Takumi supports **Zero-Config Authentication**. If you have the GitHub CLI (`gh`), Google Cloud CLI (`gcloud`), or Claude CLI installed and authenticated, Takumi will automatically extract the tokens. No `.env` setup required!
+### Common startup paths
 
 ```bash
-# Option 1: Zero-Config (if gh, gcloud, or claude CLI is authenticated)
+# zero-config when a supported CLI is already authenticated
 takumi
 
-# Option 2: GitHub Models — completely free with a GitHub account
-gh auth login       # one-time setup
-takumi              # auto-detects gh token, uses GitHub Models
-
-# Option 3: Direct API key
+# direct provider key
 ANTHROPIC_API_KEY=sk-ant-... takumi
 
-# Option 4: Local Ollama (no key needed)
-takumi              # auto-detects running Ollama instance
+# GitHub Models via gh auth
+gh auth login
+takumi --provider github
+
+# Ollama local runtime
+takumi --provider ollama
+
+# one-shot stdout mode
+takumi --print "summarize this repository"
 ```
 
-### One-Shot Mode (no TUI)
+After Takumi is running, you can switch runtimes from inside the app with `/provider` and `/model`.
+
+### First run in 30 seconds
+
+If you just want to verify the app is alive without reading the entire README:
+
+1. install or build Takumi
+2. run `takumi --help`
+3. launch `takumi`
+4. open `/help` inside the TUI
+5. try `/code review the README for clarity`
+
+### First useful session
+
+After launch, a practical first session looks like this:
+
+1. use `/provider` or `/model` if you want to switch runtime after login/startup
+2. ask a small repo question such as `summarize the package layout`
+3. try `/diff` to inspect local changes
+4. try `/memory scopes` if Chitragupta is connected
+5. try `/code improve the docs map for new users` for an orchestration flow
+
+## Runtime modes
+
+Takumi can talk to models in three practical ways today:
+
+### 1. Direct provider mode
+
+Takumi can construct providers directly for:
+
+- Anthropic
+- OpenAI
+- Gemini
+- GitHub Models
+- Groq
+- DeepSeek
+- Mistral
+- Together
+- OpenRouter
+- Ollama
+
+### 2. Darpana proxy mode
+
+If you pass `--proxy` or configure `proxyUrl`, Takumi can route requests through Darpana.
 
 ```bash
-# Run a single prompt, output streams to stdout
-ANTHROPIC_API_KEY=sk-ant-... pnpm takumi "explain what this project does"
-
-# Non-interactive mode (--print)
-ANTHROPIC_API_KEY=sk-ant-... pnpm takumi --print "list all TypeScript files"
-
-# Piped input
-echo "review this code" | ANTHROPIC_API_KEY=sk-ant-... pnpm takumi
+takumi --proxy http://localhost:8082
 ```
 
-### Session Persistence
+### 3. Chitragupta daemon-first bridge mode
 
-```bash
-# Sessions auto-save to ~/.config/takumi/sessions/
-# Resume a previous session:
-pnpm takumi --resume session-2026-02-12-a1b2
+For memory/control-plane features, Takumi now probes the local Chitragupta daemon socket first, performs an authenticated handshake, and falls back to spawning `chitragupta-mcp` over stdio only when the daemon path is unavailable.
 
-# Inside the TUI:
-#   /session list     — show saved sessions
-#   /session resume   — reload a session
-#   /session save     — force-save now
+That means the current bridge story is:
+
+```text
+Takumi → daemon socket (preferred) → stdio MCP fallback
 ```
 
-### Verify Everything Works
+## CLI surface
 
-```bash
-# Run the test suite
-pnpm test
+The current CLI supports:
 
-# Build all packages
-pnpm build
-
-# Check your environment
-pnpm takumi --version    # → takumi v0.1.0
-pnpm takumi --help       # → shows all options
+```text
+takumi [prompt...]
+takumi --print [prompt...]
+takumi list
+takumi status <id>
+takumi logs <id>
+takumi export <id>
+takumi delete <id>
+takumi jobs
+takumi watch [job-id]
+takumi attach <job-id>
+takumi stop <job-id>
+takumi daemon [start|stop|status|restart|logs]
+takumi doctor [--json] [--fix]
+takumi platform [watch] [--json] [--fix]
+takumi package [list|inspect|doctor|scaffold]
 ```
 
-### Configuration
+Useful flags include:
 
-Takumi looks for config in this order (first found wins):
+- `--provider <name>`
+- `--model <name>`
+- `--api-key <key>`
+- `--endpoint <url>`
+- `--proxy <url>`
+- `--resume <id>`
+- `--detach`
+- `--issue <url|#n>`
+- `--pr`
+- `--ship`
+- `--json`
+- `--fix`
 
-1. `.takumi/config.json` — project-local
-2. `takumi.config.json` — project root
-3. `~/.takumi/config.json` — user global
-4. `~/.config/takumi/config.json` — XDG
+Run `takumi --help` for the canonical live surface.
 
-Example `takumi.config.json`:
+### Useful day-one commands
 
-```json
-{
-  "model": "sonnet",
-  "proxyUrl": "http://localhost:8082",
-  "thinking": false,
-  "theme": "default",
-  "permissions": {
-    "defaultBash": "ask",
-    "defaultWrite": "ask",
-    "safeCommands": ["npm *", "pnpm *", "git status*"]
-  },
-  "sidebar": { "visible": true, "width": 30 },
-  "statusBar": {
-    "showTokens": true,
-    "showCost": true,
-    "showModel": true,
-    "showGitBranch": true
-  },
-  "maxContextTokens": 200000,
-  "compactAt": 0.8
-}
-```
-
----
-
-## Usage
-
-### CLI Flags
-
-```
-takumi [options]
-
-Options:
-  --model <name>         Model to use (default: sonnet)
-  --thinking             Enable extended thinking
-  --thinking-budget <n>  Max thinking tokens (default: 10000)
-  --proxy <url>          Darpana proxy URL
-  --theme <name>         UI theme
-  --log-level <level>    Log level (debug|info|warn|error)
-  --cwd <dir>            Working directory
-  --yes, -y              Skip interactive prompts (fast boot)
-  --help, -h             Show help
-  --version, -v          Show version
-```
-
-### Environment Variables
-
-| Variable | Purpose |
+| Command | Why you would use it |
 |---|---|
-| `ANTHROPIC_API_KEY` | Direct Anthropic API access |
-| `TAKUMI_API_KEY` | Override API key |
-| `TAKUMI_MODEL` | Default model |
-| `TAKUMI_PROXY_URL` | Darpana proxy URL |
-| `TAKUMI_THINKING` | Enable thinking (`true`/`false`) |
+| `takumi --help` | confirm installed CLI surface |
+| `takumi` | start the full TUI |
+| `takumi --print "..."` | run one-shot output without the TUI |
+| `takumi doctor --json` | inspect environment and runtime readiness |
+| `takumi package list` | verify package discovery |
 
-### Slash Commands
+## Commands and keys
 
-| Command | Shortcut | Purpose |
-|---|---|---|
-| `/model` | `Ctrl+M` | Switch LLM model |
-| `/clear` | `Ctrl+L` | Clear conversation |
-| `/compact` | — | Compact context window |
-| `/session` | `Ctrl+O` | Session management |
-| `/diff` | `Ctrl+D` | Show file changes |
-| `/cost` | — | Token & cost breakdown |
-| `/help` | `Ctrl+?` | Show help |
-| `/quit` | `Ctrl+Q` | Exit |
-| `/theme` | — | Switch theme |
-| `/undo` | `Ctrl+Z` | Undo last change |
-| `/memory` | — | Search Chitragupta memory |
+### Built-in tools
 
-### Input Modes
+Takumi currently registers **14 built-in tools** in the agent runtime:
 
-```
-匠> hello world              # Normal message
-匠> /model opus              # Slash command
-匠> @src/auth.ts             # Attach file
-匠> @src/auth.ts#10-20       # Attach line range
-匠> !git status              # Run shell command
-```
+- `read`
+- `write`
+- `edit`
+- `bash`
+- `glob`
+- `grep`
+- `worktree_create`
+- `worktree_exec`
+- `worktree_merge`
+- `worktree_destroy`
+- `ast_grep`
+- `ast_patch`
+- `compose`
+- `diff_review`
 
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────┐
-│                匠  Takumi                    │
-│  ┌─────────┐  ┌───────────┐  ┌──────────┐  │
-│  │  Kagami  │  │  Shigoto  │  │  Bridge  │  │
-│  │ Renderer │  │Agent Loop │  │MCP + HTTP│  │
-│  │ 鏡       │  │ 仕事      │  │          │  │
-│  └────┬─────┘  └─────┬─────┘  └────┬─────┘  │
-│       │              │              │        │
-│  ┌────┴──────────────┴──────────────┴─────┐  │
-│  │           Myaku Signals (脈)            │  │
-│  └────────────────────────────────────────┘  │
-└──────────────────────┬───────────────────────┘
-                       │
-          ┌────────────┼────────────┐
-          ▼                         ▼
-  ┌──────────────┐         ┌──────────────┐
-  │ Chitragupta  │         │   Darpana    │
-  │ चित्र MCP    │         │ दर्पण Proxy  │
-  │ (stdio)      │         │ (HTTP:8082)  │
-  └──────────────┘         └──────┬───────┘
-                                  │
-                    ┌─────────────┼─────────────┐
-                    ▼             ▼              ▼
-               ┌────────┐  ┌────────┐     ┌────────┐
-               │ OpenAI │  │ Gemini │ ... │ Ollama │
-               └────────┘  └────────┘     └────────┘
-```
-
-### Renderer Pipeline
-
-```
-Signal Change → Dirty Marking → Yoga Layout → Render → Cell Diff → ANSI Flush
-     0ms           0ms            ~1ms        ~0.5ms    ~0.3ms      ~0.2ms
-```
-
-### Internal Naming
-
-| Name | Script | Meaning | Component |
-|---|---|---|---|
-| **Takumi** | 匠 | Master craftsman | The project |
-| **Kagami** | 鏡 | Mirror | Renderer engine |
-| **Myaku** | 脈 | Pulse | Signal reactivity |
-| **Shigoto** | 仕事 | Work / job | Agent loop |
-
----
-
-## Packages
-
-```
-takumi/
-├── packages/
-│   ├── core/      @takumi/core     — Types, config, errors, logger (zero deps)
-│   ├── render/    @takumi/render   — Kagami: Yoga + signals + ANSI diff
-│   ├── agent/     @takumi/agent    — Shigoto: LLM loop, tools, sandbox
-│   ├── bridge/    @takumi/bridge   — Chitragupta MCP, Darpana HTTP, git
-│   └── tui/       @takumi/tui      — Panels, dialogs, formatters, commands
-├── bin/
-│   └── takumi.ts                   — CLI entry point
-├── soul/                           — Personality & identity files
-└── docs/                           — Architecture docs & diagrams
-```
-
-### Dependency Graph
-
-```
-@takumi/core  (no dependencies)
-    ├── @takumi/render  (+yoga-wasm-web)
-    ├── @takumi/agent
-    ├── @takumi/bridge
-    └── @takumi/tui  (depends on all above)
-```
-
----
-
-## Development
-
-### Scripts
-
-```bash
-pnpm build              # Build all packages (topological order)
-pnpm test               # Run all tests
-pnpm test:watch         # Watch mode
-pnpm test:coverage      # Coverage report
-pnpm clean              # Remove all dist/ directories
-pnpm dev                # Parallel watch compilation
-pnpm check              # Lint + format (Biome)
-pnpm takumi             # Run the CLI
-```
-
-### Building a Single Package
-
-```bash
-pnpm --filter @takumi/core build
-pnpm --filter @takumi/render build
-pnpm --filter @takumi/agent build
-```
-
-### Running Tests
-
-```bash
-# All tests
-pnpm test
-
-# Single package
-pnpm --filter @takumi/core test
-
-# Watch mode with pattern
-pnpm test -- --watch --reporter=verbose
-
-# Coverage
-pnpm test:coverage
-```
-
-### Project Structure
-
-Each package follows the same layout:
-
-```
-packages/<name>/
-├── src/
-│   ├── index.ts        # Public API exports
-│   └── ...             # Implementation files
-├── test/
-│   └── *.test.ts       # Vitest tests
-├── package.json
-├── tsconfig.json
-└── README.md
-```
-
----
-
-## Performance Targets
-
-| Metric | Target | Method |
-|---|---|---|
-| Keystroke → display | <16ms | Signal dirty tracking, no VDOM |
-| Full screen render | <8ms | Yoga WASM + cell diff |
-| Stream token → display | <5ms | Direct signal update |
-| Idle memory | <50MB | No framework overhead |
-| Render FPS (streaming) | 30-60 | Adaptive batch |
-| Max concurrent tools | 8 | Parallel execution |
-
----
-
-## Integration
-
-### Multi-Agent Orchestration
-
-Takumi includes a full multi-agent cluster system for complex coding tasks. Triggered via `/code` or automatic task classification:
-
-```
-Task → Classify → Plan → Execute → Validate (5 blind validators) → Fix/Retry → Commit
-```
-
-**Agent Roles:**
-
-| Role | Purpose |
-|---|---|
-| Planner | Decomposes task into steps |
-| Worker | Executes the plan (reads/writes/edits files) |
-| Requirements Validator | Verifies output meets task requirements |
-| Code Quality Validator | Checks style, patterns, error handling |
-| Security Validator | Identifies vulnerabilities (XSS, injection, credentials) |
-| Test Validator | Verifies tests exist and pass |
-| Adversarial Validator | Tries to break the implementation |
-
-**Task Complexity → Agent Count:**
-- TRIVIAL: 1 agent, no validation
-- SIMPLE: worker + 1 validator
-- STANDARD: planner + worker + 2 validators
-- CRITICAL: planner + worker + 5 validators
-
-**ArXiv Research Strategies** (configurable):
-- Self-Consistency Ensemble — spawn K workers, majority vote (arXiv:2203.11171)
-- Reflexion — self-critique on failure, store in Akasha memory (arXiv:2303.11366)
-- Mixture-of-Agents — multi-round validator cross-talk (arXiv:2406.04692)
-- Tree-of-Thoughts — branch/score/prune plan search (arXiv:2305.10601)
-- Progressive Refinement — critic feedback loop, incremental fixes
-- Adaptive Temperature — complexity-aware temperature scaling
-
-**Isolation Modes:**
-- `none` — work directly in the repo
-- `worktree` — git worktree for safe branching
-- `docker` — container isolation with credential passthrough
-
-See [docs/orchestration.md](docs/orchestration.md), [docs/validation.md](docs/validation.md), [docs/isolation.md](docs/isolation.md), [docs/checkpoints.md](docs/checkpoints.md) for architecture details.
-
-### Chitragupta (Memory & MCP)
-
-Takumi spawns Chitragupta as a child process via MCP stdio transport:
-
-```
-takumi (main) ──stdio──> chitragupta-mcp (child)
-```
-
-Provides: memory search, session management, knowledge graph, behavioral patterns, handover protocol.
-
-The longer-term ownership model for providers, CLIs, routing, auth, and health is documented in [docs/control-plane-spec.md](docs/control-plane-spec.md).
-
-### Darpana (LLM Proxy)
-
-Takumi connects to Darpana via HTTP for provider-agnostic LLM access:
-
-```
-takumi ──HTTP──> darpana (localhost:8082) ──> OpenAI / Gemini / Ollama / ...
-```
-
-Provides: model aliasing (sonnet/haiku/opus), format conversion (Anthropic ↔ OpenAI/Gemini), connection pooling, retry logic.
-
----
-
-## Testing Locally
-
-### Minimum Setup (Direct Anthropic)
-
-```bash
-cd /mnt/c/sriinnu/personal/Kaala-brahma/takumi
-
-# 1. Install + build
-pnpm install && pnpm build
-
-# 2. Set your API key
-export ANTHROPIC_API_KEY=sk-ant-...
-
-# 3. Launch interactive TUI
-pnpm takumi
-```
-
-You'll get a full-screen terminal UI. Type a message and press Enter. The agent will:
-- Stream the LLM response with **markdown formatting** and **syntax-highlighted code blocks**
-- Execute tool calls (read/write/edit/bash/glob/grep) with **permission prompts**
-- Show token usage and cost in the status bar
-
-### Key Shortcuts
+### Core keybindings
 
 | Key | Action |
 |---|---|
-| `Enter` | Send message |
-| `Shift+Enter` | New line in editor |
-| `Ctrl+K` | Command palette |
+| `Ctrl+Q` | Quit |
+| `Ctrl+C` | Cancel active run or quit |
+| `Ctrl+L` | Clear / invalidate screen |
+| `Ctrl+P` or `Ctrl+K` | Command palette |
+| `Ctrl+M` | Model picker |
 | `Ctrl+B` | Toggle sidebar |
 | `Ctrl+O` | Session list |
-| `Ctrl+Q` | Quit |
-| `Ctrl+C` | Cancel running agent / quit |
-| Mouse wheel | Scroll messages |
+| `Ctrl+Shift+C` | Toggle cluster panel |
+| `Ctrl+D` | Quit if the editor is empty |
 
-### Vi Input Mode
+### Selected slash commands
 
-The message editor supports Vi modal input. The mode indicator `[N]` / `[I]` appears at the left of the separator bar.
-
-| Key (NORMAL) | Action |
+| Command | Purpose |
 |---|---|
-| `i` / `a` | Enter INSERT before / after cursor |
-| `A` / `I` | Enter INSERT at end / start of line |
-| `Esc` | Return to NORMAL mode |
-| `h` / `l` | Move cursor left / right |
-| `w` / `b` | Jump to next / previous word |
-| `0` / `$` | Start / end of line |
-| `x` | Delete character under cursor |
-| `dd` | Clear entire line |
-| `dw` | Delete to end of current word |
-| `Enter` | Submit message |
+| `/help` | Show the live slash command list |
+| `/model`, `/provider`, `/theme` | Runtime model/provider/theme controls |
+| `/session ...` | Local sessions plus Chitragupta-backed `dates`, `projects`, and `delete` |
+| `/memory <query>` / `/memory scopes` | Search memory or inspect available scopes |
+| `/code <task>` | Start coding agent flow |
+| `/cluster`, `/validate`, `/checkpoint`, `/resume`, `/isolation` | Multi-agent operations |
+| `/day`, `/vidhi`, `/facts`, `/daemon`, `/turns`, `/predict`, `/patterns` | Chitragupta surfaces |
+| `/capabilities`, `/route`, `/healthcaps`, `/integrity` | Control-plane and Scarlett diagnostics |
+| `/branch`, `/session-tree`, `/switch`, `/siblings`, `/parent` | Session tree navigation |
+| `/steer`, `/interrupt`, `/steerq` | Mid-run steering queue controls |
 
-### Quick Smoke Test (No API Key Needed)
+For the fuller reference, see [`docs/KEYBINDINGS.md`](docs/KEYBINDINGS.md).
 
-```bash
-# Just verify build + tests
-pnpm build && pnpm test
+## Safety and permissions
 
-# Check CLI works
-pnpm takumi --version
-pnpm takumi --help
+Takumi is designed to operate with explicit guardrails:
+
+- sensitive files such as `.env` and credential-like paths are guarded
+- command execution flows through permission checks and sandbox rules
+- isolation modes can keep risky multi-agent work in a worktree or container
+- docs in this repo try to distinguish clearly between **implemented behavior** and **target direction**
+
+## Configuration
+
+Takumi looks for config in:
+
+1. `.takumi/config.json`
+2. `takumi.config.json`
+3. `~/.takumi/config.json`
+4. `~/.config/takumi/config.json`
+
+Example:
+
+```json
+{
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-20250514",
+  "thinking": false,
+  "theme": "default",
+  "proxyUrl": "",
+  "statusBar": {
+    "left": ["model", "mesh", "scarlett"],
+    "center": ["status"],
+    "right": ["metrics", "keybinds"]
+  },
+  "packages": [{ "name": "./examples/packages" }],
+  "orchestration": {
+    "enabled": true,
+    "defaultMode": "multi",
+    "complexityThreshold": "STANDARD",
+    "maxValidationRetries": 3,
+    "isolationMode": "worktree",
+    "modelRouting": {
+      "classifier": "claude-haiku-4-20250514",
+      "validators": "claude-haiku-4-20250514",
+      "taskTypes": {
+        "REVIEW": {
+          "worker": "claude-sonnet-4-20250514"
+        },
+        "RESEARCH": {
+          "worker": "claude-sonnet-4-20250514"
+        }
+      }
+    },
+    "mesh": {
+      "defaultTopology": "hierarchical",
+      "lucyAdaptiveTopology": true,
+      "scarlettAdaptiveTopology": true,
+      "sabhaEscalation": {
+        "enabled": true,
+        "integrityThreshold": "critical",
+        "minValidationAttempts": 1
+      }
+    }
+  }
+}
 ```
 
-### With Darpana Proxy (Any LLM Provider)
+The main `model` still sets your default interactive agent, but orchestration can now route cheaper models for the classifier, validators, and task-specific helper agents.
 
-If you have Darpana running on port 8082:
+## Architecture summary
 
-```bash
-pnpm takumi --proxy http://localhost:8082
+```text
+Takumi TUI
+  ├─ @takumi/render   → custom renderer and signals
+  ├─ @takumi/agent    → agent loop, tools, orchestration
+  ├─ @takumi/bridge   → Chitragupta and control-plane bridge
+  └─ @takumi/core     → config, types, sessions, logger
 ```
 
-This routes through Darpana which can translate to OpenAI, Gemini, Groq, Ollama, etc.
+Current high-level integration shape:
 
-### With Chitragupta Memory
+```text
+Takumi
+  ├─ direct providers (supported)
+  ├─ Darpana proxy (optional)
+  └─ Chitragupta daemon-first bridge (preferred) with stdio MCP fallback
+```
 
-If `chitragupta-mcp` is installed and on PATH, Takumi auto-connects on startup. You'll see a green **चि** in the status bar. Use `/memory <query>` to search past session context.
+For details, see:
 
-If not installed, Takumi works fine without it (graceful degradation).
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/control-plane-spec.md`](docs/control-plane-spec.md)
+- [`docs/orchestration.md`](docs/orchestration.md)
 
----
+## Repository layout
 
-## Roadmap
+The repo is organized as a small monorepo with clear package boundaries:
 
-| Phase | Status | Tests | Description |
-|---|---|---|---|
-| **Phase 0** — Scaffold | Done | 55 | Package structure, config, types, CLI entry |
-| **Phase 1** — Kagami Renderer | Done | 824 | ANSI, Yoga, signals, screen buffer, components |
-| **Phase 2** — Core Components | Done | 850 | Markdown, Syntax (12 langs), Diff, Clipboard, Editor |
-| **Phase 3** — Agent Loop | Done | 1109 | LLM providers, 6 tools, sandbox, retry, compaction |
-| **Phase 4** — TUI Application | Done | 1458 | Panels, 5 dialogs, 13 commands, keybinds, mouse |
-| **Phase 5** — Bridge & Integration | Done | 1537 | Chitragupta MCP, Darpana HTTP, git, sessions |
-| **Phase 6** — CLI & Polish | Done | 1537 | Markdown rendering, session persistence, auto-connect |
-| **Phase 7** — Multi-Agent | Done | 2095 | Cluster orchestrator, 5 validators, checkpoint, isolation |
-| **Phase 8** — ArXiv Research | Done | 2095 | Ensemble, Reflexion, MoA, ToT, Progressive Refinement, Bandit |
-| **Phase 9** — Global Install + DX | Done | 2343 | `npm install -g takumi`, GitHub Models, session fork, vi mode, `/tree` |
-| **Phase 10** — Chitragupta Deep Integration | Done | — | Live guidance, anomaly/pattern push steering, Akasha-backed project memory |
-| **Phase 11** — Indexed Experience Memory | Done | — | Compaction now produces reusable memory indices instead of summary-only collapse |
-| **Phase 12** — Skills System | Done | — | `.takumi/skills` prompt skills, always-on skills, and project skill catalog |
-| **Phase 13** — Strategy + Stateful Runtime | Done | — | Strategy-guided turns, recent tool/runtime carry-over, and verification-biased planning |
-| **Phase 14** — Dynamic Tool Selection | Done | — | Per-turn tool subset selection now uses task intent, category coverage, and runtime experience |
-| **Phase 15** — Self-Evolving Principles | Done | — | Successful turns reinforce reusable operating principles that are recalled into later prompts |
+| Path | Purpose |
+|---|---|
+| `bin/` | CLI entrypoints and top-level commands |
+| `packages/core` | config, types, sessions, logger, shared primitives |
+| `packages/render` | the custom terminal renderer |
+| `packages/bridge` | Chitragupta, Darpana, and git-facing bridge code |
+| `packages/agent` | agent loop, tools, routing, and orchestration |
+| `packages/tui` | the application shell, panels, dialogs, and slash commands |
+| `docs/` | user docs, architecture docs, and design notes |
+| `examples/packages` | example Takumi packages |
 
-### New in the latest cognitive pass
+## Packages
 
-- **Indexed experience memory** keeps compacted history useful instead of turning it into a one-way summary blob.
-- **Prompt skills** let repositories add narrow domain guidance without shipping a full extension.
-- **Dynamic tool selection** now exposes a smaller, task-relevant tool set each turn instead of merely hinting about rankings.
-- **Stateful runtime hints** preserve last-used file paths and tool outcomes across follow-up turns.
-- **Self-evolving principles** promote proven workflows like inspect-before-edit and verify-after-change into reusable guidance.
-- **Chitragupta live guidance** can inject predictive steering before the next action lands. Tiny oracle, large vibes.
+Takumi packages are reusable workflow bundles discovered from:
 
----
+- `.takumi/packages/*`
+- `~/.config/takumi/packages/*`
+- configured package roots in `takumi.config.json`
 
-## References
+The repo includes example packages under [`examples/packages`](examples/packages):
 
-### Agent Architecture
-- [ReAct: Synergizing Reasoning and Acting in Language Models](https://arxiv.org/abs/2210.03629) — Yao et al., 2022
-- [Toolformer: Language Models Can Teach Themselves to Use Tools](https://arxiv.org/abs/2302.04761) — Schick et al., 2023
-- [SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering](https://arxiv.org/abs/2405.15793) — Yang et al., 2024
-- [CodeAct: Executable Code Actions Elicit Better LLM Agents](https://arxiv.org/abs/2402.01030) — Wang et al., 2024
+- `@takumi/counterfactual-scout`
+- `@takumi/invariant-loom`
+- `@takumi/negative-space-radar`
 
-### Memory & Context
-- [MemGPT: Towards LLMs as Operating Systems](https://arxiv.org/abs/2310.08560) — Packer et al., 2023
+See [`docs/packages.md`](docs/packages.md).
 
-### Model Routing
-- [FrugalGPT: Better LLM Use at Reduced Cost](https://arxiv.org/abs/2305.05176) — Chen et al., 2023
-- [RouteLLM: Learning to Route LLMs with Preference Data](https://arxiv.org/abs/2406.18665) — Ong et al., 2024
+## Performance
 
-### Renderer Technology
-- [Yoga Layout Engine](https://www.yogalayout.dev/) — Facebook
-- [XTerm Control Sequences](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html)
-- [Unicode East Asian Width](https://www.unicode.org/reports/tr11/)
-- [Preact Signals](https://preactjs.com/guide/v10/signals/)
+Takumi is explicitly built for low-latency terminal interaction, but this README avoids hard benchmark claims unless they are backed by repeatable measurement.
 
----
+See [`docs/PERFORMANCE_INPUT_LATENCY.md`](docs/PERFORMANCE_INPUT_LATENCY.md) for the current analysis and performance intent.
+
+## Docs map
+
+Start here:
+
+- [`docs/README.md`](docs/README.md) — user docs map and status guide
+- [`docs/KEYBINDINGS.md`](docs/KEYBINDINGS.md) — current user reference
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — current + target architecture overview
+- [`docs/orchestration.md`](docs/orchestration.md) — cluster and mesh execution model
+- [`docs/packages.md`](docs/packages.md) — Takumi package lifecycle
+
+## Development
+
+```bash
+pnpm build
+pnpm test
+pnpm check
+pnpm takumi
+```
+
+Useful package-level commands:
+
+```bash
+pnpm --filter @takumi/core build
+pnpm --filter @takumi/agent test
+pnpm --filter @takumi/tui build
+```
 
 ## Ecosystem
 
-Takumi is part of the **Kaala-brahma** project family:
+Takumi is part of the broader Chitragupta / Darpana ecosystem:
 
-| Project | Description |
+| Project | Role |
 |---|---|
-| [Chitragupta](https://github.com/sriinnu/chitragupta) | Core engine — memory, sessions, knowledge graph, MCP server |
-| [Darpana](https://github.com/sriinnu/chitragupta/tree/main/packages/darpana) | LLM API proxy — provider-agnostic, <5ms overhead |
-| **Takumi** | Terminal coding agent — custom renderer, agent loop |
+| [Chitragupta](https://github.com/sriinnu/chitragupta) | memory, sessions, daemon / MCP surfaces |
+| [Darpana](https://github.com/sriinnu/chitragupta/tree/main/packages/darpana) | optional LLM proxy |
+| Takumi | terminal coding runtime and UI |
 
----
+## Acknowledgements
+
+Takumi benefits from ideas, patterns, and healthy pressure from the wider agent tooling community, including work around `pi` and related ecosystem experiments.
+
+That said, Takumi's core concepts, architecture, naming, renderer, orchestration model, and product direction are its own. Inspiration is shared; implementation and system design here are original to Takumi.
 
 ## License
 

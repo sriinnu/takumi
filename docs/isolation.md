@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./logo.svg" alt="Takumi logo" width="160" />
+</p>
+
 # Isolation Modes
 
 Takumi supports three isolation levels for cluster execution.  They control

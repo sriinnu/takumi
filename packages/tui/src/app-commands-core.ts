@@ -118,6 +118,7 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 			);
 			return;
 		}
+		const bridge = ctx.state.chitraguptaBridge.value;
 		if (args === "list") {
 			const { listSessions } = await import("@takumi/core");
 			try {
@@ -128,6 +129,56 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 				);
 			} catch (err) {
 				ctx.addInfoMessage(`Failed to list sessions: ${(err as Error).message}`);
+			}
+			return;
+		}
+		if (args.startsWith("dates")) {
+			if (!bridge?.isConnected) {
+				ctx.addInfoMessage("/session dates requires Chitragupta connection");
+				return;
+			}
+			const project = args.split(/\s+/).slice(1).join(" ").trim() || process.cwd();
+			try {
+				const dates = await bridge.sessionDates(project);
+				if (dates.length === 0) return ctx.addInfoMessage("No session dates found");
+				ctx.addInfoMessage(`Session dates (${dates.length}):\n${dates.map((d, i) => `${i + 1}. ${d}`).join("\n")}`);
+			} catch (err) {
+				ctx.addInfoMessage(`Failed to list session dates: ${(err as Error).message}`);
+			}
+			return;
+		}
+		if (args === "projects") {
+			if (!bridge?.isConnected) {
+				ctx.addInfoMessage("/session projects requires Chitragupta connection");
+				return;
+			}
+			try {
+				const projects = await bridge.sessionProjects();
+				if (projects.length === 0) return ctx.addInfoMessage("No projects tracked");
+				const lines = projects.map(
+					(p, i) => `${i + 1}. **${p.project}** — ${p.sessionCount} sessions (last: ${p.lastActive})`,
+				);
+				ctx.addInfoMessage(`Projects (${projects.length}):\n${lines.join("\n")}`);
+			} catch (err) {
+				ctx.addInfoMessage(`Failed to list projects: ${(err as Error).message}`);
+			}
+			return;
+		}
+		if (args.startsWith("delete ")) {
+			if (!bridge?.isConnected) {
+				ctx.addInfoMessage("/session delete requires Chitragupta connection");
+				return;
+			}
+			const id = args.slice(7).trim();
+			if (!id) {
+				ctx.addInfoMessage("Usage: /session delete <session-id>");
+				return;
+			}
+			try {
+				const result = await bridge.sessionDelete(id);
+				ctx.addInfoMessage(result.deleted ? `✓ Session ${id} deleted` : `Session ${id} not found`);
+			} catch (err) {
+				ctx.addInfoMessage(`Failed to delete session: ${(err as Error).message}`);
 			}
 			return;
 		}
@@ -159,7 +210,7 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 			}
 			return;
 		}
-		ctx.addInfoMessage("Usage: /session [info|list|resume <id>|save]");
+		ctx.addInfoMessage("Usage: /session [info|list|resume <id>|save|dates [project]|projects|delete <id>]");
 	});
 	ctx.commands.register("/diff", "Show git diff", () => {
 		const diff = gitDiff(process.cwd());

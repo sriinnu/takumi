@@ -143,69 +143,6 @@ export function registerChitraguptaCommands(ctx: AppCommandContext): void {
 		}
 	});
 
-	ctx.commands.register("/session", "Session management (dates, projects, delete)", async (args) => {
-		const bridge = ctx.state.chitraguptaBridge.value;
-		if (!bridge?.isConnected) return ctx.addInfoMessage("Chitragupta not connected");
-
-		if (!args) {
-			return ctx.addInfoMessage(
-				"Usage:\n  /session dates [project]  — list session dates\n  /session projects         — list tracked projects\n  /session delete <id>      — delete a session",
-			);
-		}
-		const parts = args.trim().split(/\s+/);
-		const sub = parts[0];
-
-		if (sub === "dates") {
-			const project = parts[1] || process.cwd();
-			try {
-				const dates = await bridge.sessionDates(project);
-				if (dates.length === 0) return ctx.addInfoMessage("No session dates found");
-				ctx.addInfoMessage(`Session dates (${dates.length}):\n${dates.map((d, i) => `${i + 1}. ${d}`).join("\n")}`);
-			} catch (err) {
-				ctx.addInfoMessage(`Failed: ${(err as Error).message}`);
-			}
-			return;
-		}
-		if (sub === "projects") {
-			try {
-				const projects = await bridge.sessionProjects();
-				if (projects.length === 0) return ctx.addInfoMessage("No projects tracked");
-				const lines = projects.map(
-					(p, i) => `${i + 1}. **${p.project}** — ${p.sessionCount} sessions (last: ${p.lastActive})`,
-				);
-				ctx.addInfoMessage(`Projects (${projects.length}):\n${lines.join("\n")}`);
-			} catch (err) {
-				ctx.addInfoMessage(`Failed: ${(err as Error).message}`);
-			}
-			return;
-		}
-		if (sub === "delete") {
-			const id = parts[1];
-			if (!id) return ctx.addInfoMessage("Usage: /session delete <session-id>");
-			try {
-				const result = await bridge.sessionDelete(id);
-				ctx.addInfoMessage(result.deleted ? `✓ Session ${id} deleted` : `Session ${id} not found`);
-			} catch (err) {
-				ctx.addInfoMessage(`Failed: ${(err as Error).message}`);
-			}
-			return;
-		}
-		ctx.addInfoMessage(`Unknown: ${sub}\nUse /session for usage.`);
-	});
-
-	ctx.commands.register("/memory", "Show memory scopes", async () => {
-		const bridge = ctx.state.chitraguptaBridge.value;
-		if (!bridge?.isConnected) return ctx.addInfoMessage("Chitragupta not connected");
-		try {
-			const scopes = await bridge.memoryScopes();
-			if (scopes.length === 0) return ctx.addInfoMessage("No memory scopes found");
-			const lines = scopes.map((s, i) => `${i + 1}. **${s.type}**${s.path ? ` — ${s.path}` : ""}`);
-			ctx.addInfoMessage(`Memory scopes (${scopes.length}):\n${lines.join("\n")}`);
-		} catch (err) {
-			ctx.addInfoMessage(`Failed: ${(err as Error).message}`);
-		}
-	});
-
 	ctx.commands.register("/daemon", "Show daemon status", async () => {
 		const bridge = ctx.state.chitraguptaBridge.value;
 		if (!bridge?.isConnected) return ctx.addInfoMessage("Chitragupta not connected");

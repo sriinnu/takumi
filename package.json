@@ -25,6 +25,7 @@
 	"files": [
 		"dist/",
 		"bin/",
+		"docs/",
 		"packages/core/src/",
 		"packages/core/dist/",
 		"packages/render/src/",
@@ -35,6 +36,7 @@
 		"packages/agent/dist/",
 		"packages/tui/src/",
 		"packages/tui/dist/",
+		"examples/packages/",
 		"README.md"
 	],
 	"publishConfig": {
