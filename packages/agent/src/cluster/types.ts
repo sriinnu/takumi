@@ -5,6 +5,112 @@
 import type { DockerIsolationConfig, MeshTopologyMode } from "@takumi/core";
 import type { MessagePayload } from "../loop.js";
 
+// ── Agent-to-Agent Message Protocol ──────────────────────────────────────────
+
+/** Priority levels for inter-agent messages. */
+export enum AgentMessagePriority {
+	LOW = 0,
+	NORMAL = 1,
+	HIGH = 2,
+	CRITICAL = 3,
+}
+
+/** A task delegation request between agents. */
+export interface AgentTaskRequest {
+	type: "task_request";
+	id: string;
+	from: string;
+	to: string | null;
+	priority: AgentMessagePriority;
+	description: string;
+	constraints?: Record<string, unknown>;
+	parentTaskId?: string;
+	deadline?: number;
+	timestamp: number;
+}
+
+/** Structured result returned upon task completion. */
+export interface AgentTaskResult {
+	type: "task_result";
+	id: string;
+	from: string;
+	taskRequestId: string;
+	success: boolean;
+	summary: string;
+	artifacts?: AgentArtifact[];
+	metrics?: { durationMs: number; tokensUsed: number };
+	timestamp: number;
+}
+
+/** An artifact produced by an agent (file, diff, data). */
+export interface AgentArtifact {
+	kind: "file" | "diff" | "json" | "text";
+	path?: string;
+	content: string;
+}
+
+/** A context/knowledge share between agents. */
+export interface AgentDiscoveryShare {
+	type: "discovery_share";
+	id: string;
+	from: string;
+	topic: string;
+	payload: Record<string, unknown>;
+	timestamp: number;
+}
+
+/** An agent asking the bus for help on a subtask. */
+export interface AgentHelpRequest {
+	type: "help_request";
+	id: string;
+	from: string;
+	description: string;
+	requiredCapabilities?: string[];
+	timestamp: number;
+}
+
+/** Query whether any agent has a given capability. */
+export interface AgentCapabilityQuery {
+	type: "capability_query";
+	id: string;
+	from: string;
+	capability: string;
+	timestamp: number;
+}
+
+/** Response to a capability query. */
+export interface AgentCapabilityResponse {
+	type: "capability_response";
+	id: string;
+	from: string;
+	queryId: string;
+	capabilities: string[];
+	confidence: number;
+	timestamp: number;
+}
+
+/** Periodic heartbeat from an active agent. */
+export interface AgentHeartbeat {
+	type: "heartbeat";
+	from: string;
+	status: AgentStatus;
+	progress?: number;
+	timestamp: number;
+}
+
+/** Union of all inter-agent messages. */
+export type AgentMessage =
+	| AgentTaskRequest
+	| AgentTaskResult
+	| AgentDiscoveryShare
+	| AgentHelpRequest
+	| AgentCapabilityQuery
+	| AgentCapabilityResponse
+	| AgentHeartbeat;
+
+/** Extract the type literal from an AgentMessage. */
+export type AgentMessageType = AgentMessage["type"];
+
 // ── Agent Roles ──────────────────────────────────────────────────────────────
 
 export enum AgentRole {

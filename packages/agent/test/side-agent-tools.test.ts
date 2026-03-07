@@ -6,10 +6,12 @@ import type { SideAgentListener } from "../src/cluster/side-agent-registry.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import {
 	agentCheckDefinition,
+	agentQueryDefinition,
 	agentSendDefinition,
 	agentStartDefinition,
 	agentWaitAnyDefinition,
 	createAgentCheckHandler,
+	createAgentQueryHandler,
 	createAgentSendHandler,
 	createAgentStartHandler,
 	createAgentWaitAnyHandler,
@@ -335,6 +337,142 @@ describe("takumi_agent_send", () => {
 	});
 });
 
+describe("takumi_agent_query", () => {
+	it("returns structured result when agent responds with JSON", async () => {
+		const deps = createMockDeps();
+		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "running" }));
+		(deps.tmux.captureOutput as ReturnType<typeof vi.fn>).mockResolvedValue(
+			'some preamble\n```json\n{"answer": 42}\n```\n',
+		);
+
+		const handler = createAgentQueryHandler(deps);
+		const result = await handler({ id: "side-1", query: "what is x?" });
+
+		expect(result.isError).toBe(false);
+		const data = parse(result);
+		expect(data.responseType).toBe("structured");
+		expect((data.response as Record<string, unknown>).answer).toBe(42);
+		expect(data.query).toBe("what is x?");
+		expect(deps.tmux.sendKeys).toHaveBeenCalledWith("side-1", expect.stringContaining("what is x?"));
+	});
+
+	it("uses default format 'json' when not specified", async () => {
+		const deps = createMockDeps();
+		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "running" }));
+		(deps.tmux.captureOutput as ReturnType<typeof vi.fn>).mockResolvedValue('```json\n{"ok": true}\n```');
+
+		const handler = createAgentQueryHandler(deps);
+		const result = await handler({ id: "side-1", query: "test" });
+
+		expect(result.isError).toBe(false);
+		const data = parse(result);
+		expect(data.format).toBe("json");
+	});
+
+	it("accepts waiting_user agent state", async () => {
+		const deps = createMockDeps();
+		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "waiting_user" }));
+		(deps.tmux.captureOutput as ReturnType<typeof vi.fn>).mockResolvedValue('```json\n{"status": "ready"}\n```');
+
+		const handler = createAgentQueryHandler(deps);
+		const result = await handler({ id: "side-1", query: "ready?" });
+
+		expect(result.isError).toBe(false);
+		expect(deps.tmux.sendKeys).toHaveBeenCalled();
+	});
+
+	it("returns error for unknown agent", async () => {
+		const deps = createMockDeps();
+		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+
+		const handler = createAgentQueryHandler(deps);
+		const result = await handler({ id: "ghost", query: "hello" });
+
+		expect(result.isError).toBe(true);
+		expect(result.output).toContain('unknown agent "ghost"');
+	});
+
+	it("returns error for agent in non-queryable state", async () => {
+		const deps = createMockDeps();
+		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "done" }));
+
+		const handler = createAgentQueryHandler(deps);
+		const result = await handler({ id: "side-1", query: "hello" });
+
+		expect(result.isError).toBe(true);
+		expect(result.output).toContain("done");
+		expect(result.output).toContain("can only query");
+		expect(deps.tmux.sendKeys).not.toHaveBeenCalled();
+	});
+
+	it("returns error for starting agent state", async () => {
+		const deps = createMockDeps();
+		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "starting" }));
+
+		const handler = createAgentQueryHandler(deps);
+		const result = await handler({ id: "side-1", query: "hello" });
+
+		expect(result.isError).toBe(true);
+		expect(deps.tmux.sendKeys).not.toHaveBeenCalled();
+	});
+
+	it("respects abort signal before first poll", async () => {
+		const deps = createMockDeps();
+		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "running" }));
+		(deps.tmux.captureOutput as ReturnType<typeof vi.fn>).mockResolvedValue("no json here");
+
+		const controller = new AbortController();
+		controller.abort();
+
+		const handler = createAgentQueryHandler(deps);
+		const result = await handler({ id: "side-1", query: "hello" }, controller.signal);
+
+		expect(result.isError).toBe(true);
+		expect(result.output).toContain("aborted");
+	});
+
+	it("falls back to raw output on timeout", async () => {
+		vi.useFakeTimers();
+		const deps = createMockDeps();
+		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "running" }));
+		(deps.tmux.captureOutput as ReturnType<typeof vi.fn>).mockResolvedValue("raw output, no json block");
+
+		const handler = createAgentQueryHandler(deps);
+		const resultPromise = handler({ id: "side-1", query: "hello" });
+
+		// Advance past the 60s polling timeout
+		await vi.advanceTimersByTimeAsync(61_000);
+
+		const result = await resultPromise;
+		expect(result.isError).toBe(false);
+		const data = parse(result);
+		expect(data.responseType).toBe("raw");
+		expect(data.warning).toContain("Timed out");
+
+		vi.useRealTimers();
+	});
+
+	it("handles tmux capture failure mid-poll gracefully", async () => {
+		const deps = createMockDeps();
+		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "running" }));
+
+		let callCount = 0;
+		(deps.tmux.captureOutput as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+			callCount += 1;
+			if (callCount === 1) throw new Error("tmux pane gone");
+			return '```json\n{"recovered": true}\n```';
+		});
+
+		const handler = createAgentQueryHandler(deps);
+		const result = await handler({ id: "side-1", query: "test resilience" });
+
+		expect(result.isError).toBe(false);
+		const data = parse(result);
+		expect(data.responseType).toBe("structured");
+		expect((data.response as Record<string, unknown>).recovered).toBe(true);
+	});
+});
+
 describe("registerSideAgentTools", () => {
 	it("registers all 4 tools in registry", () => {
 		const registry = new ToolRegistry();
@@ -346,7 +484,8 @@ describe("registerSideAgentTools", () => {
 		expect(registry.has("takumi_agent_check")).toBe(true);
 		expect(registry.has("takumi_agent_wait_any")).toBe(true);
 		expect(registry.has("takumi_agent_send")).toBe(true);
-		expect(registry.size).toBe(4);
+		expect(registry.has("takumi_agent_query")).toBe(true);
+		expect(registry.size).toBe(5);
 	});
 
 	it("tool definitions have correct categories", () => {
@@ -354,6 +493,7 @@ describe("registerSideAgentTools", () => {
 		expect(agentCheckDefinition.category).toBe("read");
 		expect(agentWaitAnyDefinition.category).toBe("interact");
 		expect(agentSendDefinition.category).toBe("interact");
+		expect(agentQueryDefinition.category).toBe("interact");
 	});
 
 	it("tool definitions have correct permission flags", () => {
@@ -361,5 +501,6 @@ describe("registerSideAgentTools", () => {
 		expect(agentCheckDefinition.requiresPermission).toBe(false);
 		expect(agentWaitAnyDefinition.requiresPermission).toBe(false);
 		expect(agentSendDefinition.requiresPermission).toBe(true);
+		expect(agentQueryDefinition.requiresPermission).toBe(false);
 	});
 });

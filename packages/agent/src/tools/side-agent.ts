@@ -310,4 +310,117 @@ export function registerSideAgentTools(registry: ToolRegistry, deps: SideAgentTo
 	registry.register(agentCheckDefinition, createAgentCheckHandler(deps));
 	registry.register(agentWaitAnyDefinition, createAgentWaitAnyHandler(deps));
 	registry.register(agentSendDefinition, createAgentSendHandler(deps));
+	registry.register(agentQueryDefinition, createAgentQueryHandler(deps));
+}
+
+// ── takumi_agent_query ────────────────────────────────────────────────────────
+
+export const agentQueryDefinition: ToolDefinition = {
+	name: "takumi_agent_query",
+	description:
+		"Send a structured query to a side agent and receive a structured JSON response. " +
+		"Unlike takumi_agent_send (raw text), this returns parsed JSON results. " +
+		"The side agent must be in a 'running' or 'waiting_user' state.",
+	inputSchema: {
+		type: "object",
+		properties: {
+			id: { type: "string", description: "The side agent ID to query." },
+			query: { type: "string", description: "The question or request to send." },
+			format: {
+				type: "string",
+				description: "Expected response format hint (e.g., 'json', 'summary', 'files'). Default: 'json'.",
+			},
+		},
+		required: ["id", "query"],
+	},
+	requiresPermission: false,
+	category: "interact",
+};
+
+export function createAgentQueryHandler(deps: SideAgentToolDeps): ToolHandler {
+	return async (input, signal) => {
+		const id = input.id as string;
+		const query = input.query as string;
+		const format = (input.format as string | undefined) ?? "json";
+
+		if (!id || !query) {
+			return { output: "Error: id and query are required", isError: true };
+		}
+
+		const agent = deps.agents.get(id);
+		if (!agent) {
+			return { output: `Error: unknown agent "${id}"`, isError: true };
+		}
+
+		const sendableStates: SideAgentState[] = ["running", "waiting_user"];
+		if (!sendableStates.includes(agent.state)) {
+			return {
+				output: `Error: agent "${id}" is in state "${agent.state}" — can only query running or waiting_user agents`,
+				isError: true,
+			};
+		}
+
+		// Wrap query with structured response instruction
+		const wrappedQuery =
+			`[STRUCTURED_QUERY format=${format}]\n${query}\n` +
+			`[/STRUCTURED_QUERY]\nRespond with a JSON block wrapped in \`\`\`json ... \`\`\`.`;
+
+		await deps.tmux.sendKeys(id, wrappedQuery);
+
+		// Poll for response in tmux output
+		const pollInterval = 500;
+		const maxWait = 60_000;
+		const start = Date.now();
+
+		while (Date.now() - start < maxWait) {
+			if (signal?.aborted) {
+				return { output: "Error: query aborted", isError: true };
+			}
+
+			await new Promise((r) => setTimeout(r, pollInterval));
+
+			let output = "";
+			try {
+				output = await deps.tmux.captureOutput(id, 100);
+			} catch {
+				continue;
+			}
+
+			// Try to extract JSON block from output
+			const jsonMatch = output.match(/```json\s*([\s\S]*?)```/);
+			if (jsonMatch?.[1]) {
+				try {
+					const parsed = JSON.parse(jsonMatch[1].trim());
+					const result = {
+						id,
+						query,
+						format,
+						response: parsed,
+						responseType: "structured",
+					};
+					return { output: JSON.stringify(result, null, "\t"), isError: false };
+				} catch {
+					// JSON not valid yet, keep polling
+				}
+			}
+		}
+
+		// Timeout — return raw output
+		let rawOutput = "";
+		try {
+			rawOutput = await deps.tmux.captureOutput(id, DEFAULT_CAPTURE_LINES);
+		} catch {
+			rawOutput = "<no output available>";
+		}
+
+		const result = {
+			id,
+			query,
+			format,
+			response: rawOutput,
+			responseType: "raw",
+			warning: "Timed out waiting for structured response",
+		};
+		return { output: JSON.stringify(result, null, "\t"), isError: false };
+	};
 }
