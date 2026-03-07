@@ -14,6 +14,9 @@ importers:
       '@takumi/agent':
         specifier: workspace:*
         version: link:packages/agent
+      '@takumi/bridge':
+        specifier: workspace:*
+        version: link:packages/bridge
       '@takumi/core':
         specifier: workspace:*
         version: link:packages/core

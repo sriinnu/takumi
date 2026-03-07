@@ -11,6 +11,7 @@
 import type { ChitraguptaBridge } from "./chitragupta.js";
 import type { NotificationCallbacks } from "./chitragupta-observe.js";
 import * as observe from "./chitragupta-observe.js";
+import type { CapabilityQuery, CapabilityQueryResult, RoutingDecision, RoutingRequest } from "./control-plane.js";
 import type {
 	HealReportParams,
 	HealReportResult,
@@ -21,6 +22,16 @@ import type {
 	PatternQueryResult,
 	PredictNextParams,
 	PredictNextResult,
+	SabhaAskParams,
+	SabhaAskResult,
+	SabhaDeliberateParams,
+	SabhaDeliberateResult,
+	SabhaEscalateParams,
+	SabhaEscalateResult,
+	SabhaGatherParams,
+	SabhaGatherResult,
+	SabhaRecordParams,
+	SabhaRecordResult,
 } from "./observation-types.js";
 
 export class ChitraguptaObserver {
@@ -58,6 +69,41 @@ export class ChitraguptaObserver {
 	/** Report a heal action outcome for effectiveness tracking. */
 	async healReport(params: HealReportParams): Promise<HealReportResult> {
 		return observe.healReport(this.bridge.daemonSocket, this.bridge.isSocketMode, params);
+	}
+
+	/** Query engine-owned integration capabilities. */
+	async capabilities(query: CapabilityQuery = {}): Promise<CapabilityQueryResult> {
+		return observe.capabilitiesQuery(this.bridge.daemonSocket, this.bridge.isSocketMode, query);
+	}
+
+	/** Resolve a semantic routing request through the engine control plane. */
+	async routeResolve(request: RoutingRequest): Promise<RoutingDecision | null> {
+		return observe.routeResolve(this.bridge.daemonSocket, this.bridge.isSocketMode, request);
+	}
+
+	/** Ask the engine to convene a Sabha consultation. */
+	async sabhaAsk(params: SabhaAskParams): Promise<SabhaAskResult | null> {
+		return observe.sabhaAsk(this.bridge.daemonSocket, this.bridge.isSocketMode, params);
+	}
+
+	/** Gather the current state of a Sabha. */
+	async sabhaGather(params: SabhaGatherParams): Promise<SabhaGatherResult | null> {
+		return observe.sabhaGather(this.bridge.daemonSocket, this.bridge.isSocketMode, params);
+	}
+
+	/** Run or conclude a Sabha deliberation round. */
+	async sabhaDeliberate(params: SabhaDeliberateParams): Promise<SabhaDeliberateResult | null> {
+		return observe.sabhaDeliberate(this.bridge.daemonSocket, this.bridge.isSocketMode, params);
+	}
+
+	/** Record a Sabha outcome into the engine. */
+	async sabhaRecord(params: SabhaRecordParams): Promise<SabhaRecordResult | null> {
+		return observe.sabhaRecord(this.bridge.daemonSocket, this.bridge.isSocketMode, params);
+	}
+
+	/** Escalate a Sabha to external authority or human review. */
+	async sabhaEscalate(params: SabhaEscalateParams): Promise<SabhaEscalateResult | null> {
+		return observe.sabhaEscalate(this.bridge.daemonSocket, this.bridge.isSocketMode, params);
 	}
 
 	// ── Notification Subscriptions (Phase 50) ────────────────────────────

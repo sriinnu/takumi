@@ -1,89 +1,20 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { SteeringPriorityLevel } from "@takumi/agent";
 import { akashaDepositDefinition, akashaTracesDefinition, createAkashaHandlers, SteeringPriority } from "@takumi/agent";
 import { ChitraguptaBridge, ChitraguptaObserver } from "@takumi/bridge";
 import { createLogger } from "@takumi/core";
 import type { AgentRunner } from "./agent-runner.js";
+import { normalizePredictions } from "./chitragupta-notification-helpers.js";
+import { enqueueDirective, loadMcpConfig, wasRecentlyHandled } from "./chitragupta-runtime-helpers.js";
+import {
+	mergeControlPlaneCapabilities,
+	summarizeTakumiCapabilityHealth,
+	upsertCapabilityHealthSnapshot,
+} from "./control-plane-state.js";
 import type { AppState } from "./state.js";
 
 const log = createLogger("app");
 
-/** Timestamp (epoch ms) captured when the Chitragupta bridge first connects. */
 let startedAt = 0;
 
-const RECENT_NOTIFICATION_WINDOW_MS = 8_000;
-const recentDirectives = new Map<string, number>();
-
-function wasRecentlyHandled(key: string, windowMs = RECENT_NOTIFICATION_WINDOW_MS): boolean {
-	const now = Date.now();
-	const lastAt = recentDirectives.get(key) ?? 0;
-	if (lastAt && now - lastAt < windowMs) return true;
-	recentDirectives.set(key, now);
-	return false;
-}
-
-function enqueueDirective(
-	state: AppState,
-	text: string,
-	priority: SteeringPriorityLevel,
-	metadata?: Record<string, unknown>,
-): void {
-	const id = state.steeringQueue.enqueue(text, { priority, metadata });
-	if (id) {
-		state.steeringPending.value = state.steeringQueue.size;
-	}
-}
-
-function parseStringArray(value: unknown): string[] {
-	return Array.isArray(value) ? value.map((entry) => String(entry ?? "").trim()).filter(Boolean) : [];
-}
-
-function normalizePredictions(params: Record<string, unknown>): Array<{
-	type: string;
-	action?: string;
-	files?: string[];
-	confidence: number;
-	reasoning?: string;
-	risk?: number;
-	pastFailures?: number;
-	suggestion?: string;
-}> {
-	const raw = Array.isArray(params.predictions) ? params.predictions : [];
-	const predictions: Array<{
-		type: string;
-		action?: string;
-		files?: string[];
-		confidence: number;
-		reasoning?: string;
-		risk?: number;
-		pastFailures?: number;
-		suggestion?: string;
-	}> = [];
-
-	for (const entry of raw) {
-		if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
-		const prediction = entry as Record<string, unknown>;
-		const confidence = Number(prediction.confidence ?? 0);
-		predictions.push({
-			type: String(prediction.type ?? params.type ?? "prediction"),
-			action: typeof prediction.action === "string" ? prediction.action : undefined,
-			files: parseStringArray(prediction.files),
-			confidence: Number.isFinite(confidence) ? confidence : 0,
-			reasoning: typeof prediction.reasoning === "string" ? prediction.reasoning : undefined,
-			risk: Number.isFinite(Number(prediction.risk)) ? Number(prediction.risk) : undefined,
-			pastFailures: Number.isFinite(Number(prediction.pastFailures)) ? Number(prediction.pastFailures) : undefined,
-			suggestion: typeof prediction.suggestion === "string" ? prediction.suggestion : undefined,
-		});
-	}
-
-	return predictions;
-}
-
-/**
- * Subscribe to Chitragupta daemon push notifications.
- * These arrive as JSON-RPC messages without an `id` field.
- */
 function subscribeToNotifications(
 	state: AppState,
 	observer: ChitraguptaObserver,
@@ -98,6 +29,14 @@ function subscribeToNotifications(
 
 			log.warn(`Chitragupta anomaly [${severity}] ${type}: ${details}`);
 			state.chitraguptaAnomaly.value = { severity, details, suggestion: suggestion ?? null, at: Date.now() };
+			state.capabilityHealthSnapshots.value = upsertCapabilityHealthSnapshot(
+				state.capabilityHealthSnapshots.value,
+				summarizeTakumiCapabilityHealth({
+					connected: state.chitraguptaConnected.value,
+					anomalySeverity: severity,
+					routingDecisions: state.routingDecisions.value,
+				}),
+			);
 
 			if (agentRunner?.isRunning && (type === "loop_detected" || suggestion === "abort")) {
 				agentRunner.cancel();
@@ -193,6 +132,71 @@ function subscribeToNotifications(
 				}
 			}
 		},
+		onHealReported: (params) => {
+			const anomalyType = String(params.anomalyType ?? "heal");
+			const outcome = String(params.outcome ?? "partial");
+			log.info(`Chitragupta heal reported: ${anomalyType} -> ${outcome}`);
+			if (outcome === "success") {
+				state.chitraguptaAnomaly.value = null;
+				state.capabilityHealthSnapshots.value = upsertCapabilityHealthSnapshot(
+					state.capabilityHealthSnapshots.value,
+					summarizeTakumiCapabilityHealth({
+						connected: state.chitraguptaConnected.value,
+						routingDecisions: state.routingDecisions.value,
+					}),
+				);
+			}
+		},
+		onSabhaConsult: (params) => {
+			const sabhaId = String(params.sabhaId ?? "");
+			const question = typeof params.question === "string" ? params.question : "Provide council input to Chitragupta.";
+			const convener = typeof params.convener === "string" ? params.convener : "chitragupta";
+			log.info(`Chitragupta sabha consult ${sabhaId || "(new)"}: ${question}`);
+			if (agentRunner?.isRunning && !wasRecentlyHandled(`sabha:${sabhaId}:${question}`)) {
+				enqueueDirective(state, `Chitragupta Sabha consult from ${convener}: ${question}`, SteeringPriority.HIGH, {
+					source: "chitragupta",
+					method: "sabha.consult",
+					sabhaId,
+				});
+			}
+		},
+
+		onSabhaUpdated: (params) => {
+			const sabhaId = String(params.sabhaId ?? "");
+			const event = String(params.event ?? "updated");
+			const topic = typeof params.sabha?.topic === "string" ? params.sabha.topic : sabhaId || "sabha";
+			log.info(`Chitragupta sabha updated ${sabhaId || "(unknown)"}: ${event}`);
+			if (!agentRunner?.isRunning) return;
+			const key = `sabha-updated:${sabhaId}:${event}`;
+			if (wasRecentlyHandled(key)) return;
+			const directive =
+				event === "concluded"
+					? `Chitragupta Sabha concluded for ${topic}. Use the updated council state before the next step.`
+					: event === "escalated"
+						? `Chitragupta Sabha escalated for ${topic}. Stop assuming autonomy on this branch and wait for explicit direction.`
+						: `Chitragupta Sabha updated for ${topic}. Incorporate the latest council state.`;
+			enqueueDirective(state, directive, event === "escalated" ? SteeringPriority.INTERRUPT : SteeringPriority.NORMAL, {
+				source: "chitragupta",
+				method: "sabha.updated",
+				sabhaId,
+				event,
+			});
+		},
+		onSabhaRecorded: (params) => {
+			log.info(`Chitragupta sabha recorded ${String(params.sabhaId ?? "")}: ${String(params.decisionId ?? "")}`);
+		},
+		onSabhaEscalated: (params) => {
+			const sabhaId = String(params.sabhaId ?? "");
+			const reason = typeof params.reason === "string" ? params.reason : "Escalated by Chitragupta.";
+			log.warn(`Chitragupta sabha escalated ${sabhaId || "(unknown)"}: ${reason}`);
+			if (agentRunner?.isRunning && !wasRecentlyHandled(`sabha-escalated:${sabhaId}:${reason}`)) {
+				enqueueDirective(state, `Chitragupta escalated Sabha ${sabhaId || ""}. ${reason}`, SteeringPriority.INTERRUPT, {
+					source: "chitragupta",
+					method: "sabha.escalated",
+					sabhaId,
+				});
+			}
+		},
 		onEvolveRequest: (params) => {
 			const type = String(params.type ?? "evolve_request");
 			log.info(`Chitragupta evolve request: ${type}`);
@@ -229,30 +233,10 @@ function subscribeToNotifications(
 	log.info("Subscribed to Chitragupta daemon notifications via observer");
 }
 
-function loadMcpConfig(): { command: string; args: string[] } | null {
-	try {
-		const mcpPath = join(process.cwd(), ".vscode", "mcp.json");
-		if (!existsSync(mcpPath)) {
-			log.debug("No .vscode/mcp.json found");
-			return null;
-		}
-		const raw = readFileSync(mcpPath, "utf-8");
-		const parsed = JSON.parse(raw);
-		const chitraguptaConfig = parsed?.mcpServers?.chitragupta;
-		if (!chitraguptaConfig?.command) return null;
-		log.info("Loaded MCP config from .vscode/mcp.json");
-		return { command: chitraguptaConfig.command, args: chitraguptaConfig.args || [] };
-	} catch (err) {
-		log.debug(`Failed to load MCP config: ${(err as Error).message}`);
-		return null;
-	}
-}
-
 export function connectChitragupta(
 	state: AppState,
 	agentRunner: AgentRunner | null,
 	onInterval: (timer: ReturnType<typeof setInterval>) => void,
-	/** Override the daemon socket path (from config.chitraguptaDaemon.socketPath). */
 	socketPath?: string,
 ): void {
 	const mcpConfig = loadMcpConfig();
@@ -272,10 +256,19 @@ export function connectChitragupta(
 			startedAt = Date.now();
 			log.info("Chitragupta bridge connected");
 
-			// Phase 49 — Create observer for observation dispatch & prediction queries
 			const observer = new ChitraguptaObserver(bridge);
 			state.chitraguptaObserver.value = observer;
 			subscribeToNotifications(state, observer, agentRunner);
+			try {
+				const capabilities = await observer.capabilities({ includeDegraded: true, includeDown: true, limit: 25 });
+				state.controlPlaneCapabilities.value = mergeControlPlaneCapabilities(capabilities.capabilities);
+			} catch (err) {
+				log.debug(`Chitragupta capabilities preload failed: ${(err as Error).message}`);
+			}
+			state.capabilityHealthSnapshots.value = upsertCapabilityHealthSnapshot(
+				state.capabilityHealthSnapshots.value,
+				summarizeTakumiCapabilityHealth({ connected: true, routingDecisions: state.routingDecisions.value }),
+			);
 
 			if (agentRunner) {
 				const tools = agentRunner.getTools();
@@ -329,7 +322,6 @@ export function connectChitragupta(
 				log.debug(`Chitragupta health check failed: ${(err as Error).message}`);
 			}
 
-			// Telemetry heartbeat — emits process + context status every 1.5s
 			const heartbeatTimer = setInterval(async () => {
 				const b = state.chitraguptaBridge.value;
 				if (!b?.isConnected) return;
@@ -363,14 +355,26 @@ export function connectChitragupta(
 			}, 1_500);
 			onInterval(heartbeatTimer);
 
-			// Vasana/health refresh — polls every 60s
 			const vasanaTimer = setInterval(async () => {
 				const b = state.chitraguptaBridge.value;
 				if (!b?.isConnected) return;
 				try {
-					const [t, h] = await Promise.all([b.vasanaTendencies(10), b.healthStatus()]);
+					const [t, h, capabilities] = await Promise.all([
+						b.vasanaTendencies(10),
+						b.healthStatus(),
+						observer.capabilities({ includeDegraded: true, includeDown: true, limit: 25 }),
+					]);
 					state.vasanaTendencies.value = t;
 					if (h) state.chitraguptaHealth.value = h;
+					state.controlPlaneCapabilities.value = mergeControlPlaneCapabilities(capabilities.capabilities);
+					state.capabilityHealthSnapshots.value = upsertCapabilityHealthSnapshot(
+						state.capabilityHealthSnapshots.value,
+						summarizeTakumiCapabilityHealth({
+							connected: true,
+							anomalySeverity: state.chitraguptaAnomaly.value?.severity,
+							routingDecisions: state.routingDecisions.value,
+						}),
+					);
 					state.vasanaLastRefresh.value = Date.now();
 				} catch {
 					/* best effort */
@@ -398,11 +402,9 @@ export async function disconnectChitragupta(state: AppState): Promise<void> {
 	const bridge = state.chitraguptaBridge.value;
 	if (!bridge || !bridge.isConnected) return;
 
-	// Phase 49 — Teardown observer notification subscriptions
 	state.chitraguptaObserver.value?.teardown();
 	state.chitraguptaObserver.value = null;
 
-	// Cleanup telemetry heartbeat file before handover
 	try {
 		await bridge.telemetryCleanup(process.pid);
 		log.debug("Telemetry heartbeat file cleaned up");
@@ -426,5 +428,9 @@ export async function disconnectChitragupta(state: AppState): Promise<void> {
 		log.debug(`Chitragupta disconnect failed: ${(err as Error).message}`);
 	}
 	state.chitraguptaConnected.value = false;
+	state.capabilityHealthSnapshots.value = upsertCapabilityHealthSnapshot(
+		state.capabilityHealthSnapshots.value,
+		summarizeTakumiCapabilityHealth({ connected: false, routingDecisions: state.routingDecisions.value }),
+	);
 	state.chitraguptaBridge.value = null;
 }

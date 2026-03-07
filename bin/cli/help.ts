@@ -19,6 +19,9 @@ Subcommands:
   takumi attach <job-id>     Attach to a detached job log stream
   takumi stop <job-id>       Stop a detached background job
   takumi daemon [action]     Manage the chitragupta daemon (start|stop|status|restart|logs)
+  takumi doctor              Show CLI/platform readiness diagnostics
+  takumi platform [watch]    Show or live-monitor the local platform surface
+  takumi package <action>    Manage Takumi workflow packages (list|inspect|doctor|scaffold)
 
 Options:
   -h, --help                Show this help message
@@ -27,6 +30,8 @@ Options:
   -P, --provider <name>     Provider name (see below)
   --api-key <key>           API key (overrides environment)
   --endpoint <url>          Custom API endpoint URL
+  --json                    Emit JSON for machine-readable operational commands
+  --fix                     Apply safe automatic remediation where supported
   -t, --thinking            Enable extended thinking
   --thinking-budget <n>     Thinking token budget (default: 10000)
   -p, --proxy <url>         Darpana proxy URL
@@ -69,5 +74,32 @@ Examples:
   pnpm takumi watch                              # Live monitor jobs
   pnpm takumi attach job-k3j4x1                 # Stream job logs
   pnpm takumi stop job-k3j4x1                   # Stop detached job
+  pnpm takumi doctor                            # Check auth, daemon, telemetry, and jobs
+  pnpm takumi doctor --json                     # Same report, machine-readable
+  pnpm takumi doctor --fix                      # Start safe remediations like the daemon
+  pnpm takumi platform                          # Roll up doctor, jobs, daemon, and sessions
+  pnpm takumi platform --json                   # Platform summary as structured JSON
+  pnpm takumi platform watch                    # Live dashboard with single-keystroke controls
+  pnpm takumi package list                      # Show discovered Takumi packages
+  pnpm takumi package inspect review-kit        # Inspect one package in detail
+  pnpm takumi package doctor                    # Validate package inventory and warnings
+  pnpm takumi package scaffold review-kit       # Create a local package skeleton
+  pnpm takumi jobs --json                       # Script-friendly job inventory
+  pnpm takumi status <id> --json                # Session metadata as JSON
+
+Platform watch keys:
+  q / Esc / Ctrl+C        Quit watch mode
+  r                       Refresh immediately
+  R                       Hard refresh and clear transient errors
+  f                       Apply safe fixes and refresh
+  d                       Toggle doctor details
+  s                       Toggle sessions section
+  j                       Toggle detached jobs section
+  1 / 2 / 3               Focus doctor / sessions / jobs
+  Tab                     Cycle focus
+  Space                   Toggle the focused section
+  p                       Pause or resume auto-refresh
+  g / G                   Jump focus to first / last section
+  ? / h                   Toggle key help
 `);
 }

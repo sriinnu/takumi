@@ -45,7 +45,7 @@ describe("takumi-telemetry-snapshot CLI (Phase 20.3)", () => {
 			);
 
 			// Test CLI logic (using ChitraguptaBridge directly)
-			const bridge = new ChitraguptaBridge({ transport: "stdio" });
+			const bridge = new ChitraguptaBridge();
 			const snapshot = await bridge.telemetrySnapshot(10000, tempDir);
 
 			// Validate output structure
@@ -75,7 +75,7 @@ describe("takumi-telemetry-snapshot CLI (Phase 20.3)", () => {
 		await fs.mkdir(tempDir, { recursive: true });
 
 		try {
-			const bridge = new ChitraguptaBridge({ transport: "stdio" });
+			const bridge = new ChitraguptaBridge();
 			const snapshot = await bridge.telemetrySnapshot(10000, tempDir);
 
 			expect(snapshot.schemaVersion).toBe(2);
@@ -129,7 +129,7 @@ describe("takumi-telemetry-snapshot CLI (Phase 20.3)", () => {
 				}),
 			);
 
-			const bridge = new ChitraguptaBridge({ transport: "stdio" });
+			const bridge = new ChitraguptaBridge();
 
 			// With default staleMs=10000, only fresh instance included
 			const snapshot1 = await bridge.telemetrySnapshot(10000, tempDir);

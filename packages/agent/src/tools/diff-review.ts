@@ -16,7 +16,7 @@
  * notice when reading through a pull request diff.
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import type { ToolDefinition } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
@@ -137,23 +137,37 @@ export function reviewDiff(config: DiffReviewConfig): DiffReviewResult {
 	const checkAny = config.checkAnyType ?? true;
 	const target = config.diffTarget ?? "staged";
 
+	if (!isGitRepository(config.cwd)) {
+		return {
+			findings: [],
+			filesReviewed: 0,
+			passed: true,
+			summary: "No diff available (not a git repository or no changes).",
+		};
+	}
+
 	// Get the diff
-	let diffCmd: string;
+	let diffArgs: string[];
 	switch (target) {
 		case "staged":
-			diffCmd = "git diff --cached --unified=3";
+			diffArgs = ["diff", "--cached", "--unified=3"];
 			break;
 		case "unstaged":
-			diffCmd = "git diff --unified=3";
+			diffArgs = ["diff", "--unified=3"];
 			break;
 		case "head":
-			diffCmd = "git diff HEAD --unified=3";
+			diffArgs = ["diff", "HEAD", "--unified=3"];
 			break;
 	}
 
 	let diffText: string;
 	try {
-		diffText = execSync(diffCmd, { cwd: config.cwd, encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 });
+		diffText = execFileSync("git", diffArgs, {
+			cwd: config.cwd,
+			encoding: "utf-8",
+			maxBuffer: 10 * 1024 * 1024,
+			stdio: ["pipe", "pipe", "pipe"],
+		});
 	} catch {
 		return {
 			findings: [],
@@ -264,6 +278,19 @@ export function reviewDiff(config: DiffReviewConfig): DiffReviewResult {
 	log.info(`Review complete: ${passed ? "PASSED" : "FAILED"} (${findings.length} findings)`);
 
 	return { findings, filesReviewed: filesSet.size, passed, summary };
+}
+
+function isGitRepository(cwd: string): boolean {
+	try {
+		execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {
+			cwd,
+			encoding: "utf-8",
+			stdio: ["pipe", "pipe", "pipe"],
+		});
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 // ── Tool registration ────────────────────────────────────────────────────────

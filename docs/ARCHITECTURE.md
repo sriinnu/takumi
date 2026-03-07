@@ -9,6 +9,326 @@ It owns the full rendering stack (no React/Ink dependency), speaks to LLMs via a
 provider-agnostic abstraction, and integrates with Chitragupta for persistent
 memory and session management.
 
+The important authority boundary is:
+
+- **Chitragupta is the integration control plane**
+- **Takumi is a privileged consumer and coding executor**
+- **Vaayu is a consumer-facing UX layer**
+- **Scarlett is the integrity and health observer across the plane**
+
+Takumi may perform specialized coding behavior, but it is **not** the sovereign
+owner of durable routing, auth, provider inventory, or long-lived memory.
+
+## System Roles
+
+| System | Role |
+|---|---|
+| Chitragupta | Owns provider registry, CLI registry, routing policy, credential references, health view, and canonical session/memory hooks |
+| Takumi | Consumes engine capabilities, executes coding-specific loops, reports observations back to the engine |
+| Vaayu | Consumes engine capabilities and renders user-facing controls / interaction UX |
+| Scarlett | Monitors provider, CLI, bridge, auth, session, and memory integrity across the system |
+
+### Authority split
+
+| Concern | Owner |
+|---|---|
+| provider registry | Chitragupta |
+| CLI integration registry | Chitragupta |
+| routing policy | Chitragupta |
+| auth / credential references | Chitragupta |
+| health / cost / availability | Chitragupta |
+| user-facing controls | Takumi / Vaayu |
+| specialized execution behavior | Takumi |
+| integrity monitoring | Scarlett |
+
+### Consumer model
+
+Consumers should ask for **capabilities**, not vendors.
+
+Examples:
+
+| Consumer ask | Engine resolves |
+|---|---|
+| `coding.patch-and-validate` | local CLI, Takumi executor, local model, or cloud model depending on policy and health |
+| `chat.high-reliability` | best-fit conversational lane under trust, budget, and availability policy |
+| `classification.local-fast` | deterministic logic, local classifier, or minimal-cost local lane |
+
+That keeps the system from splitting into separate routing brains per app.
+
+## Extensions
+
+Takumi should be a first-class extension host. That is the right place for consumer-local behavior:
+
+- editor and TUI interactions
+- slash commands and shortcuts
+- repo-local coding workflow helpers
+- model-switching UX
+- side-agent orchestration local to Takumi
+- tool interception that only affects Takumi
+
+This follows the same successful pattern used in `pi` and `pi-mono`: keep the consumer flexible, and keep the core authority narrow.
+
+Takumi extension entry points are discovered from:
+
+- `<cwd>/.takumi/extensions/`
+- `~/.config/takumi/extensions/`
+- package-provided Takumi extensions
+- explicitly configured extension paths
+
+Chitragupta should not push consumer-local behavior into the engine. The engine should instead own:
+
+- durable memory
+- canonical session truth
+- bridge auth
+- provider and CLI inventory
+- routing policy
+- Scarlett integrity and Lucy intuition as engine faculties
+
+Rule: put Takumi-specific behavior in Takumi extensions; put engine-wide policy, memory, and authority in Chitragupta.
+
+## Ecosystem innovation direction
+
+Takumi should not stop at "extensions" in the old editor-plugin sense.
+
+The more ambitious model is a **governed workflow ecosystem**:
+
+| Layer | Role |
+|---|---|
+| skills | reusable review / coding / planning behavior |
+| tool adapters | executable integrations and MCP-backed capabilities |
+| policy bundles | tool rules, trust defaults, and guardrails |
+| orchestration packs | planner / validator / routing strategies |
+| eval packs | replayable checks, scorecards, and hidden-benchmark coverage |
+
+That is how Takumi goes beyond Pi: not by copying a marketplace UI, but by
+building a package economy with provenance, compatibility, evaluation, and
+promotion / quarantine semantics.
+
+### Package governance model
+
+Takumi packages now have room for governance metadata alongside resources:
+
+- provenance tier (`builtin`, `verified`, `community`, `local`)
+- semantic capability requests
+- compatibility against Takumi and package API generations
+- evaluation coverage metadata
+- maintainer ownership
+
+The intended lifecycle is:
+
+1. discover
+2. inspect
+3. validate
+4. scaffold
+5. verify
+6. evaluate
+7. activate or quarantine
+8. promote or publish
+
+This keeps Takumi innovative on the app/runtime side without violating the
+authority boundary where Chitragupta still owns durable routing, auth, and
+integration sovereignty.
+
+## P2P mesh agent concept
+
+Takumi should grow beyond a simple planner → worker → validator tree.
+The stronger long-term model is a **bounded peer-to-peer execution mesh**.
+
+Important nuance: this is **not** a fully sovereign decentralized swarm.
+The mesh is **execution-local and ephemeral**. Chitragupta still owns the
+control plane.
+
+### What “mesh” means here
+
+In Takumi, a mesh means agents can exchange:
+
+- intermediate hypotheses
+- file-level observations
+- validator challenges
+- confidence scores
+- repair suggestions
+
+without routing every small judgment back through a single planner node.
+
+That creates a topology closer to a workshop council than a command chain:
+
+- planners can broadcast strategy
+- workers can ask validators for early challenge
+- validators can challenge each other
+- specialist peers can publish partial findings into a shared working fabric
+
+The result is faster convergence, better adversarial checking, and less planner
+fragility.
+
+### Bounded, not anarchic
+
+The mesh must stay bounded by four rules:
+
+1. **Authority remains centralized**
+  - Chitragupta owns routing, durable memory, trust, identity, auth, and
+    policy.
+2. **Mesh state is ephemeral**
+  - peer exchange is runtime state, not canonical truth.
+3. **Promotion requires adjudication**
+  - only promoted conclusions enter durable memory, package governance, or
+    final output.
+4. **Integrity can override speed**
+  - Scarlett-style findings can slow, quarantine, or collapse the mesh.
+
+### Mesh layers
+
+| Layer | Role |
+|---|---|
+| transport mesh | peer-to-peer exchange of claims, challenges, and local evidence |
+| deliberation mesh | debate, consensus, and counterfactual pressure among roles |
+| memory spine | Chitragupta-mediated persistence of only promoted outcomes |
+| integrity overlay | Scarlett monitoring for drift, loops, or compromised peers |
+
+### Mesh roles
+
+Takumi's current role system already points in this direction. In a richer mesh,
+roles become communication personalities rather than fixed pipeline steps:
+
+| Role type | Mesh behavior |
+|---|---|
+| planner | sets intent, constraints, decomposition, and stopping conditions |
+| worker | explores candidate implementations and local fixes |
+| validator | attacks assumptions and scores correctness from a discipline-specific lens |
+| critic | injects counterfactuals, edge cases, and ambiguity pressure |
+| librarian | recalls prior Akasha / package / repo knowledge into the mesh |
+| governor | applies policy, budget, and trust constraints before promotion |
+
+Not every run needs every role. The mesh should be elastic: tiny for simple
+tasks, dense for high-risk tasks.
+
+### Mesh operating modes
+
+| Mode | Shape | Best for |
+|---|---|---|
+| spoke | planner-centered | routine tasks, low coordination overhead |
+| council | peers deliberate in rounds | medium ambiguity, architecture choices |
+| swarm | broad parallel exploration | discovery, search, variant generation |
+| adversarial mesh | validators challenge workers continuously | security, migration, correctness-critical work |
+| healing mesh | failing peers get replaced or quarantined | degraded or unstable runs |
+
+Takumi should select these topologies intentionally, not accidentally.
+
+## Lucy concepts
+
+Lucy is best understood as the **cognitive doctrine** behind Takumi +
+Chitragupta cooperation. She is not one more agent role inside the mesh. She is
+the model for how capability matures.
+
+### Lucy levels
+
+| Level | Name | Meaning in Takumi |
+|---|---|---|
+| L1 | reflex | extensions, tool hooks, event handlers, immediate reactions |
+| L2 | learn | observation capture, pattern accumulation, preference memory |
+| L3 | evolve | self-authoring, strategy adaptation, configuration mutation |
+| L4 | intuition | predictions, likely-next actions, likely-failure warnings |
+| L5 | self-heal | anomaly response, quarantine, rollback, mesh repair |
+
+### Lucy in a mesh architecture
+
+Lucy gives the mesh a progression path:
+
+- **L1 reflex** keeps peers responsive
+- **L2 learn** turns repeated mesh behavior into reusable patterns
+- **L3 evolve** lets the system generate new extensions, tools, or orchestration habits
+- **L4 intuition** lets peers act on likely-next-state predictions before failure happens
+- **L5 self-heal** lets the mesh recover from instability without human micromanagement
+
+Without Lucy, a mesh is just parallelism.
+With Lucy, the mesh becomes cumulative cognition.
+
+### Lucy split across the plane
+
+| Faculty | Primary home |
+|---|---|
+| reflex execution | Takumi runtime |
+| observation memory | Chitragupta |
+| patterning and prediction | Chitragupta |
+| self-authoring and local adaptation | Takumi |
+| healing decisions | shared — Scarlett can force guardrails, Takumi can execute repairs |
+
+That split matters. Lucy should emerge from the cooperation of runtime and
+control plane, not from shoving every cognitive function into one process.
+
+## Scarlett concepts
+
+Scarlett is the **integrity doctrine** of the system.
+If Lucy asks “how can the system become more capable?”, Scarlett asks “how do we
+know the system is still trustworthy while doing that?”
+
+### Scarlett responsibilities
+
+- detect bridge or capability degradation
+- detect auth drift and routing anomalies
+- detect repetitive failure loops
+- detect cost or context pressure anomalies
+- detect compromised or low-trust mesh participants
+- force escalation, slowdown, quarantine, or stop conditions
+
+### Scarlett in a mesh
+
+In a peer mesh, Scarlett becomes more important, not less.
+Peer autonomy creates new failure classes:
+
+- echo chambers
+- false consensus
+- runaway retries
+- cheap-but-wrong routing cascades
+- cross-peer contamination of bad assumptions
+
+Scarlett should therefore behave like an immune system layered above the mesh:
+
+- score peer health
+- flag degraded nodes
+- isolate suspicious peers
+- reduce mesh breadth when instability rises
+- require stronger consensus before promotion during degraded operation
+
+### Lucy and Scarlett together
+
+Lucy without Scarlett becomes reckless adaptation.
+Scarlett without Lucy becomes sterile caution.
+
+Takumi should treat them as paired faculties:
+
+| Faculty pair | Function |
+|---|---|
+| Lucy learns | Scarlett verifies |
+| Lucy predicts | Scarlett sanity-checks |
+| Lucy evolves | Scarlett quarantines bad evolution |
+| Lucy heals | Scarlett judges whether the heal actually worked |
+
+## Mesh + Lucy + Scarlett operating model
+
+The strongest Takumi-native concept is this:
+
+1. **Chitragupta convenes and remembers**
+2. **Takumi executes through a bounded peer mesh**
+3. **Lucy turns repeated experience into better behavior**
+4. **Scarlett prevents capability growth from destroying trust**
+
+That gives Takumi a path beyond a normal coding agent:
+
+- not a single assistant
+- not an ungoverned swarm
+- but a **governed cognitive workshop**
+
+## Future architecture implications
+
+If Takumi continues in this direction, the mesh concept suggests future work in:
+
+- peer-to-peer challenge and rebuttal protocols between agent roles
+- mesh-scoped ephemeral memory separate from canonical Akasha memory
+- promotion gates from mesh consensus into durable memory
+- Scarlett integrity scoring per peer and per topology
+- Lucy-driven topology adaptation: spoke → council → adversarial mesh → healing mesh
+- Sabha-backed escalation when mesh consensus is weak or integrity is degraded
+
 ## System Diagram
 
 ```
@@ -47,13 +367,17 @@ memory and session management.
 
 ```
 takumi (main process)
-├── chitragupta-mcp (child, stdio)     ← MCP server for memory / sessions
+├── chitragupta daemon socket          ← primary control-plane path (authenticated, fast path)
+├── chitragupta-mcp (child, stdio)     ← fallback bridge when daemon socket is unavailable
 ├── darpana (HTTP, localhost:8082)     ← LLM proxy (external or auto-launched)
 └── tool subprocesses (bash, git)      ← short-lived, sandboxed
 ```
 
-Takumi spawns `chitragupta-mcp` as a child process over MCP stdio transport.
-Darpana runs as a separate daemon. Tool subprocesses are ephemeral and sandboxed.
+Takumi is now **daemon-first** for Chitragupta integration. It probes the local
+daemon socket, performs `auth.handshake` with the shared bridge token, and only
+falls back to spawning `chitragupta-mcp` over stdio when the daemon path is not
+available. Darpana runs as a separate daemon. Tool subprocesses are ephemeral
+and sandboxed.
 
 ## Package Structure
 
@@ -142,17 +466,39 @@ Key primitives: `signal(value)`, `computed(fn)`, `effect(fn)`, `batch(fn)`, `unt
 
 | Module | Role |
 |--------|------|
-| `chitragupta.ts` | MCP client — spawns `chitragupta-mcp` over stdio, JSON-RPC |
+| `chitragupta.ts` | daemon-first bridge — authenticated Unix socket fast path, MCP stdio fallback |
 | `darpana.ts` | HTTP health check, auto-launch, connection management |
 | `git.ts` | Git operations: status, branch detection, diff, commit |
+
+Takumi's bridge is intentionally **consumer-oriented**, not a second control plane.
+It should:
+
+- forward session and task context
+- request capabilities and engine decisions
+- consume predictions, memory recall, and push notifications
+- report observations, heal outcomes, and preference signals back upstream
+
+The TUI now also derives a **Scarlett-style integrity view** from control-plane
+capabilities, capability-health snapshots, routing traces, anomaly alerts, and
+bridge connectivity. That gives Takumi a concrete runtime surface for integrity
+monitoring without turning Takumi itself into the control plane.
+
+It should **not** become:
+
+- a second provider registry
+- a second credential broker
+- a second routing engine
+- a second source of truth for external health
 
 #### Bridge contract
 
 | Direction | Methods |
 |---|---|
-| Takumi → Chitragupta | `session.open`, `session.turn`, `observe.batch`, `heal.report`, `preference.update` |
-| Chitragupta → Takumi | `predict.next`, `memory.recall`, `pattern.query`, `sabha.ask`, push notifications |
-| Shared | `health.status`, `capabilities`, `subscribe` |
+| Takumi → Chitragupta | `session.create`, `turn.add`, `observe.batch`, `heal.report`, `preference.update` |
+| Chitragupta → Takumi | `prediction`, `pattern_detected`, `anomaly_alert`, `heal_reported`, `sabha.consult`, `preference_update` |
+| Shared | `bridge.info`, `capabilities`, `route.resolve`, `health.status` |
+
+For the longer-term engine-owned integration model, see [control-plane-spec.md](./control-plane-spec.md).
 
 ## Data Flow
 
@@ -181,14 +527,16 @@ See [ALGORITHMS.md](ALGORITHMS.md) for detailed algorithm descriptions.
 
 1. Parse CLI arguments (`bin/cli/args.ts`)
 2. Load configuration (CLI flags → env vars → project config → user config → defaults)
-3. Spawn Chitragupta MCP child process (stdio transport)
-4. Health-check Darpana (auto-launch if needed)
-5. Load session history from Chitragupta
-6. Initialize Yoga WASM
-7. Create `TakumiApp` — root view, keybinds, slash commands, state
-8. Enter alternate screen, hide cursor, enable raw mode / mouse / bracketed paste
-9. Start render scheduler — first frame rendered
-10. Ready for user input
+3. Probe Chitragupta daemon socket
+4. Perform `auth.handshake` with the shared bridge token on the socket path
+5. Fall back to spawning `chitragupta-mcp` over stdio only if the daemon path is unavailable
+6. Health-check Darpana (auto-launch if needed)
+7. Load session history from Chitragupta
+8. Initialize Yoga WASM
+9. Create `TakumiApp` — root view, keybinds, slash commands, state
+10. Enter alternate screen, hide cursor, enable raw mode / mouse / bracketed paste
+11. Start render scheduler — first frame rendered
+12. Ready for user input
 
 ## Security Model
 

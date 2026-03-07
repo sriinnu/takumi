@@ -13,6 +13,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "@takumi/core";
+import { discoverTakumiPackages } from "./package-loader.js";
 import { buildSkillsPrompt, type LoadedSkill, loadSkills } from "./skills-loader.js";
 
 const log = createLogger("convention-loader");
@@ -54,7 +55,7 @@ export interface ConventionFiles {
  *
  * Never throws — returns empty defaults if files are missing or malformed.
  */
-export function loadConventionFiles(cwd: string): ConventionFiles {
+export function loadConventionFiles(cwd: string, configuredPackagePaths: string[] = []): ConventionFiles {
 	const result: ConventionFiles = {
 		systemPromptAddon: null,
 		toolRules: [],
@@ -62,14 +63,31 @@ export function loadConventionFiles(cwd: string): ConventionFiles {
 		skillsPromptAddon: null,
 		loadedFiles: [],
 	};
+	const packageResult = discoverTakumiPackages(configuredPackagePaths, cwd);
+	const systemPromptBlocks: string[] = [];
 
 	// ── System prompt addon ─────────────────────────────────────────────────
+	for (const pkg of packageResult.packages) {
+		if (!pkg.systemPromptPath) {
+			continue;
+		}
+		try {
+			const content = readFileSync(pkg.systemPromptPath, "utf-8").trim();
+			if (content.length === 0) {
+				continue;
+			}
+			systemPromptBlocks.push(`## Package: ${pkg.packageName}\n${content}`);
+			result.loadedFiles.push(pkg.systemPromptPath);
+		} catch (err) {
+			log.debug(`Failed to read ${pkg.systemPromptPath}: ${(err as Error).message}`);
+		}
+	}
 	const promptPath = join(cwd, ".takumi", "system-prompt.md");
 	if (existsSync(promptPath)) {
 		try {
 			const content = readFileSync(promptPath, "utf-8").trim();
 			if (content.length > 0) {
-				result.systemPromptAddon = content;
+				systemPromptBlocks.push(content);
 				result.loadedFiles.push(promptPath);
 				log.info(`Loaded system prompt addon (${content.length} chars)`);
 			}
@@ -77,20 +95,48 @@ export function loadConventionFiles(cwd: string): ConventionFiles {
 			log.debug(`Failed to read ${promptPath}: ${(err as Error).message}`);
 		}
 	}
+	result.systemPromptAddon = systemPromptBlocks.length > 0 ? systemPromptBlocks.join("\n\n") : null;
 
 	// ── Tool rules ──────────────────────────────────────────────────────────
+	for (const pkg of packageResult.packages) {
+		if (!pkg.toolRulesPath) {
+			continue;
+		}
+		try {
+			const raw = readFileSync(pkg.toolRulesPath, "utf-8");
+			const parsed = JSON.parse(raw);
+			if (!Array.isArray(parsed)) {
+				log.warn(`${pkg.toolRulesPath}: expected JSON array, got ${typeof parsed}`);
+				continue;
+			}
+			result.toolRules.push(
+				...parsed.filter(
+					(rule: unknown): rule is ToolRule =>
+						typeof rule === "object" &&
+						rule !== null &&
+						typeof (rule as ToolRule).tool === "string" &&
+						typeof (rule as ToolRule).requiresPermission === "boolean",
+				),
+			);
+			result.loadedFiles.push(pkg.toolRulesPath);
+		} catch (err) {
+			log.debug(`Failed to parse ${pkg.toolRulesPath}: ${(err as Error).message}`);
+		}
+	}
 	const rulesPath = join(cwd, ".takumi", "tool-rules.json");
 	if (existsSync(rulesPath)) {
 		try {
 			const raw = readFileSync(rulesPath, "utf-8");
 			const parsed = JSON.parse(raw);
 			if (Array.isArray(parsed)) {
-				result.toolRules = parsed.filter(
-					(r: unknown): r is ToolRule =>
-						typeof r === "object" &&
-						r !== null &&
-						typeof (r as ToolRule).tool === "string" &&
-						typeof (r as ToolRule).requiresPermission === "boolean",
+				result.toolRules.push(
+					...parsed.filter(
+						(r: unknown): r is ToolRule =>
+							typeof r === "object" &&
+							r !== null &&
+							typeof (r as ToolRule).tool === "string" &&
+							typeof (r as ToolRule).requiresPermission === "boolean",
+					),
 				);
 				result.loadedFiles.push(rulesPath);
 				log.info(`Loaded ${result.toolRules.length} tool rules`);
@@ -103,10 +149,16 @@ export function loadConventionFiles(cwd: string): ConventionFiles {
 	}
 
 	// ── Skills ──────────────────────────────────────────────────────────────
-	const loadedSkills = loadSkills(cwd);
+	const loadedSkills = loadSkills(
+		cwd,
+		packageResult.packages.flatMap((pkg) => pkg.skillPaths.map((path) => ({ path, source: "package" as const }))),
+	);
 	result.skills = loadedSkills.skills;
 	result.skillsPromptAddon = buildSkillsPrompt(loadedSkills.skills);
 	result.loadedFiles.push(...loadedSkills.loadedFiles);
+	for (const error of packageResult.errors) {
+		log.debug(`Package discovery skipped ${error.path}: ${error.error}`);
+	}
 	if (loadedSkills.skills.length > 0) {
 		log.info(`Loaded ${loadedSkills.skills.length} skill prompt(s)`);
 	}

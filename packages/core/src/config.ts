@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { ConfigError } from "./errors.js";
-import type { OrchestrationConfig, TakumiConfig } from "./types.js";
+import type { OrchestrationConfig } from "./orchestration-types.js";
+import type { TakumiConfig } from "./types.js";
 
 /** Default API endpoints per provider (OpenAI-compatible chat completions). */
 export const PROVIDER_ENDPOINTS: Record<string, string> = {
@@ -72,13 +73,24 @@ const DEFAULT_CONFIG: TakumiConfig = {
 		adaptiveTemperature: {
 			enabled: true,
 		},
+		mesh: {
+			defaultTopology: "hierarchical",
+			lucyAdaptiveTopology: true,
+			scarlettAdaptiveTopology: true,
+			sabhaEscalation: {
+				enabled: true,
+				integrityThreshold: "critical",
+				minValidationAttempts: 1,
+			},
+		},
 	},
 	statusBar: {
-		left: ["model", "mesh"],
+		left: ["model", "mesh", "scarlett"],
 		center: ["status"],
 		right: ["metrics", "keybinds"],
 	},
 	plugins: [],
+	packages: [],
 	// maxCostUsd is intentionally undefined — no limit by default
 };
 
@@ -222,6 +234,28 @@ function validateOrchestrationConfig(config: OrchestrationConfig): void {
 		if (config.progressiveRefinement.minImprovement < 0 || config.progressiveRefinement.minImprovement > 1) {
 			throw new ConfigError("orchestration.progressiveRefinement.minImprovement must be 0.0-1.0");
 		}
+	}
+
+	if (config.mesh?.sabhaEscalation?.minValidationAttempts !== undefined) {
+		if (config.mesh.sabhaEscalation.minValidationAttempts < 1) {
+			throw new ConfigError("orchestration.mesh.sabhaEscalation.minValidationAttempts must be >= 1");
+		}
+	}
+
+	if (
+		config.mesh?.defaultTopology &&
+		!["sequential", "parallel", "hierarchical", "council", "swarm", "adversarial", "healing"].includes(
+			config.mesh.defaultTopology,
+		)
+	) {
+		throw new ConfigError("orchestration.mesh.defaultTopology is invalid");
+	}
+
+	if (
+		config.mesh?.sabhaEscalation?.integrityThreshold &&
+		!["warning", "critical"].includes(config.mesh.sabhaEscalation.integrityThreshold)
+	) {
+		throw new ConfigError("orchestration.mesh.sabhaEscalation.integrityThreshold must be warning or critical");
 	}
 
 	// Conflict detection

@@ -1,0 +1,23 @@
+{
+  "name": "@takumi/invariant-loom",
+  "version": "0.1.0",
+  "description": "Extracts non-negotiable constraints from messy prompts and keeps them woven into execution.",
+  "takumi": {
+    "extensions": ["./index.mjs"],
+    "skills": ["./skills"],
+    "systemPrompt": "./system-prompt.md",
+    "toolRules": "./tool-rules.json",
+    "provenance": "verified",
+    "capabilitiesRequested": ["workflow.contracts", "context.memory"],
+    "compatibility": {
+      "takumi": "^0.1.0",
+      "packageApi": "1"
+    },
+    "evals": {
+      "coverage": ["smoke", "behavior"],
+      "suite": "example-packages",
+      "score": 0.91
+    },
+    "maintainer": "Takumi Labs"
+  }
+}

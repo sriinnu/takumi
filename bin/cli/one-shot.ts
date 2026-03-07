@@ -65,7 +65,7 @@ export async function runOneShot(
 
 	for await (const event of loop) {
 		if (streamFormat === "ndjson") {
-			const safeEvent = { ...event };
+			const safeEvent: Record<string, unknown> = { ...event };
 			if (event.type === "error" && event.error instanceof Error) {
 				safeEvent.error = { name: event.error.name, message: event.error.message, stack: event.error.stack };
 			}
