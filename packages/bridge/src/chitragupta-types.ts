@@ -298,6 +298,15 @@ export interface TelemetryContext {
 	nearLimit: boolean; // >= 95%
 }
 
+export interface TelemetryCognition {
+	stance: "stable" | "watchful" | "strained" | "critical";
+	workspaceMode: "monitor" | "execute" | "stabilize" | "consolidate" | "recover";
+	dominantSignal: string | null;
+	dominantSummary: string | null;
+	directiveBacklog: number;
+	signalCount: number;
+}
+
 export interface TelemetryRouting {
 	tty: string;
 	mux: "tmux" | "zellij" | null;
@@ -332,6 +341,7 @@ export interface AgentTelemetry {
 	model: TelemetryModel;
 	state: TelemetryState;
 	context: TelemetryContext;
+	cognition?: TelemetryCognition;
 	routing: TelemetryRouting;
 	capabilities: TelemetryCapabilities;
 	extensions: TelemetryExtensions;

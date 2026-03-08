@@ -152,15 +152,20 @@ Type `/` at the start of input to activate. Tab completes partial matches.
 | `/status` | Show session statistics | | |
 | `/compact` | Trigger conversation compaction | | |
 | `/session` | Local sessions plus Chitragupta-backed `dates`, `projects`, and `delete` operations | `Ctrl+O` | |
+| `/fork` | Fork the active session into a new session branch | | |
+| `/replay` | Step through a past session (`/replay <id>` / `/replay exit`) | | |
 | `/diff` | Show git diff | | |
 | `/cost` | Show token costs breakdown | | |
+| `/budget` | Show or set session spend limit (`/budget [amount]`) | | |
 | `/sidebar` | Toggle sidebar | `Ctrl+B` | |
 | `/undo` | Undo last file change | | |
+| `/tree` | Print directory tree (`/tree [path] [depth]`) | | |
 | `/permission` | Manage tool permissions (`list`, `reset`) | | |
 | `/think` | Toggle extended thinking (budget in tokens) | | |
 | `/memory` | Search project memory, or `/memory scopes` | | |
 | `/sessions` | List Chitragupta sessions | | |
 | `/code` | Start coding agent | | |
+| `/index` | Index codebase for RAG context (`/index [--rebuild]`) | | |
 | `/export` | Export the current conversation | | |
 | `/retry` | Retry the last response | | |
 | `/cluster` | Show cluster status | `Ctrl+Shift+C` | |
@@ -194,8 +199,7 @@ Type `/` at the start of input to activate. Tab completes partial matches.
 
 ### Notes
 
-- `/tree` is the filesystem tree command.
-- `/session-tree` is the conversation/session tree command.
+- `/tree` prints the filesystem directory tree; `/session-tree` shows the conversation branch history — different commands.
 - `/help` always shows the live registered command list from the running app and should win over stale memory.
 
 ## Special Prefixes

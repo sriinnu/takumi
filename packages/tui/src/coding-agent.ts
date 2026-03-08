@@ -153,6 +153,8 @@ export class CodingAgent {
 					observer: this.state.chitraguptaObserver.value,
 					sessionId: this.state.sessionId.value,
 					currentModel: this.state.model.value,
+					router: this.classifier.router,
+					classification: result.classification,
 				});
 				this.state.routingDecisions.value = appendRoutingDecisions(
 					this.state.routingDecisions.value,

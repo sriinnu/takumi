@@ -57,6 +57,9 @@ export interface EnqueueOptions {
 /** Callback invoked when a new item is enqueued. */
 export type OnEnqueueCallback = (item: SteeringItem) => void;
 
+/** Callback invoked whenever queue size changes. */
+export type OnSizeChangeCallback = (size: number) => void;
+
 // ── Queue Implementation ─────────────────────────────────────────────────────
 
 let nextId = 1;
@@ -71,6 +74,9 @@ export class SteeringQueue {
 
 	/** Optional callback invoked on every enqueue. */
 	private onEnqueue: OnEnqueueCallback | null = null;
+
+	/** Optional callback invoked whenever queue size changes. */
+	private onSizeChange: OnSizeChangeCallback | null = null;
 
 	/** Maximum queue size (prevents unbounded growth). */
 	private maxSize: number;
@@ -87,6 +93,17 @@ export class SteeringQueue {
 		this.onEnqueue = callback;
 		return () => {
 			if (this.onEnqueue === callback) this.onEnqueue = null;
+		};
+	}
+
+	/**
+	 * Register a callback for queue size changes.
+	 * Returns an unsubscribe function.
+	 */
+	onSizeChanged(callback: OnSizeChangeCallback): () => void {
+		this.onSizeChange = callback;
+		return () => {
+			if (this.onSizeChange === callback) this.onSizeChange = null;
 		};
 	}
 
@@ -120,6 +137,8 @@ export class SteeringQueue {
 			}
 		}
 
+		this.emitSizeChange();
+
 		return item.id;
 	}
 
@@ -130,7 +149,9 @@ export class SteeringQueue {
 	dequeue(): SteeringItem | null {
 		for (const bucket of this.buckets) {
 			if (bucket.length > 0) {
-				return bucket.shift()!;
+				const item = bucket.shift()!;
+				this.emitSizeChange();
+				return item;
 			}
 		}
 		return null;
@@ -157,6 +178,7 @@ export class SteeringQueue {
 		for (const bucket of this.buckets) {
 			result.push(...bucket.splice(0));
 		}
+		if (result.length > 0) this.emitSizeChange();
 		return result;
 	}
 
@@ -169,6 +191,7 @@ export class SteeringQueue {
 		for (let i = 0; i <= maxPriority; i++) {
 			result.push(...this.buckets[i].splice(0));
 		}
+		if (result.length > 0) this.emitSizeChange();
 		return result;
 	}
 
@@ -202,6 +225,7 @@ export class SteeringQueue {
 			const idx = bucket.findIndex((item) => item.id === id);
 			if (idx !== -1) {
 				bucket.splice(idx, 1);
+				this.emitSizeChange();
 				return true;
 			}
 		}
@@ -212,9 +236,11 @@ export class SteeringQueue {
 	 * Clear all items from the queue.
 	 */
 	clear(): void {
+		const hadItems = !this.isEmpty;
 		for (const bucket of this.buckets) {
 			bucket.length = 0;
 		}
+		if (hadItems) this.emitSizeChange();
 	}
 
 	/**
@@ -226,5 +252,14 @@ export class SteeringQueue {
 			result.push(...bucket);
 		}
 		return result;
+	}
+
+	private emitSizeChange(): void {
+		if (!this.onSizeChange) return;
+		try {
+			this.onSizeChange(this.size);
+		} catch (err) {
+			log.warn("onSizeChange callback threw", err);
+		}
 	}
 }

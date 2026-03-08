@@ -451,6 +451,7 @@ describe("AppState", () => {
 			state.chitraguptaConnected.value = false;
 
 			expect(state.scarlettIntegrityReport.value.status).toBe("critical");
+			expect(state.cognitiveState.value.awareness.stance).toBe("critical");
 
 			state.chitraguptaConnected.value = true;
 			state.controlPlaneCapabilities.value = [
@@ -483,6 +484,45 @@ describe("AppState", () => {
 			];
 
 			expect(state.scarlettIntegrityReport.value.status).toBe("healthy");
+			expect(state.cognitiveState.value.awareness.integrity).toBe("healthy");
+		});
+
+		it("clears Chitragupta cognition surfaces on reset", () => {
+			const state = new AppState();
+			state.chitraguptaAnomaly.value = {
+				severity: "warning",
+				details: "pattern drift",
+				suggestion: null,
+				at: Date.now(),
+			};
+			state.chitraguptaLastPattern.value = { type: "loop", confidence: 0.9, at: Date.now() };
+			state.chitraguptaPatternMatches.value = [{ type: "loop", confidence: 0.9 }];
+			state.chitraguptaPredictions.value = [{ action: "fix router", confidence: 0.91, type: "next_action" }];
+			state.chitraguptaEvolveQueue.value = [{ type: "planner" }];
+			state.observationFlushCount.value = 3;
+
+			state.reset();
+
+			expect(state.chitraguptaAnomaly.value).toBeNull();
+			expect(state.chitraguptaLastPattern.value).toBeNull();
+			expect(state.chitraguptaPatternMatches.value).toEqual([]);
+			expect(state.chitraguptaPredictions.value).toEqual([]);
+			expect(state.chitraguptaEvolveQueue.value).toEqual([]);
+			expect(state.observationFlushCount.value).toBe(0);
+		});
+
+		it("keeps steeringPending synced with the live queue size", () => {
+			const state = new AppState();
+
+			state.steeringQueue.enqueue("first");
+			state.steeringQueue.enqueue("second");
+			expect(state.steeringPending.value).toBe(2);
+
+			state.steeringQueue.dequeue();
+			expect(state.steeringPending.value).toBe(1);
+
+			state.steeringQueue.drain();
+			expect(state.steeringPending.value).toBe(0);
 		});
 	});
 
