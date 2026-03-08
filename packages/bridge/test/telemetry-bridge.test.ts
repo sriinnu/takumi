@@ -63,6 +63,45 @@ describe("ChitraguptaBridge — Telemetry (Phase 20.2)", () => {
 			expect(parsed.state.activity).toBe("working");
 		});
 
+		it("persists cognition payloads when provided", async () => {
+			await bridge.telemetryHeartbeat(
+				{
+					process: {
+						pid: process.pid,
+						ppid: process.ppid || 0,
+						uptime: 123,
+						heartbeatAt: Date.now(),
+						startedAt: Date.now() - 123000,
+					},
+					state: {
+						activity: "working",
+						idle: false,
+						idleSince: null,
+					},
+					cognition: {
+						stance: "watchful",
+						workspaceMode: "stabilize",
+						dominantSignal: "prediction",
+						dominantSummary: "predicted failure risk around edit router",
+						directiveBacklog: 2,
+						signalCount: 3,
+					},
+				},
+				tempDir,
+			);
+
+			const telemetryFile = path.join(tempDir, `${process.pid}.json`);
+			const content = await fs.readFile(telemetryFile, "utf-8");
+			const parsed = JSON.parse(content);
+
+			expect(parsed.cognition).toMatchObject({
+				stance: "watchful",
+				workspaceMode: "stabilize",
+				directiveBacklog: 2,
+				signalCount: 3,
+			});
+		});
+
 		it("merges multiple heartbeats correctly", async () => {
 			await bridge.telemetryHeartbeat(
 				{

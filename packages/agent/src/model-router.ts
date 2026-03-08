@@ -2,14 +2,16 @@
  * @file model-router.ts
  * @module agent/model-router
  *
- * Smart LLM Model Router — maps task complexity and agent role to the most
- * appropriate model for each provider family.
+ * Smart LLM Model Router — maps task complexity and agent role to a
+ * Chitragupta-approved route class plus a provider-local fallback model.
  *
  * ## Design
  * Rather than hard-coding a single model in the provider constructor, the
- * router lets the **master orchestrator** (or `CodingAgent`) _recommend_ a
- * model name before each LLM call. Callers can then pass the recommendation
- * to the provider or log it for observability.
+ * router lets Takumi recommend a semantic route class first, then keep a
+ * same-provider fallback model for when the control-plane is unavailable.
+ * This makes routing hierarchical:
+ * - Chitragupta decides which lanes are allowed/healthy.
+ * - Takumi decides which lane best fits each sub-role and task weight.
  *
  * ## Complexity → Model Tier
  * | Complexity | Tier       | Goal                          |
@@ -41,6 +43,19 @@
 export type ModelTier = "fast" | "balanced" | "powerful" | "frontier";
 
 /**
+ * Engine-owned route classes. Takumi schedules work onto these semantic
+ * lanes; Chitragupta resolves them to concrete backends/models.
+ */
+export type EngineRouteClass =
+	| "coding.fast-local"
+	| "coding.deep-reasoning"
+	| "coding.review.strict"
+	| "coding.patch-cheap"
+	| "coding.validation-high-trust"
+	| "classification.local-fast"
+	| "memory.semantic-recall";
+
+/**
  * Known provider families.
  * Extend this union as new providers are added.
  */
@@ -48,8 +63,13 @@ export type ProviderFamily = "anthropic" | "openai" | "google" | "openai-compat"
 
 /** Agent roles that can influence model selection. */
 export type RouterRole =
+	| "CLASSIFIER"
 	| "PLANNER"
+	| "IMPLEMENTER"
 	| "WORKER"
+	| "REVIEWER"
+	| "RESEARCHER"
+	| "SUMMARIZER"
 	| "VALIDATOR_REQUIREMENTS"
 	| "VALIDATOR_CODE"
 	| "VALIDATOR_SECURITY"
@@ -60,6 +80,8 @@ export type RouterRole =
 
 /** Output of {@link ModelRouter.recommend}. */
 export interface ModelRecommendation {
+	/** Semantic route class Takumi wants for this invocation. */
+	routeClass: EngineRouteClass;
 	/** Fully-qualified model string to pass to the provider. */
 	model: string;
 	/** Capability tier that was selected. */
@@ -140,6 +162,58 @@ const TIER_UPGRADE: Record<ModelTier, ModelTier> = {
 	frontier: "frontier",
 };
 
+/** Tier downgrade path used by economy / cheap lanes. */
+const TIER_DOWNGRADE: Record<ModelTier, ModelTier> = {
+	fast: "fast",
+	balanced: "fast",
+	powerful: "balanced",
+	frontier: "powerful",
+};
+
+/** Map a role + complexity to Takumi's preferred engine lane. */
+export function recommendRouteClass(complexity: string, role: RouterRole = "default"): EngineRouteClass {
+	if (role === "CLASSIFIER") return "classification.local-fast";
+	if (role === "SUMMARIZER") return "coding.fast-local";
+	if (role === "RESEARCHER") {
+		return complexity === "CRITICAL" ? "coding.deep-reasoning" : "coding.fast-local";
+	}
+	if (role === "REVIEWER") return "coding.review.strict";
+	if (role === "PLANNER") return "coding.deep-reasoning";
+	if (role === "FIXER") {
+		return complexity === "CRITICAL" ? "coding.deep-reasoning" : "coding.patch-cheap";
+	}
+	if (VALIDATOR_ROLES.has(role)) {
+		return role === "VALIDATOR_CODE" || role === "VALIDATOR_REQUIREMENTS"
+			? "coding.review.strict"
+			: "coding.validation-high-trust";
+	}
+	if (role === "IMPLEMENTER" || role === "WORKER") {
+		return complexity === "CRITICAL" ? "coding.deep-reasoning" : "coding.patch-cheap";
+	}
+	if (complexity === "CRITICAL") return "coding.deep-reasoning";
+	if (complexity === "TRIVIAL") return "coding.fast-local";
+	return "coding.patch-cheap";
+}
+
+function resolveTierForRouteClass(baseTier: ModelTier, routeClass: EngineRouteClass): ModelTier {
+	switch (routeClass) {
+		case "classification.local-fast":
+		case "memory.semantic-recall":
+		case "coding.fast-local":
+			return "fast";
+		case "coding.patch-cheap":
+			return TIER_DOWNGRADE[baseTier];
+		case "coding.deep-reasoning": {
+			const upgraded = TIER_UPGRADE[baseTier];
+			return upgraded === "balanced" ? "powerful" : upgraded;
+		}
+		case "coding.review.strict":
+			return baseTier === "fast" ? "balanced" : baseTier === "balanced" ? "powerful" : baseTier;
+		case "coding.validation-high-trust":
+			return baseTier === "fast" ? "balanced" : baseTier;
+	}
+}
+
 // ─── ModelRouter ──────────────────────────────────────────────────────────────
 
 /**
@@ -158,12 +232,11 @@ export class ModelRouter {
 	}
 
 	/**
-	 * Recommend the best model for a given complexity level and agent role.
+	 * Recommend the best route class and fallback model for a given complexity
+	 * level and agent role.
 	 *
-	 * Role-based adjustments:
-	 * - **Validators** → always `fast` tier (high count, latency critical).
-	 * - **Planner / Fixer** → one tier above the complexity-derived tier.
-	 * - **Worker / default** → tier derived directly from complexity.
+	 * Chitragupta remains the final routing authority; this is Takumi's bounded
+	 * local scheduler. The returned `model` is a same-provider fallback only.
 	 *
 	 * @param complexity - Task complexity from `TaskClassifier`.
 	 * @param role       - Agent role (optional; defaults to `"default"`).
@@ -171,26 +244,14 @@ export class ModelRouter {
 	recommend(complexity: string, role: RouterRole = "default"): ModelRecommendation {
 		// Resolve base tier from complexity (string key e.g. "STANDARD")
 		const baseTier: ModelTier = COMPLEXITY_TIER[complexity] ?? "balanced";
-
-		let tier: ModelTier = baseTier;
-		let rationale = `complexity=${complexity}`;
-
-		if (VALIDATOR_ROLES.has(role)) {
-			// Validators always use fast tier to keep cluster latency low
-			tier = "fast";
-			rationale += `, role=${role} → fast (validator override)`;
-		} else if (role === "PLANNER" || role === "FIXER") {
-			// Planners and fixers need extra capability — bump one tier
-			tier = TIER_UPGRADE[baseTier];
-			rationale += `, role=${role} → ${tier} (bumped from ${baseTier})`;
-		} else {
-			rationale += `, role=${role}`;
-		}
+		const routeClass = recommendRouteClass(complexity, role);
+		const tier = resolveTierForRouteClass(baseTier, routeClass);
+		const rationale = `complexity=${complexity}, role=${role}, routeClass=${routeClass}, baseTier=${baseTier}, tier=${tier}`;
 
 		const tiers = MODEL_TIERS[this.provider];
 		const model = tiers[tier];
 
-		return { model, tier, provider: this.provider, rationale };
+		return { routeClass, model, tier, provider: this.provider, rationale };
 	}
 
 	/**

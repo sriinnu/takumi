@@ -22,6 +22,7 @@ import {
 } from "@takumi/agent";
 import type { AgentEvent, Message, PermissionDecision, TakumiConfig, ToolDefinition } from "@takumi/core";
 import { createLogger } from "@takumi/core";
+import { hydrateRunnerCognition, materializeWorkspaceDirectives } from "./agent-runner-cognition.js";
 import type { AppState } from "./state.js";
 
 const log = createLogger("agent-runner");
@@ -116,35 +117,14 @@ export class AgentRunner {
 			}
 
 			let predictiveContext = "";
-			const observer = this.state.chitraguptaObserver.value;
-			const sessionId = this.state.sessionId.value;
-			if (observer && sessionId) {
+			if (this.state.chitraguptaObserver.value && this.state.sessionId.value) {
 				try {
-					const predictionResult = await observer.predictNext({
-						currentTool: this.state.activeTool.value ?? undefined,
-						currentFile: this.state.previewFile.value || undefined,
-						sessionId,
-					});
-					if (predictionResult.predictions.length > 0) {
-						this.state.chitraguptaPredictions.value = predictionResult.predictions.map((prediction) => ({
-							action: prediction.action ?? (prediction.files?.length ? prediction.files.join(", ") : prediction.type),
-							confidence: prediction.confidence,
-						}));
-						const lines = predictionResult.predictions.slice(0, 3).map((prediction, index) => {
-							const subject = prediction.action
-								? prediction.action
-								: prediction.files?.length
-									? prediction.files.join(", ")
-									: prediction.type;
-							const note = prediction.reasoning ?? "";
-							return `${index + 1}. ${prediction.type}: ${subject} (${Math.round(prediction.confidence * 100)}%)${note ? ` — ${note}` : ""}`;
-						});
-						predictiveContext = `## Chitragupta Live Guidance\n${lines.join("\n")}`;
-					}
+					predictiveContext = await hydrateRunnerCognition(this.state);
 				} catch (err) {
 					log.debug(`Chitragupta pre-turn prediction failed: ${(err as Error).message}`);
 				}
 			}
+			materializeWorkspaceDirectives(this.state);
 
 			const promptSections = [
 				basePrompt ?? "",

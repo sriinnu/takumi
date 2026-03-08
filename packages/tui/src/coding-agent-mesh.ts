@@ -1,7 +1,6 @@
 import {
 	type ClassificationResult,
 	deriveClusterConfig,
-	inferRoutingCaps,
 	shouldEscalateWeakConsensus,
 	type TopologyWinRate,
 	type ValidationResult,

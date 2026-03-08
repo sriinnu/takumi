@@ -22,15 +22,16 @@ import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createLogger } from "@takumi/core";
+import { getExtensionManifest } from "./define-extension.js";
+import type { ExtensionAPI } from "./extension-api.js";
+import { ExtensionBridgeRegistry } from "./extension-bridge.js";
 import type {
-	ExtensionAPI,
-	ExtensionContext,
+	ExtensionActionSlots,
 	ExtensionFactory,
-	ExtensionToolDefinition,
 	LoadExtensionsResult,
 	LoadedExtension,
-	RegisteredCommand,
-} from "./extension-types.js";
+} from "./extension-loader-types.js";
+import type { ExtensionContext, ExtensionToolDefinition, RegisteredCommand } from "./extension-types.js";
 import { discoverTakumiPackages } from "./package-loader.js";
 
 const log = createLogger("extension-loader");
@@ -141,6 +142,19 @@ function readFileSync(filePath: string): string {
 
 /** Create an empty LoadedExtension shell. */
 function createExtension(extPath: string, resolvedPath: string): LoadedExtension {
+	const notBound =
+		(name: string) =>
+		(..._args: unknown[]) => {
+			throw new Error(`${name} not available during extension loading`);
+		};
+	const _actions: ExtensionActionSlots = {
+		sendUserMessage: notBound("sendUserMessage") as (c: string) => void,
+		getActiveTools: notBound("getActiveTools") as () => string[],
+		setActiveTools: notBound("setActiveTools") as (n: string[]) => void,
+		exec: notBound("exec") as ExtensionActionSlots["exec"],
+		getSessionName: notBound("getSessionName") as () => string | undefined,
+		setSessionName: notBound("setSessionName") as (n: string) => void,
+	};
 	return {
 		path: extPath,
 		resolvedPath,
@@ -148,11 +162,13 @@ function createExtension(extPath: string, resolvedPath: string): LoadedExtension
 		tools: new Map(),
 		commands: new Map(),
 		shortcuts: new Map(),
+		manifest: undefined,
+		_actions,
 	};
 }
 
 /** Create the ExtensionAPI scoped to a specific extension. */
-function createExtensionAPI(extension: LoadedExtension, _cwd: string): ExtensionAPI {
+function createExtensionAPI(extension: LoadedExtension, _cwd: string, bridge: ExtensionBridgeRegistry): ExtensionAPI {
 	return {
 		on(event: string, handler: (...args: unknown[]) => unknown): void {
 			const list = extension.handlers.get(event) ?? [];
@@ -178,19 +194,16 @@ function createExtensionAPI(extension: LoadedExtension, _cwd: string): Extension
 			log.info(`Extension ${extension.path} registered shortcut: ${key}`);
 		},
 
-		// Action stubs — replaced by runner.bindActions() at runtime
-		sendUserMessage: () => {
-			throw new Error("sendUserMessage not available during extension loading");
-		},
-		getActiveTools: () => {
-			throw new Error("getActiveTools not available during extension loading");
-		},
-		setActiveTools: () => {
-			throw new Error("setActiveTools not available during extension loading");
-		},
-		exec: () => {
-			throw new Error("exec not available during extension loading");
-		},
+		// Delegate via _actions — stubs until runner.bindActions() is called
+		sendUserMessage: (content: string) => extension._actions.sendUserMessage(content),
+		getActiveTools: () => extension._actions.getActiveTools(),
+		setActiveTools: (names: string[]) => extension._actions.setActiveTools(names),
+		exec: (cmd: string, args?: string[]) => extension._actions.exec(cmd, args),
+		getSessionName: () => extension._actions.getSessionName(),
+		setSessionName: (name: string) => extension._actions.setSessionName(name),
+
+		// Shared bridge — works immediately, no binding required
+		bridge,
 	} as ExtensionAPI;
 }
 
@@ -211,6 +224,7 @@ async function importFactory(resolvedPath: string): Promise<ExtensionFactory | u
 async function loadOne(
 	extPath: string,
 	cwd: string,
+	bridge: ExtensionBridgeRegistry,
 ): Promise<{ extension: LoadedExtension | null; error: string | null }> {
 	const resolvedPath = resolvePath(extPath, cwd);
 
@@ -220,7 +234,9 @@ async function loadOne(
 	}
 
 	const extension = createExtension(extPath, resolvedPath);
-	const api = createExtensionAPI(extension, cwd);
+	// Extract manifest from defineExtension()-annotated factories
+	extension.manifest = getExtensionManifest(factory);
+	const api = createExtensionAPI(extension, cwd, bridge);
 
 	try {
 		await factory(api);
@@ -242,11 +258,12 @@ async function loadOne(
  * Load extensions from explicit file paths.
  */
 export async function loadExtensions(paths: string[], cwd: string): Promise<LoadExtensionsResult> {
+	const bridge = new ExtensionBridgeRegistry();
 	const extensions: LoadedExtension[] = [];
 	const errors: Array<{ path: string; error: string }> = [];
 
 	for (const extPath of paths) {
-		const { extension, error } = await loadOne(extPath, cwd);
+		const { extension, error } = await loadOne(extPath, cwd, bridge);
 		if (error) {
 			errors.push({ path: extPath, error });
 			log.warn(`Skipped extension ${extPath}: ${error}`);
@@ -255,7 +272,7 @@ export async function loadExtensions(paths: string[], cwd: string): Promise<Load
 		if (extension) extensions.push(extension);
 	}
 
-	return { extensions, errors };
+	return { extensions, errors, bridge };
 }
 
 /**
@@ -319,6 +336,7 @@ export async function discoverAndLoadExtensions(
 	return {
 		extensions: loadResult.extensions,
 		errors: [...packageResult.errors, ...loadResult.errors],
+		bridge: loadResult.bridge,
 	};
 }
 
@@ -329,9 +347,12 @@ export async function loadExtensionFromFactory(
 	factory: ExtensionFactory,
 	cwd: string,
 	extensionPath = "<inline>",
+	bridge?: ExtensionBridgeRegistry,
 ): Promise<LoadedExtension> {
+	const b = bridge ?? new ExtensionBridgeRegistry();
 	const extension = createExtension(extensionPath, extensionPath);
-	const api = createExtensionAPI(extension, cwd);
+	extension.manifest = getExtensionManifest(factory);
+	const api = createExtensionAPI(extension, cwd, b);
 	await factory(api);
 	return extension;
 }

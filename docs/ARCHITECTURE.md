@@ -75,34 +75,134 @@ That keeps the system from splitting into separate routing brains per app.
 
 ## Extensions
 
-Takumi should be a first-class extension host. That is the right place for consumer-local behavior:
+Takumi is a first-class extension host. The extension system is **implemented** in `@takumi/agent` (Phase 42+) and provides:
 
-- editor and TUI interactions
-- slash commands and shortcuts
-- repo-local coding workflow helpers
-- model-switching UX
-- side-agent orchestration local to Takumi
-- tool interception that only affects Takumi
+- typed event subscription across session, agent-loop, tool, and multi-agent cluster lifecycles
+- side-tool registration (tools the LLM can call, contributed by extensions)
+- slash command and keyboard shortcut registration
+- cancellable / result-returning hooks on key lifecycle transitions
 
-This follows the same successful pattern used in `pi` and `pi-mono`: keep the consumer flexible, and keep the core authority narrow.
+### Extension entry points
 
-Takumi extension entry points are discovered from:
+Extensions are discovered and loaded from:
 
 - `<cwd>/.takumi/extensions/`
 - `~/.config/takumi/extensions/`
-- package-provided Takumi extensions
-- explicitly configured extension paths
+- package-provided extensions declared in `takumi.config.json`
+- explicitly configured `extensions` paths in config
 
-Chitragupta should not push consumer-local behavior into the engine. The engine should instead own:
+Each extension exports a factory function matching `ExtensionFactory`:
 
-- durable memory
-- canonical session truth
-- bridge auth
-- provider and CLI inventory
-- routing policy
-- Scarlett integrity and Lucy intuition as engine faculties
+```ts
+import type { ExtensionAPI } from "@takumi/agent";
+
+export default function myExtension(api: ExtensionAPI): void {
+  api.on("turn_end", (e, ctx) => {
+    // e.usage.inputTokens, e.usage.outputTokens, ctx.model, ...
+  });
+
+  api.registerTool({
+    name: "my_tool",
+    description: "...",
+    inputSchema: { ... },
+    execute: async (args, signal, ctx) => ({ output: "..." })
+  });
+
+  api.registerCommand("/my-cmd", {
+    description: "does a thing",
+    handler: async (args, ctx) => { ... }
+  });
+}
+```
+
+### ExtensionAPI surface
+
+| Method | Purpose |
+|---|---|
+| `on(event, handler)` | Subscribe to a typed lifecycle event |
+| `registerTool(def)` | Contribute a tool the LLM can call |
+| `registerCommand(name, opts)` | Register a `/slash-command` |
+| `registerShortcut(key, opts)` | Register a keyboard shortcut |
+| `sendUserMessage(text)` | Inject a user turn into the agent loop |
+| `getActiveTools()` | List currently enabled tool names |
+| `setActiveTools(names)` | Enable/disable tools for the session |
+| `exec(cmd, args?)` | Run a shell command from the extension |
+
+Handlers receive an `ExtensionContext` (read-only session state + `abort()`, `compact()`, `shutdown()`). Command handlers additionally receive `ExtensionCommandContext` which adds `waitForIdle()`, `newSession()`, and `switchSession()`.
+
+### Event categories
+
+**Session events** — lifecycle of the TUI session:
+
+| Event | Cancellable | Description |
+|---|---|---|
+| `session_start` | — | Session loaded |
+| `session_before_switch` | ✓ | Before switching to another session |
+| `session_switch` | — | After session switch completes |
+| `session_before_compact` | ✓ (supply custom summary) | Before context compaction |
+| `session_compact` | — | After compaction |
+| `session_shutdown` | — | Process exiting |
+
+**Agent loop events** — per-turn LLM interaction:
+
+| Event | Modifiable | Description |
+|---|---|---|
+| `context` | ✓ (replace messages) | Before each LLM call |
+| `before_agent_start` | ✓ (replace system prompt, inject message) | After user submits, before loop starts |
+| `agent_start` | — | Loop begins |
+| `agent_end` | — | Loop ends |
+| `turn_start` | — | Turn index + timestamp |
+| `turn_end` | — | Token usage for the turn |
+| `message_update` | — | Streaming delta from LLM |
+
+**Tool events** — around each tool execution:
+
+| Event | Modifiable | Description |
+|---|---|---|
+| `tool_call` | ✓ (block with reason) | Before a tool runs |
+| `tool_result` | ✓ (rewrite output) | After a tool returns |
+
+**Other events:**
+
+| Event | Description |
+|---|---|
+| `model_select` | Model changed (source: `set`, `cycle`, `restore`, `failover`) |
+| `input` | User input received; handler can `transform` or mark as `handled` |
+
+**Cluster events** — multi-agent orchestration (Phase 42–44):
+
+| Event | Description |
+|---|---|
+| `cluster_start` | Cluster spawned with topology and agent count |
+| `cluster_end` | Cluster finished (success/failure, duration, total tokens) |
+| `cluster_phase_change` | Transition between orchestration phases |
+| `cluster_topology_adapt` | Lucy/Scarlett rerouted the active topology mid-run |
+| `cluster_validation_attempt` | Per-validation-cycle conclusion (approvals, rejections, decision) |
+| `cluster_budget` | Token spend crossed `warning` or `exceeded` threshold |
+| `agent_spawn` | Individual agent spawned within the cluster |
+| `agent_message` | Message published on the inter-agent bus |
+| `agent_complete` | Individual agent finished |
+| `agent_profile_updated` | Capability profiles persisted after the run |
+| `sabha_escalation` | Weak consensus triggered a Sabha escalation attempt |
+
+### Implementation files
+
+| File | Role |
+|---|---|
+| `packages/agent/src/extensions/extension-types.ts` | Full `ExtensionAPI`, all event interfaces, context types, result types |
+| `packages/agent/src/extensions/cluster-events.ts` | Cluster and multi-agent event interfaces and `ClusterExtensionEvent` union |
+| `packages/agent/src/extensions/extension-loader-types.ts` | `ExtensionFactory`, `LoadedExtension`, `LoadExtensionsResult`, `ExtensionError` — loader meta-types |
+| `packages/tui/src/agent-runner.ts` | `emitExtensionEvent()` bridge — forwards events from `CodingAgent` to `ExtensionRunner` |
+
+### Authority boundary
 
 Rule: put Takumi-specific behavior in Takumi extensions; put engine-wide policy, memory, and authority in Chitragupta.
+
+Chitragupta should **not** push consumer-local behavior into the engine. The engine owns:
+
+- durable memory and canonical session truth
+- bridge auth, provider and CLI inventory, routing policy
+- Scarlett integrity and Lucy intuition as engine faculties
 
 ## Ecosystem innovation direction
 
@@ -479,6 +579,18 @@ Signal write → subscriber notification → component markDirty()
 ```
 
 Key primitives: `signal(value)`, `computed(fn)`, `effect(fn)`, `batch(fn)`, `untrack(fn)`.
+
+### Extension System
+
+The extension host implemented in `@takumi/agent` (Phase 42+). See the [Extensions](#extensions) section for the full event reference.
+
+| Module | Role |
+|--------|------|
+| `extensions/extension-types.ts` | `ExtensionAPI`, all event interfaces, context and result types |
+| `extensions/cluster-events.ts` | Cluster-tier events — 11-member `ClusterExtensionEvent` union |
+| `extensions/extension-loader-types.ts` | Loader meta-types (`ExtensionFactory`, `LoadedExtension`, etc.) |
+| `extensions/extension-runner.ts` | Dispatches events to registered handlers in load order |
+| `extensions/extension-loader.ts` | Discovers and dynamically imports extension packages |
 
 ### Bridge — Integration Layer
 

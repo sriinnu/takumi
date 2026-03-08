@@ -281,9 +281,15 @@ Takumi currently registers **14 built-in tools** in the agent runtime:
 | `/help` | Show the live slash command list |
 | `/model`, `/provider`, `/theme` | Runtime model/provider/theme controls |
 | `/session ...` | Local sessions plus Chitragupta-backed `dates`, `projects`, and `delete` |
+| `/fork` | Fork the active session into a new branch |
+| `/replay <id>` | Step through a past session turn-by-turn |
 | `/memory <query>` / `/memory scopes` | Search memory or inspect available scopes |
 | `/code <task>` | Start coding agent flow |
+| `/index [--rebuild]` | Index codebase for RAG context |
 | `/cluster`, `/validate`, `/checkpoint`, `/resume`, `/isolation` | Multi-agent operations |
+| `/budget [amount]` | Show or set session spend limit |
+| `/cost`, `/status` | Cost breakdown and session statistics |
+| `/tree [path] [depth]` | Print directory tree (filesystem) |
 | `/day`, `/vidhi`, `/facts`, `/daemon`, `/turns`, `/predict`, `/patterns` | Chitragupta surfaces |
 | `/capabilities`, `/route`, `/healthcaps`, `/integrity` | Control-plane and Scarlett diagnostics |
 | `/branch`, `/session-tree`, `/switch`, `/siblings`, `/parent` | Session tree navigation |

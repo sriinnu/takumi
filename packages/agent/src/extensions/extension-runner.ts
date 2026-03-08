@@ -27,6 +27,7 @@ import {
 	emitToolCallImpl,
 	emitToolResultImpl,
 } from "./extension-emitters.js";
+import { DEFAULT_SESSION_ACTIONS, type SessionContextActions } from "./extension-session.js";
 import type {
 	ContextUsage,
 	ExtensionContext,
@@ -43,6 +44,7 @@ import type {
 	ToolResultEvent,
 	ToolResultEventResult,
 } from "./extension-types.js";
+import { DEFAULT_UI_ACTIONS, type UIContextActions } from "./extension-ui.js";
 
 const log = createLogger("extension-runner");
 
@@ -69,6 +71,8 @@ export interface ExtensionAPIActions {
 	getActiveTools: () => string[];
 	setActiveTools: (names: string[]) => void;
 	exec: (command: string, args?: string[]) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
+	getSessionName?: () => string | undefined;
+	setSessionName?: (name: string) => void;
 }
 
 /** Actions for ExtensionCommandContext (user-initiated commands only). */
@@ -77,6 +81,8 @@ export interface ExtensionCommandActions {
 	newSession: () => Promise<{ cancelled: boolean }>;
 	switchSession: (sessionId: string) => Promise<{ cancelled: boolean }>;
 }
+
+export type { UIContextActions, SessionContextActions };
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Error Listener
@@ -95,6 +101,10 @@ export class ExtensionRunner {
 	_contextActions: ExtensionContextActions;
 	/** @internal exposed for emitters module */
 	_apiActions: ExtensionAPIActions;
+	/** @internal */
+	_uiActions: UIContextActions;
+	/** @internal */
+	_sessionActions: SessionContextActions;
 	/** @internal exposed for emitters module */
 	readonly _errorListeners = new Set<ExtensionErrorListener>();
 
@@ -106,8 +116,8 @@ export class ExtensionRunner {
 			throw new Error(`ExtensionRunner.${name}: bindActions() not called yet`);
 		};
 		this._contextActions = {
-			getModel: notBound("getModel"),
-			getSessionId: notBound("getSessionId"),
+			getModel: notBound("getModel") as () => string | undefined,
+			getSessionId: notBound("getSessionId") as () => string | undefined,
 			getCwd: notBound("getCwd") as () => string,
 			isIdle: notBound("isIdle") as () => boolean,
 			abort: notBound("abort"),
@@ -122,14 +132,36 @@ export class ExtensionRunner {
 			setActiveTools: notBound("setActiveTools"),
 			exec: notBound("exec") as ExtensionAPIActions["exec"],
 		};
+		// UI and session start with safe no-op defaults (headless-friendly)
+		this._uiActions = { ...DEFAULT_UI_ACTIONS };
+		this._sessionActions = { ...DEFAULT_SESSION_ACTIONS };
 	}
 
 	// ── Binding ─────────────────────────────────────────────────────────────────
 
 	/** Bind runtime action implementations. Must be called before emitting events. */
-	bindActions(contextActions: ExtensionContextActions, apiActions: ExtensionAPIActions): void {
+	bindActions(
+		contextActions: ExtensionContextActions,
+		apiActions: ExtensionAPIActions,
+		uiActions?: UIContextActions,
+		sessionActions?: SessionContextActions,
+	): void {
 		this._contextActions = contextActions;
 		this._apiActions = apiActions;
+		if (uiActions) this._uiActions = uiActions;
+		if (sessionActions) this._sessionActions = sessionActions;
+		// Wire _actions slots on all loaded extensions so closures captured
+		// by `sho` during setup now resolve to real implementations.
+		// Guard for extensions created without _actions (e.g., in unit tests).
+		for (const ext of this._extensions) {
+			if (!ext._actions) continue;
+			ext._actions.sendUserMessage = apiActions.sendUserMessage;
+			ext._actions.getActiveTools = apiActions.getActiveTools;
+			ext._actions.setActiveTools = apiActions.setActiveTools;
+			ext._actions.exec = apiActions.exec;
+			if (apiActions.getSessionName) ext._actions.getSessionName = apiActions.getSessionName;
+			if (apiActions.setSessionName) ext._actions.setSessionName = apiActions.setSessionName;
+		}
 		log.info(`Bound actions for ${this._extensions.length} extensions`);
 	}
 
@@ -153,23 +185,41 @@ export class ExtensionRunner {
 
 	/** Create an ExtensionContext with values resolved lazily from actions. */
 	createContext(): ExtensionContext {
-		const actions = this._contextActions;
+		const ca = this._contextActions;
+		const ua = this._uiActions;
+		const sa = this._sessionActions;
 		return {
 			get cwd() {
-				return actions.getCwd();
+				return ca.getCwd();
 			},
 			get model() {
-				return actions.getModel();
+				return ca.getModel();
 			},
 			get sessionId() {
-				return actions.getSessionId();
+				return ca.getSessionId();
 			},
-			isIdle: () => actions.isIdle(),
-			abort: () => actions.abort(),
-			getContextUsage: () => actions.getContextUsage(),
-			getSystemPrompt: () => actions.getSystemPrompt(),
-			compact: () => actions.compact(),
-			shutdown: () => actions.shutdown(),
+			isIdle: () => ca.isIdle(),
+			abort: () => ca.abort(),
+			getContextUsage: () => ca.getContextUsage(),
+			getSystemPrompt: () => ca.getSystemPrompt(),
+			compact: () => ca.compact(),
+			shutdown: () => ca.shutdown(),
+			// Phase 45: UI + session surfaces
+			get hasUI() {
+				return ua.hasUI();
+			},
+			notify: (msg, level = "info") => ua.notify(msg, level),
+			ui: {
+				confirm: (msg, title) => ua.confirm(msg, title),
+				pick: (items, title) => ua.pick(items, title),
+				setWidget: (key, renderer) => ua.setWidget(key, renderer),
+				removeWidget: (key) => ua.removeWidget(key),
+			},
+			session: {
+				getSnapshot: () => sa.getSnapshot(),
+				getName: () => sa.getName(),
+				setName: (name) => sa.setName(name),
+			},
 		};
 	}
 

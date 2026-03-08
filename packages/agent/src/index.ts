@@ -47,6 +47,25 @@ export {
 	shouldEscalateWeakConsensus,
 	ValidationDecision,
 } from "./cluster/index.js";
+export { buildCognitiveState } from "./cognition/runtime.js";
+export type {
+	BuildCognitiveStateInput,
+	CognitiveAwareness,
+	CognitiveContextPressure,
+	CognitiveDirective,
+	CognitiveIntegrityStatus,
+	CognitiveIntuition,
+	CognitivePatternMatch,
+	CognitivePrediction,
+	CognitiveRoutingDecision,
+	CognitiveSignalKind,
+	CognitiveStance,
+	CognitiveState,
+	CognitiveSteeringBacklogItem,
+	CognitiveWorkspace,
+	CognitiveWorkspaceMode,
+	IntuitionSignal,
+} from "./cognition/types.js";
 // Phase 41 — Adaptive System Prompt
 export type {
 	AdaptivePromptConfig,
@@ -121,6 +140,24 @@ export {
 // Phase 45 — Convention file loader
 export type { ConventionFiles, ToolRule } from "./extensions/convention-loader.js";
 export { loadConventionFiles } from "./extensions/convention-loader.js";
+// Phase 45 — defineExtension() named factory helper
+export type {
+	AnnotatedFactory,
+	ExtensionManifest,
+} from "./extensions/define-extension.js";
+export {
+	defineExtension,
+	EXTENSION_MANIFEST_SYMBOL,
+	getExtensionManifest,
+} from "./extensions/define-extension.js";
+// Phase 45 — Extension bridge (typed inter-extension event bus)
+export type {
+	BridgeHandler,
+	BridgePayload,
+	ExtensionBridge,
+	ExtensionBridgeEvents,
+} from "./extensions/extension-bridge.js";
+export { ExtensionBridgeRegistry } from "./extensions/extension-bridge.js";
 // Phase 52 — Extension Health Monitor
 export type {
 	ExtensionHealthConfig,
@@ -140,8 +177,20 @@ export type {
 	ExtensionCommandActions,
 	ExtensionContextActions,
 	ExtensionErrorListener,
+	SessionContextActions,
+	UIContextActions,
 } from "./extensions/extension-runner.js";
 export { ExtensionRunner } from "./extensions/extension-runner.js";
+// Phase 45 — Per-tool typed events and type guards
+export type {
+	BashToolCallEvent,
+	EditToolCallEvent,
+	GlobToolCallEvent,
+	GrepToolCallEvent,
+	ReadToolCallEvent,
+	WriteToolCallEvent,
+} from "./extensions/extension-tool-events.js";
+export { isToolCallForTool } from "./extensions/extension-tool-events.js";
 // Phase 42-44 — Extension System
 export type {
 	AgentEndEvent,
@@ -150,6 +199,8 @@ export type {
 	AgentStartEvent,
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
+	BeforeProviderRequestEvent,
+	BeforeProviderRequestResult,
 	ClusterBudgetEvent,
 	ClusterEndEvent,
 	ClusterExtensionEvent,
@@ -166,14 +217,20 @@ export type {
 	ExtensionEventType,
 	ExtensionFactory,
 	ExtensionHandler,
+	ExtensionSession,
 	ExtensionToolDefinition,
+	ExtensionUI,
 	InputEvent,
 	InputEventResult,
 	InputSource,
 	LoadExtensionsResult,
 	LoadedExtension,
+	MessageEndEvent,
+	MessageStartEvent,
 	MessageUpdateEvent,
 	ModelSelectEvent,
+	NotifyLevel,
+	PickItem,
 	RegisteredCommand,
 	RegisteredShortcut,
 	SabhaEscalationEvent,
@@ -182,17 +239,25 @@ export type {
 	SessionBeforeSwitchEvent,
 	SessionBeforeSwitchResult,
 	SessionCompactEvent,
+	SessionEntry,
 	SessionEvent,
 	SessionShutdownEvent,
+	SessionSnapshot,
 	SessionStartEvent,
 	SessionSwitchEvent,
 	ToolCallEvent,
 	ToolCallEventResult,
 	ToolEvent,
+	ToolExecutionEndEvent,
+	ToolExecutionStartEvent,
+	ToolExecutionUpdateEvent,
 	ToolResultEvent,
 	ToolResultEventResult,
 	TurnEndEvent,
 	TurnStartEvent,
+	UserBashEvent,
+	UserBashResult,
+	WidgetRenderer,
 } from "./extensions/extension-types.js";
 export type {
 	LoadedTakumiPackage,
@@ -222,9 +287,15 @@ export type { AgentLoopOptions, MessagePayload } from "./loop.js";
 export { agentLoop } from "./loop.js";
 // Message building
 export { buildSystemPrompt, buildToolResult, buildUserMessage } from "./message.js";
-export type { ModelRecommendation, ModelTier, ProviderFamily, RouterRole } from "./model-router.js";
+export type { EngineRouteClass, ModelRecommendation, ModelTier, ProviderFamily, RouterRole } from "./model-router.js";
 // Smart model router
-export { inferProvider, MODEL_TIERS, ModelRouter, syncModelTiersFromKosha } from "./model-router.js";
+export {
+	inferProvider,
+	MODEL_TIERS,
+	ModelRouter,
+	recommendRouteClass,
+	syncModelTiersFromKosha,
+} from "./model-router.js";
 // Phase 49 — Observation Collector
 export type { ObservationCollectorConfig } from "./observation-collector.js";
 export { ObservationCollector } from "./observation-collector.js";
@@ -263,6 +334,8 @@ export type {
 export { SteeringPriority, SteeringQueue } from "./steering-queue.js";
 // SSE stream parser
 export { parseSSEStream } from "./stream.js";
+export type { RoutingOverridePlan } from "./task-routing.js";
+export { resolveRoutingOverrides as resolveTaskRoutingOverrides } from "./task-routing.js";
 // Telemetry helpers (Phase 20)
 export { calculateContextPressure, estimateMessagesTokens, renderLastAssistantHtml } from "./telemetry.js";
 export { akashaDepositDefinition, akashaTracesDefinition, createAkashaHandlers } from "./tools/akasha.js";

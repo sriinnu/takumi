@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
 	AgentBus,
 	buildCapabilityQuery,
@@ -10,7 +10,6 @@ import type {
 	AgentCapabilityResponse,
 	AgentDiscoveryShare,
 	AgentMessage,
-	AgentTaskRequest,
 	AgentTaskResult,
 } from "../src/cluster/types.js";
 import { AgentMessagePriority } from "../src/cluster/types.js";

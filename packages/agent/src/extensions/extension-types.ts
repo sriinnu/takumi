@@ -1,13 +1,29 @@
 /**
- * Extension system types — Phase 42
+ * Extension system types — Phase 45
  *
  * Defines the contract for Takumi extensions: lifecycle events,
  * tool/command/shortcut registration, and the context API.
  * Typed event system with discriminated unions, cancellable "before_*"
  * events, and a single ExtensionAPI surface passed to factory functions.
+ *
+ * Phase 45 additions:
+ * - ctx.hasUI / ctx.notify / ctx.ui / ctx.session — UI + session surfaces
+ * - message_start/end, tool_execution_*, before_provider_request, user_bash
+ * - ExtensionAPI split to extension-api.ts; use that for the full API surface
  */
 
 import type { AgentEvent, ToolDefinition as CoreToolDef, Message, ToolResult, Usage } from "@takumi/core";
+import type { ExtensionSession } from "./extension-session.js";
+import type {
+	BeforeProviderRequestEvent,
+	MessageEndEvent,
+	MessageStartEvent,
+	ToolExecutionEndEvent,
+	ToolExecutionStartEvent,
+	ToolExecutionUpdateEvent,
+	UserBashEvent,
+} from "./extension-tool-events.js";
+import type { ExtensionUI, NotifyLevel } from "./extension-ui.js";
 
 export type {
 	AgentBusMessageEvent,
@@ -24,20 +40,7 @@ export type {
 	SabhaEscalationEvent,
 } from "./cluster-events.js";
 
-import type {
-	AgentBusMessageEvent,
-	AgentCompleteEvent,
-	AgentProfileUpdatedEvent,
-	AgentSpawnEvent,
-	ClusterBudgetEvent,
-	ClusterEndEvent,
-	ClusterExtensionEvent,
-	ClusterPhaseChangeEvent,
-	ClusterStartEvent,
-	ClusterTopologyAdaptEvent,
-	ClusterValidationAttemptEvent,
-	SabhaEscalationEvent,
-} from "./cluster-events.js";
+import type { ClusterExtensionEvent } from "./cluster-events.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Session Events
@@ -203,7 +206,29 @@ export type ExtensionEvent =
 	| ToolEvent
 	| ModelSelectEvent
 	| InputEvent
-	| ClusterExtensionEvent;
+	| ClusterExtensionEvent
+	| MessageStartEvent
+	| MessageEndEvent
+	| ToolExecutionStartEvent
+	| ToolExecutionUpdateEvent
+	| ToolExecutionEndEvent
+	| BeforeProviderRequestEvent
+	| UserBashEvent;
+
+export type { ExtensionSession, SessionEntry, SessionSnapshot } from "./extension-session.js";
+// Re-export new event types so consumers can import from extension-types.ts
+export type {
+	BeforeProviderRequestEvent,
+	BeforeProviderRequestResult,
+	MessageEndEvent,
+	MessageStartEvent,
+	ToolExecutionEndEvent,
+	ToolExecutionStartEvent,
+	ToolExecutionUpdateEvent,
+	UserBashEvent,
+	UserBashResult,
+} from "./extension-tool-events.js";
+export type { ExtensionUI, NotifyLevel, PickItem, WidgetRenderer } from "./extension-ui.js";
 
 /** Extract the event type string literal from an event. */
 export type ExtensionEventType = ExtensionEvent["type"];
@@ -308,6 +333,32 @@ export interface ExtensionContext {
 	compact(): void;
 	/** Gracefully shutdown. */
 	shutdown(): void;
+
+	// ── Phase 45: UI + Session surfaces ────────────────────────────────────
+
+	/**
+	 * Whether an interactive TUI is currently active.
+	 * Use this when you only want to run logic in interactive sessions.
+	 */
+	hasUI: boolean;
+
+	/**
+	 * Send a notification. In TUI mode: shows as a toast.
+	 * In headless mode: writes to the session log. Always safe to call.
+	 */
+	notify(message: string, level?: NotifyLevel): void;
+
+	/**
+	 * Interactive TUI surface. All methods degrade safely when ctx.hasUI is false
+	 * (confirm → false, pick → undefined, setWidget → no-op).
+	 */
+	ui: ExtensionUI;
+
+	/**
+	 * Session history and metadata. Always available — snapshot is empty
+	 * in headless or pre-session contexts.
+	 */
+	session: ExtensionSession;
 }
 
 /**
@@ -332,6 +383,12 @@ export interface RegisteredCommand {
 	name: string;
 	description?: string;
 	handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
+	/**
+	 * Optional tab-completion for this command's arguments.
+	 * Called when the user types `/command ` and requests completions.
+	 * Return an array of completion strings.
+	 */
+	getArgumentCompletions?: (partial: string, ctx: ExtensionContext) => string[] | Promise<string[]>;
 }
 
 /** Registered keyboard shortcut. */
@@ -355,86 +412,10 @@ export type ExtensionHandler<TEvent, TResult = undefined> = (
 	ctx: ExtensionContext,
 ) => Promise<TResult | undefined> | TResult | undefined;
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Extension API
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * API passed to extension factory functions.
- * Provides event subscription, tool/command/shortcut registration, and actions.
- */
-export interface ExtensionAPI {
-	// ── Event Subscription ────────────────────────────────────────────────────
-
-	on(event: "session_start", handler: ExtensionHandler<SessionStartEvent>): void;
-	on(
-		event: "session_before_switch",
-		handler: ExtensionHandler<SessionBeforeSwitchEvent, SessionBeforeSwitchResult>,
-	): void;
-	on(event: "session_switch", handler: ExtensionHandler<SessionSwitchEvent>): void;
-	on(
-		event: "session_before_compact",
-		handler: ExtensionHandler<SessionBeforeCompactEvent, SessionBeforeCompactResult>,
-	): void;
-	on(event: "session_compact", handler: ExtensionHandler<SessionCompactEvent>): void;
-	on(event: "session_shutdown", handler: ExtensionHandler<SessionShutdownEvent>): void;
-
-	on(event: "context", handler: ExtensionHandler<ContextEvent, ContextEventResult>): void;
-	on(event: "before_agent_start", handler: ExtensionHandler<BeforeAgentStartEvent, BeforeAgentStartEventResult>): void;
-	on(event: "agent_start", handler: ExtensionHandler<AgentStartEvent>): void;
-	on(event: "agent_end", handler: ExtensionHandler<AgentEndEvent>): void;
-	on(event: "turn_start", handler: ExtensionHandler<TurnStartEvent>): void;
-	on(event: "turn_end", handler: ExtensionHandler<TurnEndEvent>): void;
-	on(event: "message_update", handler: ExtensionHandler<MessageUpdateEvent>): void;
-
-	on(event: "tool_call", handler: ExtensionHandler<ToolCallEvent, ToolCallEventResult>): void;
-	on(event: "tool_result", handler: ExtensionHandler<ToolResultEvent, ToolResultEventResult>): void;
-
-	on(event: "model_select", handler: ExtensionHandler<ModelSelectEvent>): void;
-	on(event: "input", handler: ExtensionHandler<InputEvent, InputEventResult>): void;
-
-	on(event: "cluster_start", handler: ExtensionHandler<ClusterStartEvent>): void;
-	on(event: "cluster_end", handler: ExtensionHandler<ClusterEndEvent>): void;
-	on(event: "cluster_phase_change", handler: ExtensionHandler<ClusterPhaseChangeEvent>): void;
-	on(event: "cluster_topology_adapt", handler: ExtensionHandler<ClusterTopologyAdaptEvent>): void;
-	on(event: "cluster_validation_attempt", handler: ExtensionHandler<ClusterValidationAttemptEvent>): void;
-	on(event: "cluster_budget", handler: ExtensionHandler<ClusterBudgetEvent>): void;
-	on(event: "agent_spawn", handler: ExtensionHandler<AgentSpawnEvent>): void;
-	on(event: "agent_message", handler: ExtensionHandler<AgentBusMessageEvent>): void;
-	on(event: "agent_complete", handler: ExtensionHandler<AgentCompleteEvent>): void;
-	on(event: "agent_profile_updated", handler: ExtensionHandler<AgentProfileUpdatedEvent>): void;
-	on(event: "sabha_escalation", handler: ExtensionHandler<SabhaEscalationEvent>): void;
-
-	// ── Tool Registration ─────────────────────────────────────────────────────
-
-	/** Register a tool that the LLM can call. */
-	registerTool(tool: ExtensionToolDefinition): void;
-
-	// ── Command & Shortcut Registration ───────────────────────────────────────
-
-	/** Register a slash command (e.g., `/my-command`). */
-	registerCommand(name: string, options: Omit<RegisteredCommand, "name">): void;
-
-	/** Register a keyboard shortcut. */
-	registerShortcut(
-		key: string,
-		options: { description?: string; handler: (ctx: ExtensionContext) => Promise<void> | void },
-	): void;
-
-	// ── Actions ───────────────────────────────────────────────────────────────
-
-	/** Send a user message to the agent, triggering a new turn. */
-	sendUserMessage(content: string): void;
-
-	/** Get the list of currently active tool names. */
-	getActiveTools(): string[];
-
-	/** Set the active tools by name. */
-	setActiveTools(toolNames: string[]): void;
-
-	/** Execute a shell command. */
-	exec(command: string, args?: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }>;
-}
+// ── ExtensionAPI re-export ────────────────────────────────────────────────────
+// The interface lives in extension-api.ts (split out to stay under LOC limit).
+// Import from either file — both resolve to the same type.
+export type { ExtensionAPI } from "./extension-api.js";
 
 export type {
 	ExtensionError,

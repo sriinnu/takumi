@@ -3,7 +3,7 @@
  * All UI components observe these signals and re-render when they change.
  */
 
-import { SteeringQueue } from "@takumi/agent";
+import { buildCognitiveState, type CognitiveState, SteeringQueue } from "@takumi/agent";
 import type {
 	CapabilityDescriptor,
 	CapabilityHealthSnapshot,
@@ -16,6 +16,7 @@ import type {
 import type { Message, PermissionDecision, Size, Usage } from "@takumi/core";
 import type { ReadonlySignal, Signal } from "@takumi/render";
 import { computed, signal } from "@takumi/render";
+import { resetRecentDirectiveHistory } from "./chitragupta-runtime-helpers.js";
 import { ValidationResultsDialog } from "./dialogs/validation-results.js";
 import type { ScarlettIntegrityReport } from "./scarlett-runtime.js";
 import { buildScarlettIntegrityReport } from "./scarlett-runtime.js";
@@ -34,6 +35,12 @@ export type ClusterCommandEvent =
 	| { type: "isolation_set"; mode: "none" | "worktree" | "docker" };
 
 export class AppState {
+	constructor() {
+		this.steeringQueue.onSizeChanged((size) => {
+			this.steeringPending.value = size;
+		});
+	}
+
 	// ── Conversation ──────────────────────────────────────────────────────────
 	readonly messages: Signal<Message[]> = signal<Message[]>([]);
 	readonly isStreaming: Signal<boolean> = signal(false);
@@ -172,10 +179,53 @@ export class AppState {
 	} | null> = signal(null);
 	/** Latest detected pattern from Chitragupta. */
 	readonly chitraguptaLastPattern: Signal<{ type: string; confidence: number; at: number } | null> = signal(null);
+	/** Pattern matches retrieved from Chitragupta queries. */
+	readonly chitraguptaPatternMatches: Signal<
+		Array<{ id?: number; type: string; confidence: number; occurrences?: number; lastSeen?: number }>
+	> = signal([]);
 	/** Active predictions from Chitragupta. */
-	readonly chitraguptaPredictions: Signal<Array<{ action: string; confidence: number }>> = signal([]);
+	readonly chitraguptaPredictions: Signal<
+		Array<{
+			type?: string;
+			action: string;
+			confidence: number;
+			risk?: number;
+			reasoning?: string;
+			suggestion?: string;
+			files?: string[];
+		}>
+	> = signal([]);
 	/** Queued evolve requests from Chitragupta. */
 	readonly chitraguptaEvolveQueue: Signal<Array<Record<string, unknown>>> = signal([]);
+	/** Derived cognition state over awareness, intuition, and workspace steering. */
+	readonly cognitiveState: ReadonlySignal<CognitiveState> = computed(() =>
+		buildCognitiveState({
+			connected: this.chitraguptaConnected.value,
+			integrityStatus: this.scarlettIntegrityReport.value.status,
+			integritySummary: this.scarlettIntegrityReport.value.summary,
+			anomaly: this.chitraguptaAnomaly.value,
+			predictions: this.chitraguptaPredictions.value,
+			patternMatches: this.chitraguptaPatternMatches.value,
+			lastPattern: this.chitraguptaLastPattern.value,
+			routingDecisions: this.routingDecisions.value.map((decision) => ({
+				selected: decision.selected !== null,
+				degraded: decision.degraded,
+				reason: decision.reason,
+				capabilityId: decision.selected?.id,
+			})),
+			contextPressure: this.contextPressure.value,
+			contextPercent: this.contextPercent.value,
+			agentPhase: this.agentPhase.value,
+			clusterPhase: this.clusterPhase.value,
+			steeringPending: this.steeringPending.value,
+			steeringQueue:
+				this.steeringPending.value > 0
+					? this.steeringQueue.snapshot().map((item) => ({ text: item.text, priority: item.priority }))
+					: [],
+			observationFlushCount: this.observationFlushCount.value,
+			evolveQueueLength: this.chitraguptaEvolveQueue.value.length,
+		}),
+	);
 	/**
 	 * Cluster command channel — slash commands and dialogs write here;
 	 * CodingAgent observes via an effect and handles immediately.
@@ -339,9 +389,16 @@ export class AppState {
 		this.vasanaTendencies.value = [];
 		this.chitraguptaHealth.value = null;
 		this.vasanaLastRefresh.value = 0;
+		this.chitraguptaObserver.value = null;
+		this.observationFlushCount.value = 0;
 		this.controlPlaneCapabilities.value = [];
 		this.capabilityHealthSnapshots.value = [];
 		this.routingDecisions.value = [];
+		this.chitraguptaAnomaly.value = null;
+		this.chitraguptaLastPattern.value = null;
+		this.chitraguptaPatternMatches.value = [];
+		this.chitraguptaPredictions.value = [];
+		this.chitraguptaEvolveQueue.value = [];
 		this.dialogStack.value = [];
 		this.clusterCommand.value = null;
 		this.akashaDeposits.value = 0;
@@ -358,5 +415,6 @@ export class AppState {
 		this.consolidationInProgress.value = false;
 		this.steeringQueue.clear();
 		this.steeringPending.value = 0;
+		resetRecentDirectiveHistory();
 	}
 }

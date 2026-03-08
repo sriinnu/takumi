@@ -5,7 +5,7 @@ import type { OrchestratorTask } from "@yugenlab/chitragupta/niyanta";
 import { AgentEvaluator, AutonomousOrchestrator } from "@yugenlab/chitragupta/niyanta";
 import type { MessagePayload } from "../loop.js";
 import type { ToolRegistry } from "../tools/registry.js";
-import { AgentBus, buildTaskResult } from "./agent-bus.js";
+import { AgentBus } from "./agent-bus.js";
 import { AgentProfileStore, type TaskOutcome } from "./agent-identity.js";
 import { CheckpointManager } from "./checkpoint.js";
 import { ChitraguptaBusBridge } from "./chitragupta-bus-bridge.js";
