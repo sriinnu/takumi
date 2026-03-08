@@ -70,4 +70,60 @@ describe("AgentRunner", () => {
 		expect(firstSendMessageFn.mock.calls[0][4]).toEqual({ model: state.model.value });
 		expect(secondSendMessageFn.mock.calls[0][4]).toEqual({ model: state.model.value });
 	});
+
+	it("hydrates prediction and pattern cognition before the turn", async () => {
+		const uniqueAction = `edit router ${Date.now()}`;
+		const sendMessageFn = createSendMessageFn();
+		const tools = new ToolRegistry();
+		const runner = new AgentRunner(
+			state,
+			{ maxTurns: 4, systemPrompt: "You are Takumi." } as never,
+			sendMessageFn,
+			tools,
+		);
+
+		state.sessionId.value = "session-123";
+		state.chitraguptaConnected.value = true;
+		state.chitraguptaObserver.value = {
+			predictNext: vi.fn(async () => ({
+				predictions: [
+					{
+						type: "failure_warning",
+						action: uniqueAction,
+						confidence: 0.88,
+						risk: 0.9,
+						suggestion: "inspect degraded routes first",
+					},
+				],
+			})),
+			patternQuery: vi.fn(async () => ({
+				patterns: [
+					{
+						id: 7,
+						type: "router_drift",
+						pattern: {},
+						confidence: 0.92,
+						occurrences: 4,
+						firstSeen: Date.now() - 1000,
+						lastSeen: Date.now(),
+					},
+				],
+			})),
+		} as never;
+
+		await runner.submit("stabilize routing");
+
+		expect(state.chitraguptaPredictions.value[0]).toMatchObject({
+			type: "failure_warning",
+			action: uniqueAction,
+			suggestion: "inspect degraded routes first",
+		});
+		expect(state.chitraguptaPatternMatches.value[0]).toMatchObject({
+			id: 7,
+			type: "router_drift",
+			occurrences: 4,
+		});
+		expect(state.cognitiveState.value.workspace.mode).toBe("stabilize");
+		expect(state.cognitiveState.value.workspace.recommendedDirectives.length).toBeGreaterThan(0);
+	});
 });

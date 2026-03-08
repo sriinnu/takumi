@@ -2,8 +2,14 @@ import { akashaDepositDefinition, akashaTracesDefinition, createAkashaHandlers, 
 import { ChitraguptaBridge, ChitraguptaObserver } from "@takumi/bridge";
 import { createLogger } from "@takumi/core";
 import type { AgentRunner } from "./agent-runner.js";
+import { buildTelemetryCognition, upsertPatternMatch } from "./app-chitragupta-cognition.js";
 import { normalizePredictions } from "./chitragupta-notification-helpers.js";
-import { enqueueDirective, loadMcpConfig, wasRecentlyHandled } from "./chitragupta-runtime-helpers.js";
+import {
+	enqueueDirective,
+	loadMcpConfig,
+	resetRecentDirectiveHistory,
+	wasRecentlyHandled,
+} from "./chitragupta-runtime-helpers.js";
 import {
 	mergeControlPlaneCapabilities,
 	summarizeTakumiCapabilityHealth,
@@ -12,7 +18,6 @@ import {
 import type { AppState } from "./state.js";
 
 const log = createLogger("app");
-
 let startedAt = 0;
 
 function subscribeToNotifications(
@@ -75,6 +80,11 @@ function subscribeToNotifications(
 				confidence: Number.isFinite(confidence) ? confidence : 0,
 				at: Date.now(),
 			};
+			upsertPatternMatch(state, {
+				type,
+				confidence: Number.isFinite(confidence) ? confidence : 0,
+				lastSeen: Date.now(),
+			});
 
 			const suggestion = typeof params.suggestion === "string" ? params.suggestion : undefined;
 			if (
@@ -93,8 +103,13 @@ function subscribeToNotifications(
 		onPrediction: (params) => {
 			const predictions = normalizePredictions(params as unknown as Record<string, unknown>);
 			state.chitraguptaPredictions.value = predictions.map((prediction) => ({
+				type: prediction.type,
 				action: prediction.action ?? (prediction.files?.length ? prediction.files.join(", ") : prediction.type),
 				confidence: prediction.confidence,
+				risk: prediction.risk,
+				reasoning: prediction.reasoning,
+				suggestion: prediction.suggestion,
+				files: prediction.files,
 			}));
 
 			const top = predictions[0];
@@ -160,7 +175,6 @@ function subscribeToNotifications(
 				});
 			}
 		},
-
 		onSabhaUpdated: (params) => {
 			const sabhaId = String(params.sabhaId ?? "");
 			const event = String(params.event ?? "updated");
@@ -217,9 +231,7 @@ function subscribeToNotifications(
 			const value = String(params.value ?? "").trim();
 			if (!key || !value) return;
 			log.info(`Chitragupta preference update: ${key}=${value}`);
-			if (key === "theme") {
-				state.theme.value = value;
-			}
+			if (key === "theme") state.theme.value = value;
 			if (agentRunner?.isRunning && !wasRecentlyHandled(`preference:${key}:${value}`, 30_000)) {
 				enqueueDirective(state, `Honor learned preference from Chitragupta: ${key}=${value}.`, SteeringPriority.LOW, {
 					source: "chitragupta",
@@ -229,7 +241,6 @@ function subscribeToNotifications(
 			}
 		},
 	});
-
 	log.info("Subscribed to Chitragupta daemon notifications via observer");
 }
 
@@ -347,6 +358,7 @@ export function connectChitragupta(
 							closeToLimit: state.contextPercent.value >= 85,
 							nearLimit: state.contextPercent.value >= 95,
 						} as never,
+						cognition: buildTelemetryCognition(state) as never,
 						lastEvent: "heartbeat",
 					});
 				} catch (err) {
@@ -404,6 +416,7 @@ export async function disconnectChitragupta(state: AppState): Promise<void> {
 
 	state.chitraguptaObserver.value?.teardown();
 	state.chitraguptaObserver.value = null;
+	resetRecentDirectiveHistory();
 
 	try {
 		await bridge.telemetryCleanup(process.pid);

@@ -82,7 +82,7 @@ export interface ClassificationResult {
 	/** Subtasks decomposed from the task description. */
 	subtasks: OrchestratorTask[];
 	/**
-	 * Smart model recommendation for the WORKER agent role.
+	 * Smart bounded-routing recommendation for the WORKER agent role.
 	 * Use `TaskClassifier.router.recommend(complexity, role)` for other roles.
 	 */
 	recommendedModel: ModelRecommendation;
@@ -188,7 +188,8 @@ export class TaskClassifier {
 		// Infer provider from the model string so the router picks the right family
 		const provider = options.currentModel ? inferProvider(options.currentModel) : "anthropic";
 		this.router = new ModelRouter(provider);
-		this.classificationModel = options.classificationModel ?? this.router.getTierMap().fast;
+		this.classificationModel =
+			options.classificationModel ?? this.router.recommend(TaskComplexity.TRIVIAL, "CLASSIFIER").model;
 	}
 
 	/**

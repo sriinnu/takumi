@@ -22,6 +22,7 @@ export type {
 	SessionDetail,
 	SessionMetaUpdates,
 	TelemetryCapabilities,
+	TelemetryCognition,
 	TelemetryContext,
 	TelemetryExtensions,
 	TelemetryMessages,

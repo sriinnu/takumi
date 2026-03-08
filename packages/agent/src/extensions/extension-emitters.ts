@@ -163,16 +163,20 @@ export async function emitToolCallImpl(
 	event: ToolCallEvent,
 ): Promise<ToolCallEventResult | undefined> {
 	const ctx = runner.createContext();
+	// Dispatch to both generic "tool_call" handlers AND filtered "tool_call:<toolName>" handlers.
+	const filteredKey = `tool_call:${event.toolName}`;
 	for (const ext of runner._extensions) {
-		const handlers = ext.handlers.get("tool_call");
-		if (!handlers || handlers.length === 0) continue;
-		for (const handler of handlers) {
-			try {
-				const result = (await handler(event, ctx)) as ToolCallEventResult | undefined;
-				if (result?.block) return result;
-			} catch (err) {
-				const e = makeError(err);
-				runner.emitError({ extensionPath: ext.path, event: "tool_call", error: e.message, stack: e.stack });
+		for (const key of ["tool_call", filteredKey]) {
+			const handlers = ext.handlers.get(key);
+			if (!handlers || handlers.length === 0) continue;
+			for (const handler of handlers) {
+				try {
+					const result = (await handler(event, ctx)) as ToolCallEventResult | undefined;
+					if (result?.block) return result;
+				} catch (err) {
+					const e = makeError(err);
+					runner.emitError({ extensionPath: ext.path, event: key, error: e.message, stack: e.stack });
+				}
 			}
 		}
 	}

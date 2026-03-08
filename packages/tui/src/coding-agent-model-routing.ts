@@ -69,6 +69,9 @@ function downgradeRecommendation(
 	tierMap: ReturnType<ModelRouter["getTierMap"]>,
 ): string {
 	const recommendation = router.recommend(complexity, role);
+	if (recommendation.routeClass === "coding.patch-cheap" || recommendation.routeClass === "coding.fast-local") {
+		return recommendation.model;
+	}
 	switch (recommendation.tier) {
 		case "frontier":
 			return tierMap.powerful;
