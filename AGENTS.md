@@ -36,12 +36,6 @@ Run a single test file: `pnpm test -- packages/agent/test/loop.test.ts`
 
 ## Key Rules
 
-### Collaboration Expectations
-- Give honest, corrective guidance when a proposed idea risks making the system worse, more complex, or less coherent.
-- Do not assume the developer's first idea is automatically the right one; challenge it respectfully when the evidence points elsewhere.
-- Optimize for improving and preserving the system, not for agreeing quickly or following trends from posts without scrutiny.
-- Prefer advice that increases clarity, maintainability, observability, and product value over changes that add novelty without payoff.
-
 ### File Size
 No production source file may exceed **450 lines** (`scripts/guard-loc.mjs`).
 Test files are exempt. If a file approaches the limit, split it.
