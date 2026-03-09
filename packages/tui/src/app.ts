@@ -8,6 +8,7 @@ import type { AppCommandContext, ProviderFactory } from "./app-command-context.j
 import { registerAppCommands } from "./app-commands.js";
 import { formatMessagesAsMarkdown } from "./app-export.js";
 import { parseKeyEvent, parseMouseEvent } from "./app-input.js";
+import type { AutocycleAgent } from "./autocycle-agent.js";
 import type { CodingAgent } from "./coding-agent.js";
 import { SlashCommandRegistry } from "./commands.js";
 import { KeyBindingRegistry } from "./keybinds.js";
@@ -57,6 +58,7 @@ export class TakumiApp {
 	private autoSaver: AutoSaver | null = null;
 	private resumeSessionId: string | undefined;
 	private activeCoder: CodingAgent | null = null;
+	private activeAutocycle: AutocycleAgent | null = null;
 	private vasanaRefreshInterval: ReturnType<typeof setInterval> | null = null;
 	private autoPr: boolean;
 	private autoShip: boolean;
@@ -196,6 +198,7 @@ export class TakumiApp {
 			void this.state.thinkingText.value;
 			void this.state.isStreaming.value;
 			void this.state.codingPhase.value;
+			void this.state.autocyclePhase.value;
 			void this.state.activeTool.value;
 			void this.state.toolOutput.value;
 			void this.state.dialogStack.value;
@@ -255,6 +258,11 @@ export class TakumiApp {
 		if (event.ctrl && event.key === "c") {
 			if (this.agentRunner?.isRunning) {
 				this.agentRunner.cancel();
+				return;
+			}
+			if (this.activeAutocycle?.isActive) {
+				this.activeAutocycle.cancel();
+				this.addInfoMessage("Autocycle cancelled.");
 				return;
 			}
 			void this.quit();
@@ -387,6 +395,10 @@ export class TakumiApp {
 			getActiveCoder: () => this.activeCoder,
 			setActiveCoder: (coder) => {
 				this.activeCoder = coder;
+			},
+			getActiveAutocycle: () => this.activeAutocycle,
+			setActiveAutocycle: (agent) => {
+				this.activeAutocycle = agent;
 			},
 		};
 	}

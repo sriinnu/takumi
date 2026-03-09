@@ -1,5 +1,6 @@
 // Agent loop
 
+export * from "./autocycle.js";
 // Phase 39 — Agent Checkpoint / Resume
 export type { Checkpoint, CheckpointManagerConfig } from "./checkpoint.js";
 export { AgentCheckpointManager } from "./checkpoint.js";
