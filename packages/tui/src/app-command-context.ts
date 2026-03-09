@@ -1,6 +1,7 @@
 import type { MessagePayload } from "@takumi/agent";
 import type { AgentEvent, SessionData, TakumiConfig, ToolDefinition } from "@takumi/core";
 import type { AgentRunner } from "./agent-runner.js";
+import type { AutocycleAgent } from "./autocycle-agent.js";
 import type { CodingAgent } from "./coding-agent.js";
 import type { SlashCommandRegistry } from "./commands.js";
 import type { AppState } from "./state.js";
@@ -32,4 +33,6 @@ export interface AppCommandContext {
 	quit(): Promise<void>;
 	getActiveCoder(): CodingAgent | null;
 	setActiveCoder(coder: CodingAgent | null): void;
+	getActiveAutocycle(): AutocycleAgent | null;
+	setActiveAutocycle(agent: AutocycleAgent | null): void;
 }

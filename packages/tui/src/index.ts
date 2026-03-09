@@ -4,6 +4,9 @@
 export { AgentRunner } from "./agent-runner.js";
 export type { TakumiAppOptions } from "./app.js";
 export { formatMessagesAsMarkdown, parseMouseEvent, TakumiApp } from "./app.js";
+export type { AutocycleAgentOptions } from "./autocycle-agent.js";
+// Autocycle agent
+export { AutocycleAgent } from "./autocycle-agent.js";
 export type { CodingPhase, CodingTask } from "./coding-agent.js";
 // Coding agent
 export { CodingAgent } from "./coding-agent.js";
