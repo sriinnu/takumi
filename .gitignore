@@ -46,3 +46,14 @@ package-lock.json
 Thumbs.db
 *.pdf
 *.tar.gz
+
+# Governance and planning (local-only)
+CLAUDE.md
+AGENTS.md
+TODO.md
+TAKUMI_MASTER_SPEC.md
+PHASE_17_20_COMPLETION.md
+PHASE_20_2_COMPLETION.md
+soul/
+docs/PHASE_20_PLAN.md
+docs/arxiv-research-2025-2026.md
