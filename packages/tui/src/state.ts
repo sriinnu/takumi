@@ -113,6 +113,12 @@ export class AppState {
 	// ── Coding agent ──────────────────────────────────────────────────────────
 	readonly codingPhase: Signal<string> = signal("idle");
 
+	// ── Autocycle agent ──────────────────────────────────────────────────────
+	readonly autocyclePhase: Signal<string> = signal("idle");
+	readonly autocycleIteration: Signal<number> = signal(0);
+	readonly autocycleMaxIterations: Signal<number> = signal(0);
+	readonly autocycleMetric: Signal<number | null> = signal(null);
+
 	// ── Cluster orchestration ─────────────────────────────────────────────────
 	/** Current cluster phase (PLANNING / EXECUTING / VALIDATING / FIXING / DONE). */
 	readonly clusterPhase: Signal<string> = signal("idle");
@@ -377,6 +383,10 @@ export class AppState {
 		this.previewFile.value = "";
 		this.previewVisible.value = false;
 		this.codingPhase.value = "idle";
+		this.autocyclePhase.value = "idle";
+		this.autocycleIteration.value = 0;
+		this.autocycleMaxIterations.value = 0;
+		this.autocycleMetric.value = null;
 		this.clusterPhase.value = "idle";
 		this.clusterId.value = null;
 		this.clusterAgentCount.value = 0;
