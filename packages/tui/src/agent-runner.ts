@@ -23,6 +23,7 @@ import {
 import type { AgentEvent, Message, PermissionDecision, TakumiConfig, ToolDefinition } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import { hydrateRunnerCognition, materializeWorkspaceDirectives } from "./agent-runner-cognition.js";
+import { getBoundSessionId } from "./chitragupta-executor-runtime.js";
 import type { AppState } from "./state.js";
 
 const log = createLogger("agent-runner");
@@ -139,7 +140,7 @@ export class AgentRunner {
 
 			// Phase 49 — observation collector for Chitragupta intelligence
 			const collector = this.state.sessionId.value
-				? new ObservationCollector({ sessionId: this.state.sessionId.value })
+				? new ObservationCollector({ sessionId: getBoundSessionId(this.state) })
 				: undefined;
 			const selectedModel = this.state.model.value.trim() || undefined;
 

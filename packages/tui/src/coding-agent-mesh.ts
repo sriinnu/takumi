@@ -7,6 +7,7 @@ import {
 } from "@takumi/agent";
 import type { ChitraguptaObserver } from "@takumi/bridge";
 import type { OrchestrationConfig } from "@takumi/core";
+import { DEFAULT_SABHA_ASKER, DEFAULT_SABHA_CONVENER, DEFAULT_SABHA_PARTICIPANTS } from "./sabha-defaults.js";
 import type { AppState } from "./state.js";
 
 interface PrepareMeshClusterInput {
@@ -40,13 +41,9 @@ export async function maybeEscalateMeshSabha(
 	if (!observer) return false;
 	const result = await observer.sabhaAsk({
 		topic: reason ? `${topic}\n\nReason: ${reason}` : topic,
-		convener: "takumi",
-		askerId: "takumi.mesh",
-		participants: [
-			{ id: "planner", role: "planner", expertise: 0.9, credibility: 0.8 },
-			{ id: "validator", role: "validator", expertise: 0.95, credibility: 0.9 },
-			{ id: "scarlett", role: "integrity", expertise: 1, credibility: 1 },
-		],
+		convener: DEFAULT_SABHA_CONVENER,
+		askerId: DEFAULT_SABHA_ASKER,
+		participants: DEFAULT_SABHA_PARTICIPANTS,
 	});
 	return Boolean(result?.sabha.id);
 }

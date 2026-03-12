@@ -1,4 +1,5 @@
 import type { CapabilityDescriptor, CapabilityHealthSnapshot, CapabilityHealthState } from "./control-plane.js";
+import { TAKUMI_EXEC_PARENT_CONTRACT } from "./takumi-exec-contract.js";
 
 export interface BuildTakumiCapabilityHealthOptions {
 	state?: CapabilityHealthState;
@@ -22,11 +23,11 @@ export const TAKUMI_CAPABILITY: CapabilityDescriptor = {
 	health: "healthy",
 	invocation: {
 		id: "takumi-agent-loop",
-		transport: "inproc",
-		entrypoint: "@takumi/agent/loop",
-		requestShape: "RoutingRequest + coding session context",
-		responseShape: "AgentEvent stream + execution report",
-		timeoutMs: 120_000,
+		transport: "local-process",
+		entrypoint: `${TAKUMI_EXEC_PARENT_CONTRACT.binaryEnv || "TAKUMI_EXEC_BIN"}|takumi exec --headless --stream=ndjson`,
+		requestShape: "TakumiExecRequest",
+		responseShape: `${TAKUMI_EXEC_PARENT_CONTRACT.protocol} envelopes`,
+		timeoutMs: TAKUMI_EXEC_PARENT_CONTRACT.timeoutMs,
 		streaming: true,
 	},
 	tags: ["coding", "executor", "verification", "privileged"],
@@ -34,6 +35,9 @@ export const TAKUMI_CAPABILITY: CapabilityDescriptor = {
 	metadata: {
 		runtime: "takumi",
 		adapter: true,
+		execProtocol: TAKUMI_EXEC_PARENT_CONTRACT.protocol,
+		execSchemaVersion: TAKUMI_EXEC_PARENT_CONTRACT.schemaVersion,
+		execBinaryCandidates: [...TAKUMI_EXEC_PARENT_CONTRACT.binaryCandidates],
 	},
 };
 

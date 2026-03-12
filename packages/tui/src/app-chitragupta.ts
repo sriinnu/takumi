@@ -3,6 +3,7 @@ import { ChitraguptaBridge, ChitraguptaObserver } from "@takumi/bridge";
 import { createLogger } from "@takumi/core";
 import type { AgentRunner } from "./agent-runner.js";
 import { buildTelemetryCognition, upsertPatternMatch } from "./app-chitragupta-cognition.js";
+import { ensureCanonicalSessionBinding, getBoundSessionId } from "./chitragupta-executor-runtime.js";
 import { normalizePredictions } from "./chitragupta-notification-helpers.js";
 import {
 	enqueueDirective,
@@ -45,7 +46,7 @@ function subscribeToNotifications(
 
 			if (agentRunner?.isRunning && (type === "loop_detected" || suggestion === "abort")) {
 				agentRunner.cancel();
-				const sessionId = state.sessionId.value || "takumi-live";
+				const sessionId = getBoundSessionId(state);
 				void observer
 					.healReport({
 						anomalyType: type,
@@ -164,6 +165,7 @@ function subscribeToNotifications(
 		},
 		onSabhaConsult: (params) => {
 			const sabhaId = String(params.sabhaId ?? "");
+			if (sabhaId) state.lastSabhaId.value = sabhaId;
 			const question = typeof params.question === "string" ? params.question : "Provide council input to Chitragupta.";
 			const convener = typeof params.convener === "string" ? params.convener : "chitragupta";
 			log.info(`Chitragupta sabha consult ${sabhaId || "(new)"}: ${question}`);
@@ -177,6 +179,7 @@ function subscribeToNotifications(
 		},
 		onSabhaUpdated: (params) => {
 			const sabhaId = String(params.sabhaId ?? "");
+			if (sabhaId) state.lastSabhaId.value = sabhaId;
 			const event = String(params.event ?? "updated");
 			const topic = typeof params.sabha?.topic === "string" ? params.sabha.topic : sabhaId || "sabha";
 			log.info(`Chitragupta sabha updated ${sabhaId || "(unknown)"}: ${event}`);
@@ -197,10 +200,12 @@ function subscribeToNotifications(
 			});
 		},
 		onSabhaRecorded: (params) => {
+			if (params.sabhaId) state.lastSabhaId.value = String(params.sabhaId);
 			log.info(`Chitragupta sabha recorded ${String(params.sabhaId ?? "")}: ${String(params.decisionId ?? "")}`);
 		},
 		onSabhaEscalated: (params) => {
 			const sabhaId = String(params.sabhaId ?? "");
+			if (sabhaId) state.lastSabhaId.value = sabhaId;
 			const reason = typeof params.reason === "string" ? params.reason : "Escalated by Chitragupta.";
 			log.warn(`Chitragupta sabha escalated ${sabhaId || "(unknown)"}: ${reason}`);
 			if (agentRunner?.isRunning && !wasRecentlyHandled(`sabha-escalated:${sabhaId}:${reason}`)) {
@@ -270,6 +275,7 @@ export function connectChitragupta(
 			const observer = new ChitraguptaObserver(bridge);
 			state.chitraguptaObserver.value = observer;
 			subscribeToNotifications(state, observer, agentRunner);
+			await ensureCanonicalSessionBinding(state);
 			try {
 				const capabilities = await observer.capabilities({ includeDegraded: true, includeDown: true, limit: 25 });
 				state.controlPlaneCapabilities.value = mergeControlPlaneCapabilities(capabilities.capabilities);

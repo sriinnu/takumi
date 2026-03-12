@@ -49,6 +49,10 @@ export const agentStartDefinition: ToolDefinition = {
 				type: "string",
 				description: "A clear description of the task for the side agent to perform.",
 			},
+			initialPrompt: {
+				type: "string",
+				description: "Optional prompt to send immediately after the side-agent lane boots.",
+			},
 			model: {
 				type: "string",
 				description: "LLM model to use for the side agent (uses default if omitted).",
@@ -63,6 +67,7 @@ export const agentStartDefinition: ToolDefinition = {
 export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 	return async (input) => {
 		const description = input.description as string;
+		const initialPrompt = input.initialPrompt as string | undefined;
 		const model = (input.model as string | undefined) ?? deps.defaultModel ?? "claude-sonnet";
 
 		if (!description) {
@@ -103,9 +108,15 @@ export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 		const win = await deps.tmux.createWindow(id, slot.path);
 		deps.agents.transition(id, "starting");
 
+		if (initialPrompt?.trim()) {
+			await deps.tmux.sendKeys(id, initialPrompt.trim());
+		}
+
+		deps.agents.transition(id, "running");
+
 		const result = {
 			id,
-			status: "starting",
+			status: "running",
 			worktree: slot.path,
 			branch: slot.branch,
 			tmuxWindow: win.windowName,

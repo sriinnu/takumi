@@ -26,9 +26,15 @@ The important distinction: **not every document here describes fully shipped beh
 ### Current implementation + near-term architecture
 
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — current system shape plus future direction
+- [`review-packet.md`](./review-packet.md) — short executive review packet with live-vs-directional status, decision log, and architecture sequence
 - [`orchestration.md`](./orchestration.md) — cluster, mesh, Lucy, Scarlett, and runtime orchestration
 - [`validation.md`](./validation.md) — blind validation model and aggregation
 - [`control-plane-spec.md`](./control-plane-spec.md) — target control-plane model and what is already wired
+- [`agent-hub-boundary.md`](./agent-hub-boundary.md) — concrete Chitragupta ↔ Takumi ↔ Scarlett ownership handoff
+- [`takumi-executor-backlog-implementation-note.md`](./takumi-executor-backlog-implementation-note.md) — exact mapping from executor backlog bullets to shipped code
+- [`chitragupta-takumi-exec-handoff.md`](./chitragupta-takumi-exec-handoff.md) — parent-side Takumi spawn/IPC handoff
+- [`cli-adapter-contract.md`](./cli-adapter-contract.md) — reusable local-process adapter contract for any CLI
+- [`ui-ux-roadmap.md`](./ui-ux-roadmap.md) — current terminal-first UX reality and the path to a stronger visual operator experience
 - [`checkpoints.md`](./checkpoints.md) — checkpoint and resume behavior
 
 ### Performance and diagrams

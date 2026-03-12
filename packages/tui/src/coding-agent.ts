@@ -10,6 +10,11 @@ import type { Message, OrchestrationConfig, ToolDefinition } from "@takumi/core"
 import { createLogger } from "@takumi/core";
 import { effect } from "@takumi/render";
 import type { AgentRunner } from "./agent-runner.js";
+import {
+	ensureCanonicalSessionBinding,
+	getBoundSessionId,
+	observeExecutorEvents,
+} from "./chitragupta-executor-runtime.js";
 import { handleClusterCommand } from "./coding-agent-cluster-command.js";
 import { createPullRequestViaGh } from "./coding-agent-gh.js";
 import { maybeEscalateMeshSabha, maybeEscalateWeakConsensusToSabha, prepareMeshCluster } from "./coding-agent-mesh.js";
@@ -138,6 +143,9 @@ export class CodingAgent {
 	}
 
 	async start(description: string, forceMode?: "single" | "multi"): Promise<void> {
+		await ensureCanonicalSessionBinding(this.state);
+		const boundSessionId = getBoundSessionId(this.state);
+		const runId = `code-${Date.now().toString(36)}`;
 		let orchestrationMode: "single" | "multi" = "single";
 		let complexity: TaskComplexity | undefined;
 		let classificationResult: ClassificationResult | null = null;
@@ -151,7 +159,7 @@ export class CodingAgent {
 				complexity = result.classification.complexity;
 				const routingPlan = await resolveRoutingOverrides({
 					observer: this.state.chitraguptaObserver.value,
-					sessionId: this.state.sessionId.value,
+					sessionId: boundSessionId,
 					currentModel: this.state.model.value,
 					router: this.classifier.router,
 					classification: result.classification,
@@ -258,6 +266,21 @@ export class CodingAgent {
 
 		this.state.codingPhase.value = "planning";
 		this.addSystemMessage(`Starting coding task (${orchestrationMode} mode): ${description}`);
+		await observeExecutorEvents(this.state, [
+			{
+				type: "executor_run",
+				runId,
+				status: "started",
+				sessionId: boundSessionId,
+				projectPath: process.cwd(),
+				mode: orchestrationMode,
+				description,
+				laneIds: Object.values(this.state.routingDecisions.value)
+					.map((decision) => decision.selected?.id)
+					.filter((value): value is string => Boolean(value)),
+				timestamp: Date.now(),
+			},
+		]);
 
 		try {
 			if (orchestrationMode === "multi" && this.orchestrator && this.task.clusterId) {
@@ -321,6 +344,39 @@ export class CodingAgent {
 			this.task.phase = "done";
 			this.state.codingPhase.value = "done";
 			this.addSystemMessage("Coding task complete!");
+			await observeExecutorEvents(this.state, [
+				{
+					type: "executor_artifact",
+					artifactType: "summary",
+					sessionId: boundSessionId,
+					projectPath: process.cwd(),
+					summary: description,
+					metadata: {
+						orchestrationMode,
+						clusterId: this.task.clusterId,
+						validationAttempts: this.task.validationAttempt ?? 0,
+					},
+					timestamp: Date.now(),
+				},
+				{
+					type: "executor_run",
+					runId,
+					status: "completed",
+					sessionId: boundSessionId,
+					projectPath: process.cwd(),
+					mode: orchestrationMode,
+					description,
+					artifacts: ["summary"],
+					validationStatus:
+						(this.task.validationResults?.length ?? 0) === 0
+							? "not-run"
+							: this.task.validationResults?.some((result) => result.decision === "REJECT")
+								? "failed"
+								: "passed",
+					timestamp: Date.now(),
+				},
+			]);
+			await this.recordSabhaOutcome(boundSessionId, 0.85);
 			if (this.options.autoPr || this.options.autoShip) {
 				await createPullRequestViaGh(
 					this.task?.description ?? "Automated changes",
@@ -334,6 +390,29 @@ export class CodingAgent {
 			this.task.phase = "idle";
 			this.state.codingPhase.value = "idle";
 			this.addSystemMessage(`Coding task failed: ${message}`);
+			await observeExecutorEvents(this.state, [
+				{
+					type: "executor_artifact",
+					artifactType: "postmortem",
+					sessionId: boundSessionId,
+					projectPath: process.cwd(),
+					summary: message,
+					timestamp: Date.now(),
+				},
+				{
+					type: "executor_run",
+					runId,
+					status: "failed",
+					sessionId: boundSessionId,
+					projectPath: process.cwd(),
+					mode: orchestrationMode,
+					description,
+					artifacts: ["postmortem"],
+					validationStatus: "failed",
+					timestamp: Date.now(),
+				},
+			]);
+			await this.recordSabhaOutcome(boundSessionId, 0.35);
 			log.error("Coding task failed", err);
 		} finally {
 			if (this.orchestrator && this.task?.clusterId) {
@@ -433,5 +512,25 @@ export class CodingAgent {
 			timestamp: Date.now(),
 		};
 		this.state.addMessage(msg);
+	}
+
+	private async recordSabhaOutcome(sessionId: string, confidence: number): Promise<void> {
+		const sabhaId = this.state.lastSabhaId.value;
+		const observer = this.state.chitraguptaObserver.value;
+		if (!sabhaId || !observer) {
+			return;
+		}
+
+		try {
+			await observer.sabhaRecord({
+				id: sabhaId,
+				sessionId,
+				project: process.cwd(),
+				category: "executor-run",
+				confidence,
+			});
+		} catch (error) {
+			log.debug(`Failed to record Sabha executor outcome: ${(error as Error).message}`);
+		}
 	}
 }

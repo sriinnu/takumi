@@ -130,6 +130,8 @@ Examples:
 | `embedding.index-build` | embedding generation for indexing |
 | `agent.delegate.takumi` | explicit route into Takumi as executor |
 | `agent.delegate.cli-claude` | explicit route into a CLI-backed agent lane |
+| `agent.delegate.cli-codex` | explicit route into Codex CLI |
+| `agent.delegate.cli-aider` | explicit route into Aider |
 
 Rules:
 
@@ -299,16 +301,133 @@ export const TAKUMI_CAPABILITY: CapabilityDescriptor = {
 	health: "healthy",
 	invocation: {
 		id: "takumi-agent-loop",
-		transport: "inproc",
-		entrypoint: "@takumi/agent/loop",
-		requestShape: "RoutingRequest + coding session context",
-		responseShape: "AgentEvent stream + execution report",
+		transport: "local-process",
+		entrypoint: "TAKUMI_EXEC_BIN|takumi exec --headless --stream=ndjson",
+		requestShape: "TakumiExecRequest",
+		responseShape: "takumi.exec.v1 NDJSON envelopes",
 		timeoutMs: 120_000,
 		streaming: true,
 	},
 	tags: ["coding", "executor", "verification", "privileged"],
 };
 ```
+
+### Parent-side spawn / IPC contract
+
+When Chitragupta selects `adapter.takumi.executor`, it should invoke Takumi as a
+local process instead of assuming an in-proc module boundary.
+
+Recommended parent contract:
+
+```ts
+export interface TakumiExecRequest {
+	prompt: string;
+	cwd: string;
+	issue?: string;
+	provider?: string;
+	model?: string;
+	fallbackProvider?: string;
+	chitraguptaSocketPath?: string;
+}
+```
+
+Spawn shape:
+
+```text
+command:  $TAKUMI_EXEC_BIN || "takumi"
+args:     ["exec", "--headless", "--stream=ndjson", <prompt>, ...optional flags]
+cwd:      request.cwd
+stdout:   takumi.exec.v1 NDJSON envelopes only
+stderr:   human-readable diagnostics
+env:      CHITRAGUPTA_PROJECT=request.cwd, optional CHITRAGUPTA_SOCKET override
+timeout:  120_000ms by default
+```
+
+Contract rules:
+
+1. parent parses stdout line-by-line as NDJSON
+2. parent ignores stderr for protocol purposes and treats it as diagnostics only
+3. parent treats a missing final `run_completed|run_failed` envelope as transport failure
+4. parent maps exit codes using the published `EXEC_EXIT_CODES` contract
+5. parent may retry transport failures, but should not blindly retry `config` or `usage` failures
+
+Binary discovery order:
+
+1. `TAKUMI_EXEC_BIN`
+2. `takumi` on `$PATH`
+
+This keeps Takumi swappable at the process boundary while still giving
+Chitragupta a typed contract for orchestration.
+
+### Other CLI-backed coding lanes
+
+Takumi should not be the only local-process coding adapter in the registry.
+Chitragupta can also represent common CLI executors as first-class capabilities:
+
+```ts
+export const CLAUDE_CLI_CAPABILITY: CapabilityDescriptor = {
+	id: "cli.claude",
+	kind: "cli",
+	label: "Claude CLI Executor",
+	capabilities: ["coding.patch-cheap", "coding.review.strict", "agent.delegate.cli-claude"],
+	costClass: "low",
+	trust: "local",
+	health: "healthy",
+	invocation: {
+		id: "anthropic-cli-adapter",
+		transport: "local-process",
+		entrypoint: "CLAUDE_EXEC_BIN|claude",
+		requestShape: "CliAdapterRequest",
+		responseShape: "text",
+		timeoutMs: 60_000,
+		streaming: false,
+	},
+	tags: ["cli", "coding", "anthropic", "local"],
+};
+
+export const CODEX_CLI_CAPABILITY: CapabilityDescriptor = {
+	id: "cli.codex",
+	kind: "cli",
+	label: "Codex CLI Executor",
+	capabilities: ["coding.patch-cheap", "coding.review.strict", "agent.delegate.cli-codex"],
+	costClass: "low",
+	trust: "local",
+	health: "healthy",
+	invocation: {
+		id: "openai-cli-adapter",
+		transport: "local-process",
+		entrypoint: "CODEX_EXEC_BIN|codex",
+		requestShape: "CliAdapterRequest",
+		responseShape: "text",
+		timeoutMs: 60_000,
+		streaming: false,
+	},
+	tags: ["cli", "coding", "openai", "local"],
+};
+
+export const AIDER_CLI_CAPABILITY: CapabilityDescriptor = {
+	id: "cli.aider",
+	kind: "cli",
+	label: "Aider CLI Executor",
+	capabilities: ["coding.patch-cheap", "agent.delegate.cli-aider"],
+	costClass: "low",
+	trust: "local",
+	health: "healthy",
+	invocation: {
+		id: "aider-cli-adapter",
+		transport: "local-process",
+		entrypoint: "AIDER_EXEC_BIN|aider",
+		requestShape: "CliAdapterRequest",
+		responseShape: "text",
+		timeoutMs: 90_000,
+		streaming: false,
+	},
+	tags: ["cli", "coding", "aider", "local"],
+};
+```
+
+These should use the generic `CliAdapterContract` shape unless a specific CLI
+exposes a richer structured protocol.
 
 ## Vaayu representation
 

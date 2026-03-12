@@ -1,6 +1,23 @@
 import type { CliArgs } from "./types.js";
 
-const SUBCOMMANDS = ["list", "status", "logs", "export", "delete", "jobs", "watch", "attach", "stop", "daemon", "doctor", "platform", "package"];
+const SUBCOMMANDS = ["exec", "list", "status", "logs", "export", "delete", "jobs", "watch", "attach", "stop", "daemon", "doctor", "platform", "package"];
+
+function parseStreamFormat(value: string | undefined): CliArgs["stream"] {
+	if (value === "ndjson" || value === "text") {
+		return value;
+	}
+	return undefined;
+}
+
+function assignStreamFormat(args: CliArgs, value: string | undefined): void {
+	const parsed = parseStreamFormat(value);
+	if (parsed) {
+		args.stream = parsed;
+		args.invalidStream = undefined;
+		return;
+	}
+	args.invalidStream = value;
+}
 
 export function parseArgs(argv: string[]): CliArgs {
 	const args: CliArgs = {
@@ -20,6 +37,13 @@ export function parseArgs(argv: string[]): CliArgs {
 	let i = 2;
 	while (i < argv.length) {
 		const arg = argv[i];
+
+		if (arg.startsWith("--stream=")) {
+			assignStreamFormat(args, arg.slice("--stream=".length));
+			i++;
+			continue;
+		}
+
 		switch (arg) {
 			case "--help":
 			case "-h":
@@ -77,6 +101,9 @@ export function parseArgs(argv: string[]): CliArgs {
 			case "--print":
 				args.print = true;
 				break;
+			case "--headless":
+				args.headless = true;
+				break;
 			case "--resume":
 			case "-r":
 				args.resume = argv[++i];
@@ -96,10 +123,7 @@ export function parseArgs(argv: string[]): CliArgs {
 				args.detach = true;
 				break;
 			case "--stream":
-				const format = argv[++i];
-				if (format === "ndjson" || format === "text") {
-					args.stream = format;
-				}
+				assignStreamFormat(args, argv[++i]);
 				break;
 			case "--issue":
 			case "-i":
@@ -117,7 +141,9 @@ export function parseArgs(argv: string[]): CliArgs {
 
 	if (args.prompt.length > 0 && SUBCOMMANDS.includes(args.prompt[0])) {
 		args.subcommand = args.prompt.shift();
-		args.subcommandArg = args.prompt.shift();
+		if (args.subcommand !== "exec") {
+			args.subcommandArg = args.prompt.shift();
+		}
 	}
 
 	return args;

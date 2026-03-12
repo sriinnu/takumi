@@ -129,6 +129,9 @@ takumi --provider ollama
 
 # one-shot stdout mode
 takumi --print "summarize this repository"
+
+# headless automation / IPC mode
+takumi exec --headless --stream=ndjson "fix the login bug"
 ```
 
 After Takumi is running, you can switch runtimes from inside the app with `/provider` and `/model`.
@@ -190,6 +193,15 @@ That means the current bridge story is:
 Takumi → daemon socket (preferred) → stdio MCP fallback
 ```
 
+The new headless `exec` path uses the same daemon-first bootstrap and emits a
+stable NDJSON protocol envelope stream (`takumi.exec.v1`) so external
+orchestrators can parse:
+
+- run start
+- Chitragupta bootstrap status
+- streamed agent events
+- final completion or failure
+
 ## CLI surface
 
 The current CLI supports:
@@ -197,6 +209,7 @@ The current CLI supports:
 ```text
 takumi [prompt...]
 takumi --print [prompt...]
+takumi exec [prompt...]
 takumi list
 takumi status <id>
 takumi logs <id>
@@ -219,6 +232,8 @@ Useful flags include:
 - `--api-key <key>`
 - `--endpoint <url>`
 - `--proxy <url>`
+- `--headless`
+- `--stream <text|ndjson>`
 - `--resume <id>`
 - `--detach`
 - `--issue <url|#n>`
@@ -236,6 +251,7 @@ Run `takumi --help` for the canonical live surface.
 | `takumi --help` | confirm installed CLI surface |
 | `takumi` | start the full TUI |
 | `takumi --print "..."` | run one-shot output without the TUI |
+| `takumi exec --headless --stream=ndjson "..."` | drive Takumi from another process with structured events |
 | `takumi doctor --json` | inspect environment and runtime readiness |
 | `takumi package list` | verify package discovery |
 
@@ -433,7 +449,13 @@ Start here:
 - [`docs/README.md`](docs/README.md) — user docs map and status guide
 - [`docs/KEYBINDINGS.md`](docs/KEYBINDINGS.md) — current user reference
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — current + target architecture overview
+- [`docs/review-packet.md`](docs/review-packet.md) — executive architecture/review packet for serious design discussions
+- [`docs/agent-hub-boundary.md`](docs/agent-hub-boundary.md) — who owns the agent hub vs execution vs integrity supervision
+- [`docs/takumi-executor-backlog-implementation-note.md`](docs/takumi-executor-backlog-implementation-note.md) — backlog-to-code mapping for the executor retrofit
 - [`docs/orchestration.md`](docs/orchestration.md) — cluster and mesh execution model
+- [`docs/chitragupta-takumi-exec-handoff.md`](docs/chitragupta-takumi-exec-handoff.md) — parent-side spawn contract for Chitragupta
+- [`docs/cli-adapter-contract.md`](docs/cli-adapter-contract.md) — generic contract for delegated CLIs
+- [`docs/ui-ux-roadmap.md`](docs/ui-ux-roadmap.md) — where the UX goes beyond today’s terminal-first operator surface
 - [`docs/packages.md`](docs/packages.md) — Takumi package lifecycle
 
 ## Development

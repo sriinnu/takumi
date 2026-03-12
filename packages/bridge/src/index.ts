@@ -1,3 +1,11 @@
+export type {
+	ExecBootstrapSnapshot,
+	ExecProtocolEvent,
+	ExecRunCompletedEvent,
+	ExecRunFailedEvent,
+	ExecRunStartedEvent,
+} from "@takumi/core";
+export { EXEC_EXIT_CODES, EXEC_PROTOCOL, EXEC_PROTOCOL_VERSION } from "@takumi/core";
 export { ChitraguptaBridge } from "./chitragupta.js";
 export type { NotificationCallbacks } from "./chitragupta-observe.js";
 export { subscribeNotifications } from "./chitragupta-observe.js";
@@ -42,6 +50,32 @@ export type {
 	VidhiMatch,
 } from "./chitragupta-types.js";
 export type {
+	CliAdapterContract,
+	CliAdapterRequest,
+	CliAdapterRetryPolicy,
+	CliAdapterSpawnPlan,
+	CliOutputProtocol,
+	CliStderrMode,
+} from "./cli-adapter-contract.js";
+export { buildCliAdapterSpawnPlan, resolveCliAdapterCommand } from "./cli-adapter-contract.js";
+export type {
+	BuildCliCapabilityHealthOptions,
+	BuildCliCapabilityOptions,
+	DefaultLocalCodingCapabilitiesOptions,
+} from "./cli-capabilities.js";
+export {
+	AIDER_CLI_CAPABILITY,
+	AIDER_CLI_CONTRACT,
+	buildCliCapability,
+	buildCliCapabilityHealth,
+	CLAUDE_CLI_CAPABILITY,
+	CLAUDE_CLI_CONTRACT,
+	CODEX_CLI_CAPABILITY,
+	CODEX_CLI_CONTRACT,
+	DEFAULT_CLI_CAPABILITIES,
+	getDefaultLocalCodingCapabilities,
+} from "./cli-capabilities.js";
+export type {
 	CapabilityDescriptor,
 	CapabilityHealthSnapshot,
 	CapabilityHealthState,
@@ -53,6 +87,9 @@ export type {
 	CredentialAccessEvent,
 	CredentialProvider,
 	CredentialRef,
+	ExecutionLaneAuthority,
+	ExecutionLaneEnforcement,
+	ExecutionLaneEnvelope,
 	InvocationContract,
 	InvocationTransport,
 	RoutingDecision,
@@ -151,5 +188,30 @@ export type { RecoveredSession } from "./session-recovery.js";
 export { forkSessionAtTurn, reconstructFromDaemon } from "./session-recovery.js";
 export type { BuildTakumiCapabilityHealthOptions } from "./takumi-capability.js";
 export { buildTakumiCapabilityHealth, TAKUMI_CAPABILITY } from "./takumi-capability.js";
+export type {
+	TakumiExecParentContract,
+	TakumiExecRequest,
+	TakumiExecSpawnPlan,
+} from "./takumi-exec-contract.js";
+export {
+	buildTakumiExecArgs,
+	buildTakumiExecSpawnPlan,
+	isTakumiExecEvent,
+	resolveTakumiExecCommand,
+	TAKUMI_EXEC_BINARY_CANDIDATES,
+	TAKUMI_EXEC_BINARY_ENV,
+	TAKUMI_EXEC_DEFAULT_TIMEOUT_MS,
+	TAKUMI_EXEC_PARENT_CONTRACT,
+} from "./takumi-exec-contract.js";
+export type {
+	TakumiExecRunnerOptions,
+	TakumiExecRunResult,
+	TakumiExecTerminalEvent,
+} from "./takumi-exec-runner.js";
+export {
+	isTakumiExecTerminalEvent,
+	runTakumiExec,
+	TakumiExecTransportError,
+} from "./takumi-exec-runner.js";
 export { telemetryCleanup, telemetryHeartbeat, telemetrySnapshot } from "./telemetry.js";
 export { messageToTurn, turnsToMessages, turnToMessage } from "./turn-mapper.js";

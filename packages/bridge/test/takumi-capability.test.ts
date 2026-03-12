@@ -6,6 +6,8 @@ describe("takumi capability", () => {
 		expect(TAKUMI_CAPABILITY.id).toBe("adapter.takumi.executor");
 		expect(TAKUMI_CAPABILITY.capabilities).toContain("coding.patch-and-validate");
 		expect(TAKUMI_CAPABILITY.providerFamily).toBe("takumi");
+		expect(TAKUMI_CAPABILITY.invocation.transport).toBe("local-process");
+		expect(TAKUMI_CAPABILITY.invocation.responseShape).toContain("takumi.exec.v1");
 	});
 
 	it("builds healthy snapshots with sensible defaults", () => {

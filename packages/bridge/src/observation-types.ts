@@ -62,13 +62,43 @@ export interface PreferenceEvent {
 	timestamp: number;
 }
 
+/** Structured executor run state — emitted for Takumi executor lifecycle milestones. */
+export interface ExecutorRunEvent {
+	type: "executor_run";
+	runId: string;
+	status: "started" | "completed" | "failed";
+	sessionId: string;
+	projectPath: string;
+	mode: "single" | "multi" | "headless";
+	description: string;
+	artifacts?: string[];
+	filesChanged?: string[];
+	laneIds?: string[];
+	validationStatus?: "not-run" | "passed" | "failed" | "mixed";
+	timestamp: number;
+}
+
+/** Structured executor artifact emitted back to the hub for later recall/policy checks. */
+export interface ExecutorArtifactEvent {
+	type: "executor_artifact";
+	artifactType: "plan" | "validation" | "summary" | "handoff" | "postmortem" | "exec-result";
+	sessionId: string;
+	projectPath: string;
+	summary: string;
+	path?: string;
+	metadata?: Record<string, unknown>;
+	timestamp: number;
+}
+
 /** Union of all observation event types. */
 export type ObservationEvent =
 	| ToolUsageEvent
 	| ErrorResolutionEvent
 	| EditPatternEvent
 	| UserCorrectionEvent
-	| PreferenceEvent;
+	| PreferenceEvent
+	| ExecutorRunEvent
+	| ExecutorArtifactEvent;
 
 /** observe.batch() result */
 export interface ObserveBatchResult {

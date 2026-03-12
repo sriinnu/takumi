@@ -24,7 +24,7 @@ export async function resolveRoutingOverrides({
 	classification,
 }: ResolveRoutingOverridesOptions): Promise<RoutingOverridePlan> {
 	if (!observer) {
-		return { overrides: {}, decisions: [], notes: [] };
+		return { overrides: {}, laneEnvelopes: {}, decisions: [], notes: [] };
 	}
 
 	if (!router || !classification) {
@@ -49,7 +49,7 @@ async function resolveLegacyRoutingOverrides(
 		resolveLegacyPlan(observer, currentModel, [AgentRole.WORKER], {
 			consumer: "takumi",
 			sessionId: sessionId ?? "transient",
-			capability: "coding.patch-and-validate",
+			capability: "coding.patch-cheap",
 			constraints: { preferLocal: true, requireStreaming: true },
 			context: { mode: "multi-agent", role: "worker" },
 		}),
@@ -67,7 +67,7 @@ async function resolveLegacyRoutingOverrides(
 			{
 				consumer: "takumi",
 				sessionId: sessionId ?? "transient",
-				capability: "chat.high-reliability",
+				capability: "coding.review.strict",
 				constraints: { requireStreaming: true },
 				context: { mode: "multi-agent", role: "coordination" },
 			},
@@ -77,10 +77,11 @@ async function resolveLegacyRoutingOverrides(
 	return plans.reduce<RoutingOverridePlan>(
 		(acc, plan) => ({
 			overrides: { ...acc.overrides, ...plan.overrides },
+			laneEnvelopes: { ...acc.laneEnvelopes, ...plan.laneEnvelopes },
 			decisions: [...acc.decisions, ...plan.decisions],
 			notes: [...acc.notes, ...plan.notes],
 		}),
-		{ overrides: {}, decisions: [], notes: [] },
+		{ overrides: {}, laneEnvelopes: {}, decisions: [], notes: [] },
 	);
 }
 
@@ -92,17 +93,40 @@ async function resolveLegacyPlan(
 ): Promise<RoutingOverridePlan> {
 	const decision = await observer.routeResolve(request);
 	if (!decision?.selected) {
-		return { overrides: {}, decisions: decision ? [decision] : [], notes: [] };
+		return { overrides: {}, laneEnvelopes: {}, decisions: decision ? [decision] : [], notes: [] };
 	}
 
 	const notes = [`Engine route ${request.capability} → ${decision.selected.id}`];
 	const model = extractLegacyOverrideModel(decision, currentModel);
 	if (!model) {
-		return { overrides: {}, decisions: [decision], notes };
+		return { overrides: {}, laneEnvelopes: {}, decisions: [decision], notes };
 	}
+	const selected = decision.selected;
 
 	return {
 		overrides: Object.fromEntries(roles.map((role) => [role, model])) as Partial<Record<AgentRole, string>>,
+		laneEnvelopes: Object.fromEntries(
+			roles.map((role) => [
+				role,
+				{
+					consumer: request.consumer,
+					sessionId: request.sessionId,
+					role,
+					capability: request.capability,
+					authority: "engine",
+					enforcement: "same-provider",
+					selectedCapabilityId: selected.id,
+					selectedProviderFamily: selected.providerFamily,
+					selectedModel: model,
+					fallbackModel: model,
+					appliedModel: model,
+					degraded: decision.degraded,
+					reason: decision.reason,
+					fallbackChain: decision.fallbackChain,
+					policyTrace: decision.policyTrace,
+				},
+			]),
+		) as RoutingOverridePlan["laneEnvelopes"],
 		decisions: [decision],
 		notes,
 	};
@@ -149,6 +173,8 @@ function normalizeProviderFamily(value?: string): ReturnType<typeof inferProvide
 		case "mistral":
 		case "together":
 			return "openai-compat";
+		case "darpana":
+			return null;
 		default:
 			return null;
 	}

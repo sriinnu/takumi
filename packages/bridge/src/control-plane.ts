@@ -84,6 +84,34 @@ export interface RoutingDecision {
 	degraded: boolean;
 }
 
+export type ExecutionLaneAuthority = "engine" | "takumi-fallback";
+
+export type ExecutionLaneEnforcement = "same-provider" | "capability-only";
+
+/**
+ * Durable executor-side lane envelope derived from an engine routing decision.
+ *
+ * Takumi may still need a local fallback model, but that fallback is recorded as
+ * part of the envelope rather than replacing the control-plane decision.
+ */
+export interface ExecutionLaneEnvelope {
+	consumer: string;
+	sessionId: string;
+	role: string;
+	capability: string;
+	authority: ExecutionLaneAuthority;
+	enforcement: ExecutionLaneEnforcement;
+	selectedCapabilityId?: string;
+	selectedProviderFamily?: string;
+	selectedModel?: string;
+	fallbackModel: string;
+	appliedModel: string;
+	degraded: boolean;
+	reason: string;
+	fallbackChain: string[];
+	policyTrace: string[];
+}
+
 export interface CapabilityQuery {
 	capability?: string;
 	kinds?: CapabilityKind[];
