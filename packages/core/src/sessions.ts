@@ -204,8 +204,9 @@ export function createAutoSaver(
 	interval = 30_000,
 	sessionsDir?: string,
 ): AutoSaver {
-	let timer: ReturnType<typeof setInterval> | null = null;
+	let timer: ReturnType<typeof setTimeout> | null = null;
 	let inFlight: Promise<void> | null = null;
+	let stopped = false;
 
 	const save = async (): Promise<void> => {
 		if (inFlight) {
@@ -228,19 +229,32 @@ export function createAutoSaver(
 		return inFlight;
 	};
 
-	timer = setInterval(() => {
-		void save();
-	}, interval);
+	const unrefTimer = () => {
+		if (timer && typeof timer === "object" && "unref" in timer) {
+			timer.unref();
+		}
+	};
 
-	if (timer && typeof timer === "object" && "unref" in timer) {
-		timer.unref();
-	}
+	const scheduleNext = () => {
+		if (stopped) {
+			return;
+		}
+
+		timer = setTimeout(async () => {
+			await save();
+			scheduleNext();
+		}, interval);
+		unrefTimer();
+	};
+
+	scheduleNext();
 
 	return {
 		save,
 		stop() {
+			stopped = true;
 			if (timer !== null) {
-				clearInterval(timer);
+				clearTimeout(timer);
 				timer = null;
 			}
 		},

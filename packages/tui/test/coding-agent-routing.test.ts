@@ -46,20 +46,29 @@ describe("resolveRoutingOverrides", () => {
 			sessionId: "s1",
 			currentModel: "claude-sonnet-4-5",
 		});
-		expect(result).toEqual({ overrides: {}, decisions: [], notes: [] });
+		expect(result).toEqual({ overrides: {}, laneEnvelopes: {}, decisions: [], notes: [] });
 	});
 
 	it("applies same-provider engine-selected models to matching roles", async () => {
 		const observer = {
 			routeResolve: vi
 				.fn()
-				.mockResolvedValueOnce(makeDecision())
 				.mockResolvedValueOnce(
 					makeDecision({
-						request: { consumer: "takumi", sessionId: "s1", capability: "chat.high-reliability" },
+						request: { consumer: "takumi", sessionId: "s1", capability: "coding.patch-cheap" },
+						selected: {
+							...makeDecision().selected!,
+							capabilities: ["coding.patch-cheap"],
+						},
+					}),
+				)
+				.mockResolvedValueOnce(
+					makeDecision({
+						request: { consumer: "takumi", sessionId: "s1", capability: "coding.review.strict" },
 						selected: {
 							...makeDecision().selected!,
 							id: "llm.anthropic.haiku",
+							capabilities: ["coding.review.strict"],
 							metadata: { model: "claude-haiku-4-20250514" },
 						},
 					}),
@@ -75,8 +84,9 @@ describe("resolveRoutingOverrides", () => {
 		expect(result.overrides[AgentRole.WORKER]).toBe("claude-sonnet-4-5");
 		expect(result.overrides[AgentRole.PLANNER]).toBe("claude-haiku-4-20250514");
 		expect(result.overrides[AgentRole.VALIDATOR_CODE]).toBe("claude-haiku-4-20250514");
+		expect(result.laneEnvelopes[AgentRole.WORKER]?.selectedCapabilityId).toBe("llm.anthropic.sonnet");
 		expect(result.decisions).toHaveLength(2);
-		expect(result.notes).toContain("Engine route coding.patch-and-validate → llm.anthropic.sonnet");
+		expect(result.notes).toContain("Engine route coding.patch-cheap → llm.anthropic.sonnet");
 	});
 
 	it("keeps routing notes but skips cross-provider overrides", async () => {
@@ -85,9 +95,11 @@ describe("resolveRoutingOverrides", () => {
 				.fn()
 				.mockResolvedValueOnce(
 					makeDecision({
+						request: { consumer: "takumi", sessionId: "s1", capability: "coding.patch-cheap" },
 						selected: {
 							...makeDecision().selected!,
 							providerFamily: "openai",
+							capabilities: ["coding.patch-cheap"],
 							metadata: { model: "gpt-4o" },
 						},
 					}),
@@ -102,7 +114,8 @@ describe("resolveRoutingOverrides", () => {
 		});
 
 		expect(result.overrides[AgentRole.WORKER]).toBeUndefined();
+		expect(result.laneEnvelopes).toEqual({});
 		expect(result.decisions).toHaveLength(1);
-		expect(result.notes).toContain("Engine route coding.patch-and-validate → llm.anthropic.sonnet");
+		expect(result.notes).toContain("Engine route coding.patch-cheap → llm.anthropic.sonnet");
 	});
 });

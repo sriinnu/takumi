@@ -16,6 +16,7 @@ export interface CliArgs {
 	workingDirectory?: string;
 	prompt: string[];
 	print: boolean;
+	headless?: boolean;
 	resume?: string;
 	subcommand?: string;
 	subcommandArg?: string;
@@ -27,6 +28,7 @@ export interface CliArgs {
 	json: boolean;
 	fix: boolean;
 	stream?: "text" | "ndjson";
+	invalidStream?: string;
 }
 
 export interface DetachedJobRecord {

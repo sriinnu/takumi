@@ -55,6 +55,7 @@ export class AppState {
 
 	// ── Session ───────────────────────────────────────────────────────────────
 	readonly sessionId: Signal<string> = signal("");
+	readonly canonicalSessionId: Signal<string> = signal("");
 	readonly model: Signal<string> = signal("claude-sonnet-4-20250514");
 	readonly provider: Signal<string> = signal("anthropic");
 	readonly theme: Signal<string> = signal("default");
@@ -201,6 +202,7 @@ export class AppState {
 			files?: string[];
 		}>
 	> = signal([]);
+	readonly lastSabhaId: Signal<string> = signal("");
 	/** Queued evolve requests from Chitragupta. */
 	readonly chitraguptaEvolveQueue: Signal<Array<Record<string, unknown>>> = signal([]);
 	/** Derived cognition state over awareness, intuition, and workspace steering. */
@@ -373,6 +375,7 @@ export class AppState {
 		this.totalOutputTokens.value = 0;
 		this.totalCost.value = 0;
 		this.turnCount.value = 0;
+		this.canonicalSessionId.value = "";
 		this.activeTool.value = null;
 		this.toolOutput.value = "";
 		this.toolSpinner.reset();
@@ -408,6 +411,7 @@ export class AppState {
 		this.chitraguptaLastPattern.value = null;
 		this.chitraguptaPatternMatches.value = [];
 		this.chitraguptaPredictions.value = [];
+		this.lastSabhaId.value = "";
 		this.chitraguptaEvolveQueue.value = [];
 		this.dialogStack.value = [];
 		this.clusterCommand.value = null;

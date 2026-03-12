@@ -1,4 +1,11 @@
-import type { ChitraguptaObserver, ConsumerConstraint, RoutingDecision, RoutingRequest } from "@takumi/bridge";
+import type {
+	ChitraguptaObserver,
+	ConsumerConstraint,
+	ExecutionLaneAuthority,
+	ExecutionLaneEnvelope,
+	RoutingDecision,
+	RoutingRequest,
+} from "@takumi/bridge";
 import { createLogger } from "@takumi/core";
 import type { TaskClassification } from "./classifier.js";
 import { AgentRole } from "./cluster/types.js";
@@ -16,6 +23,7 @@ interface ResolveRoutingOverridesOptions {
 
 export interface RoutingOverridePlan {
 	overrides: Partial<Record<AgentRole, string>>;
+	laneEnvelopes: Partial<Record<AgentRole, ExecutionLaneEnvelope>>;
 	decisions: RoutingDecision[];
 	notes: string[];
 }
@@ -43,7 +51,7 @@ export async function resolveRoutingOverrides({
 	classification,
 }: ResolveRoutingOverridesOptions): Promise<RoutingOverridePlan> {
 	if (!observer) {
-		return { overrides: {}, decisions: [], notes: [] };
+		return { overrides: {}, laneEnvelopes: {}, decisions: [], notes: [] };
 	}
 
 	const selections = ROUTED_ROLES.map((role) => ({
@@ -66,14 +74,18 @@ export async function resolveRoutingOverrides({
 				: [`No engine lane resolved for ${request.capability}; using Takumi fallback.`];
 
 			const overrides: Partial<Record<AgentRole, string>> = {};
+			const laneEnvelopes: Partial<Record<AgentRole, ExecutionLaneEnvelope>> = {};
 			for (const item of group) {
-				const { model, note } = resolveConcreteModel(item.recommendation, decision, currentModel);
+				const resolved = resolveConcreteModel(item.recommendation, decision, currentModel);
+				const { model, note } = resolved;
 				overrides[item.role] = model;
+				laneEnvelopes[item.role] = buildLaneEnvelope(request, item.role, resolved, decision);
 				if (note) notes.push(`${item.role}: ${note}`);
 			}
 
 			return {
 				overrides,
+				laneEnvelopes,
 				decisions: decision ? [decision] : [],
 				notes,
 			};
@@ -83,10 +95,11 @@ export async function resolveRoutingOverrides({
 	return plans.reduce<RoutingOverridePlan>(
 		(acc, plan) => ({
 			overrides: { ...acc.overrides, ...plan.overrides },
+			laneEnvelopes: { ...acc.laneEnvelopes, ...plan.laneEnvelopes },
 			decisions: [...acc.decisions, ...plan.decisions],
 			notes: [...acc.notes, ...plan.notes],
 		}),
-		{ overrides: {}, decisions: [], notes: [] },
+		{ overrides: {}, laneEnvelopes: {}, decisions: [], notes: [] },
 	);
 }
 
@@ -146,10 +159,22 @@ function resolveConcreteModel(
 	recommendation: ModelRecommendation,
 	decision: RoutingDecision | null,
 	currentModel: string,
-): { model: string; note?: string } {
+): {
+	model: string;
+	note?: string;
+	authority: ExecutionLaneAuthority;
+	enforcement: ExecutionLaneEnvelope["enforcement"];
+	selectedCapabilityId?: string;
+	selectedProviderFamily?: string;
+	selectedModel?: string;
+} {
 	const selected = decision?.selected;
 	if (!selected) {
-		return { model: recommendation.model };
+		return {
+			model: recommendation.model,
+			authority: "takumi-fallback",
+			enforcement: "capability-only",
+		};
 	}
 
 	const metadata = selected.metadata;
@@ -162,6 +187,10 @@ function resolveConcreteModel(
 	if (!candidate) {
 		return {
 			model: recommendation.model,
+			authority: "takumi-fallback",
+			enforcement: "capability-only",
+			selectedCapabilityId: selected.id,
+			selectedProviderFamily: selected.providerFamily,
 			note: `route ${selected.id} had no concrete model metadata; kept fallback ${recommendation.model}`,
 		};
 	}
@@ -174,17 +203,60 @@ function resolveConcreteModel(
 		log.debug(`Ignoring route ${selected.id} model ${candidate}; provider metadata mismatch`);
 		return {
 			model: recommendation.model,
+			authority: "takumi-fallback",
+			enforcement: "same-provider",
+			selectedCapabilityId: selected.id,
+			selectedProviderFamily: selected.providerFamily,
+			selectedModel: candidate,
 			note: `route ${selected.id} metadata mismatched provider family; kept fallback ${recommendation.model}`,
 		};
 	}
 	if (currentProvider && candidateProvider !== currentProvider) {
 		return {
 			model: recommendation.model,
+			authority: "takumi-fallback",
+			enforcement: "same-provider",
+			selectedCapabilityId: selected.id,
+			selectedProviderFamily: selected.providerFamily,
+			selectedModel: candidate,
 			note: `route ${selected.id} resolved to ${candidate} (${candidateProvider}), but active session is ${currentProvider}; kept fallback ${recommendation.model}`,
 		};
 	}
 
-	return { model: candidate, note: `using engine-approved model ${candidate}` };
+	return {
+		model: candidate,
+		note: `using engine-approved model ${candidate}`,
+		authority: "engine",
+		enforcement: "same-provider",
+		selectedCapabilityId: selected.id,
+		selectedProviderFamily: selected.providerFamily,
+		selectedModel: candidate,
+	};
+}
+
+function buildLaneEnvelope(
+	request: RoutingRequest,
+	role: AgentRole,
+	resolved: ReturnType<typeof resolveConcreteModel>,
+	decision: RoutingDecision | null,
+): ExecutionLaneEnvelope {
+	return {
+		consumer: request.consumer,
+		sessionId: request.sessionId,
+		role,
+		capability: request.capability,
+		authority: resolved.authority,
+		enforcement: resolved.enforcement,
+		selectedCapabilityId: resolved.selectedCapabilityId,
+		selectedProviderFamily: resolved.selectedProviderFamily,
+		selectedModel: resolved.selectedModel,
+		fallbackModel: (request.context?.takumiFallbackModel as string | undefined) ?? resolved.model,
+		appliedModel: resolved.model,
+		degraded: decision?.degraded ?? false,
+		reason: decision?.reason ?? `Takumi fallback for ${request.capability}`,
+		fallbackChain: decision?.fallbackChain ?? [],
+		policyTrace: decision?.policyTrace ?? [],
+	};
 }
 
 function normalizeProviderFamily(value?: string): ReturnType<typeof inferProvider> | null {

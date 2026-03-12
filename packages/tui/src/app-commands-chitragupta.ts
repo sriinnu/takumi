@@ -3,13 +3,109 @@
  * Extracted from app-commands-core.ts to meet LOC limit.
  */
 
+import type { CapabilityDescriptor, SabhaState, TelemetrySnapshot } from "@takumi/bridge";
 import type { AppCommandContext } from "./app-command-context.js";
 import {
 	formatCapabilityHealthSnapshot,
 	formatRoutingDecision,
 	mergeControlPlaneCapabilities,
 } from "./control-plane-state.js";
+import { formatDefaultSabhaSummary } from "./sabha-defaults.js";
 import { formatScarlettIntegrityReport } from "./scarlett-runtime.js";
+
+function formatSabhaState(state: SabhaState | null, trackedSabhaId: string): string {
+	if (!state) {
+		return trackedSabhaId ? `• Tracked Sabha: ${trackedSabhaId} (details unavailable)` : "• Tracked Sabha: none";
+	}
+
+	const lines = [
+		`• Sabha: ${state.id}`,
+		`• Topic: ${state.topic}`,
+		`• Status: ${state.status}`,
+		`• Convener: ${state.convener}`,
+		`• Participants: ${state.participantCount}`,
+		`• Rounds: ${state.roundCount}`,
+	];
+
+	if (state.finalVerdict) {
+		lines.push(`• Verdict: ${state.finalVerdict}`);
+	}
+
+	if (state.currentRound) {
+		lines.push(
+			`• Current round: ${state.currentRound.roundNumber} (${state.currentRound.voteSummary.count} vote(s), ${state.currentRound.unresolvedChallenges.length} unresolved challenge(s))`,
+		);
+	}
+
+	if (state.participants.length > 0) {
+		lines.push(
+			"• Council:",
+			...state.participants.map((participant) => {
+				const target = participant.targetClientId ?? participant.clientId;
+				return `  - ${participant.id} — ${participant.role}${target ? ` [${target}]` : ""}`;
+			}),
+		);
+	}
+
+	return lines.join("\n");
+}
+
+function formatWorkingAgents(snapshot: TelemetrySnapshot | null): string {
+	if (!snapshot || snapshot.instances.length === 0) {
+		return "## Working agents\n\nNo live Takumi telemetry instances found.";
+	}
+
+	const liveAgents = snapshot.instances
+		.filter((instance) => instance.state.activity === "working" || instance.state.activity === "waiting_input")
+		.sort((left, right) => right.process.heartbeatAt - left.process.heartbeatAt);
+
+	if (liveAgents.length === 0) {
+		return "## Working agents\n\nNo agents are actively working right now.";
+	}
+
+	const lines = liveAgents.map((instance, index) => {
+		const branch = instance.workspace.git.branch ?? "unknown-branch";
+		const model = instance.model?.id ?? instance.model?.name ?? "unknown-model";
+		const provider = instance.model?.provider ?? "unknown-provider";
+		const idleLabel = instance.state.activity === "waiting_input" ? "waiting" : "working";
+		return `${index + 1}. **${instance.session.name || instance.session.id}** — ${idleLabel}\n   pid ${instance.process.pid} • ${provider}/${model} • ${branch} • ${(instance.context.percent ?? 0).toFixed(1)}% context`;
+	});
+
+	return `## Working agents\n\n${lines.join("\n\n")}`;
+}
+
+function formatAvailableAgents(capabilities: CapabilityDescriptor[]): string {
+	if (capabilities.length === 0) {
+		return "## Available agents\n\nNo control-plane capabilities available.";
+	}
+
+	const agentLike = capabilities
+		.filter(
+			(capability) =>
+				capability.kind === "adapter" ||
+				capability.kind === "cli" ||
+				capability.kind === "llm" ||
+				capability.kind === "local-model",
+		)
+		.filter((capability) => capability.health !== "down")
+		.sort((left, right) => {
+			if (left.health === right.health) {
+				return left.id.localeCompare(right.id);
+			}
+			return left.health === "healthy" ? -1 : 1;
+		});
+
+	if (agentLike.length === 0) {
+		return "## Available agents\n\nNo healthy or degraded agent lanes are currently available.";
+	}
+
+	const lines = agentLike.map(
+		(capability) =>
+			`- **${capability.id}** — ${capability.kind} | ${capability.health} | ${capability.trust} | ${capability.capabilities.join(", ")}`,
+	);
+
+	return `## Available agents\n\n${lines.join("\n")}`;
+}
 
 export function registerChitraguptaCommands(ctx: AppCommandContext): void {
 	ctx.commands.register("/day", "Temporal memory navigation", async (args) => {
@@ -311,6 +407,41 @@ export function registerChitraguptaCommands(ctx: AppCommandContext): void {
 		const snapshots = ctx.state.capabilityHealthSnapshots.value;
 		if (snapshots.length === 0) return ctx.addInfoMessage("No capability health snapshots available");
 		ctx.addInfoMessage(`## Capability Health\n\n${snapshots.map(formatCapabilityHealthSnapshot).join("\n\n")}`);
+	});
+
+	ctx.commands.register("/sabha", "Show tracked Sabha, working agents, and available agent lanes", async (args) => {
+		const bridge = ctx.state.chitraguptaBridge.value;
+		const observer = ctx.state.chitraguptaObserver.value;
+		if (!bridge?.isConnected || !observer) {
+			return ctx.addInfoMessage("Chitragupta not connected");
+		}
+
+		const requestedSabhaId = args.trim();
+		const sabhaId = requestedSabhaId || ctx.state.lastSabhaId.value;
+
+		const [telemetry, capabilityResult, gathered] = await Promise.all([
+			bridge.telemetrySnapshot().catch(() => null),
+			observer.capabilities({ includeDegraded: true, includeDown: false, limit: 25 }).catch(() => null),
+			sabhaId ? observer.sabhaGather({ id: sabhaId }).catch(() => null) : Promise.resolve(null),
+		]);
+
+		const capabilities = capabilityResult ? mergeControlPlaneCapabilities(capabilityResult.capabilities) : [];
+		if (capabilities.length > 0) {
+			ctx.state.controlPlaneCapabilities.value = capabilities;
+		}
+
+		ctx.addInfoMessage(
+			[
+				"## Sabha",
+				formatSabhaState(gathered?.sabha ?? null, sabhaId),
+				"",
+				formatDefaultSabhaSummary(),
+				"",
+				formatWorkingAgents(telemetry),
+				"",
+				formatAvailableAgents(capabilities),
+			].join("\n\n"),
+		);
 	});
 
 	ctx.commands.register(

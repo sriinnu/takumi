@@ -5,10 +5,12 @@ Takumi v${version} — Terminal UI for AI coding agents
 Usage:
   takumi [options] [prompt...]        Interactive TUI (default)
   takumi "analyze this file"          One-shot mode
+  takumi exec "fix the login bug"     Headless run for automation
   takumi --print "summarize code"     Non-interactive, stdout output
   cat file.ts | takumi "review this"  Piped input
 
 Subcommands:
+  takumi exec <prompt...>      Run the agent headlessly for scripts/IPC
   takumi list                List saved sessions
   takumi status <id>         Show session metadata and token usage
   takumi logs <id>           Print full conversation log (colour-coded)
@@ -36,6 +38,8 @@ Options:
   --thinking-budget <n>     Thinking token budget (default: 10000)
   -p, --proxy <url>         Darpana proxy URL
   --print                   Non-interactive mode: stream output to stdout
+  --headless                Force non-TUI execution (useful with exec/spawn)
+  --stream <format>         Output format for headless runs: text or ndjson
   --theme <name>            UI theme (default: default)
   --log-level <level>       Log level: debug, info, warn, error, silent
   -C, --cwd <dir>           Working directory
@@ -69,6 +73,8 @@ Examples:
   gh auth login                                  # Authenticate with GitHub CLI
   ANTHROPIC_API_KEY=... pnpm takumi              # Fallback: use API key
   OPENAI_API_KEY=... pnpm takumi --provider openai --model gpt-4.1
+  pnpm takumi exec --headless --stream=ndjson "Fix auth router"
+                                              # emits takumi.exec.v1 envelopes + bootstrap status
   pnpm takumi "Fix tests" -d                    # Run in background
   pnpm takumi jobs                               # Show detached jobs
   pnpm takumi watch                              # Live monitor jobs

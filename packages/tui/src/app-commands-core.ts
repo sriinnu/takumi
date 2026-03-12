@@ -103,7 +103,22 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 		if (result.compactedTurns === 0) return ctx.addInfoMessage("No compaction needed");
 		ctx.state.messages.value = result.messages;
 		ctx.agentRunner?.clearHistory();
-		ctx.addInfoMessage(`Compacted ${result.compactedTurns} turns`);
+		const bridge = ctx.state.chitraguptaBridge.value;
+		if (bridge?.isConnected) {
+			void bridge
+				.contextLoad(process.cwd())
+				.then((loaded) => {
+					if (loaded.assembled) {
+						ctx.state.chitraguptaMemory.value = loaded.assembled;
+					}
+				})
+				.catch(() => {
+					/* best effort */
+				});
+		}
+		ctx.addInfoMessage(
+			`Compacted ${result.compactedTurns} turns${bridge?.isConnected ? " and refreshed hub context" : ""}`,
+		);
 	});
 	ctx.commands.register("/session", "Session management", async (args) => {
 		if (!args || args === "info") {

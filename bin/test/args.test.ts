@@ -8,6 +8,27 @@ describe("parseArgs", () => {
 		expect(args.subcommandArg).toBe("status");
 	});
 
+	it("parses exec as a prompt-preserving subcommand", () => {
+		const args = parseArgs(["node", "takumi", "exec", "fix", "login", "bug"]);
+		expect(args.subcommand).toBe("exec");
+		expect(args.subcommandArg).toBeUndefined();
+		expect(args.prompt).toEqual(["fix", "login", "bug"]);
+	});
+
+	it("parses headless ndjson flags for spawn mode", () => {
+		const args = parseArgs(["node", "takumi", "exec", "--headless", "--stream=ndjson", "fix bug"]);
+		expect(args.subcommand).toBe("exec");
+		expect(args.headless).toBe(true);
+		expect(args.stream).toBe("ndjson");
+		expect(args.prompt).toEqual(["fix bug"]);
+	});
+
+	it("records invalid stream formats for later usage validation", () => {
+		const args = parseArgs(["node", "takumi", "exec", "--stream=xml", "fix bug"]);
+		expect(args.stream).toBeUndefined();
+		expect(args.invalidStream).toBe("xml");
+	});
+
 	it("parses doctor as a subcommand and supports --json", () => {
 		const args = parseArgs(["node", "takumi", "doctor", "--json"]);
 		expect(args.subcommand).toBe("doctor");

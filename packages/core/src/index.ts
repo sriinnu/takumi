@@ -17,6 +17,32 @@ export {
 	TakumiError,
 	ToolError,
 } from "./errors.js";
+export type {
+	ExecAgentEventEnvelope,
+	ExecBootstrapSnapshot,
+	ExecBootstrapStatusEvent,
+	ExecBootstrapTransport,
+	ExecExitCode,
+	ExecFailurePhase,
+	ExecProtocolEvent,
+	ExecRunCompletedEvent,
+	ExecRunFailedEvent,
+	ExecRunStartedEvent,
+	SerializedError,
+} from "./exec-protocol.js";
+export {
+	createAgentEventEnvelope,
+	createBootstrapStatusEvent,
+	createExecRunId,
+	createRunCompletedEvent,
+	createRunFailedEvent,
+	createRunStartedEvent,
+	EXEC_EXIT_CODES,
+	EXEC_PROTOCOL,
+	EXEC_PROTOCOL_VERSION,
+	sanitizeAgentEvent,
+	serializeError,
+} from "./exec-protocol.js";
 export type { Logger } from "./logger.js";
 export { createLogger, setLogLevel } from "./logger.js";
 export type {

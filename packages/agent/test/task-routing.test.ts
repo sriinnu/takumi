@@ -63,7 +63,7 @@ describe("resolveRoutingOverrides", () => {
 			classification: makeClassification(),
 		});
 
-		expect(plan).toEqual({ overrides: {}, decisions: [], notes: [] });
+		expect(plan).toEqual({ overrides: {}, laneEnvelopes: {}, decisions: [], notes: [] });
 	});
 
 	it("groups roles by route class and uses engine-approved same-provider models", async () => {
@@ -153,6 +153,9 @@ describe("resolveRoutingOverrides", () => {
 		expect(plan.overrides[AgentRole.VALIDATOR_CODE]).toBe("claude-sonnet-4-5");
 		expect(plan.overrides[AgentRole.VALIDATOR_REQUIREMENTS]).toBe("claude-sonnet-4-5");
 		expect(plan.overrides[AgentRole.VALIDATOR_SECURITY]).toBe("claude-sonnet-4-5");
+		expect(plan.laneEnvelopes[AgentRole.PLANNER]?.authority).toBe("engine");
+		expect(plan.laneEnvelopes[AgentRole.WORKER]?.authority).toBe("takumi-fallback");
+		expect(plan.laneEnvelopes[AgentRole.WORKER]?.capability).toBe("coding.patch-cheap");
 		expect(plan.decisions).toHaveLength(4);
 		expect(plan.notes.some((note) => note.includes("using engine-approved model claude-opus-4-5"))).toBe(true);
 		expect(plan.notes.some((note) => note.includes("had no concrete model metadata"))).toBe(true);
@@ -177,6 +180,7 @@ describe("resolveRoutingOverrides", () => {
 		});
 
 		expect(plan.overrides[AgentRole.PLANNER]).toBe("claude-opus-4-5");
+		expect(plan.laneEnvelopes[AgentRole.PLANNER]?.authority).toBe("takumi-fallback");
 		expect(plan.notes.some((note) => note.includes("had no concrete model metadata"))).toBe(true);
 	});
 
@@ -200,6 +204,7 @@ describe("resolveRoutingOverrides", () => {
 		});
 
 		expect(plan.overrides[AgentRole.PLANNER]).toBe("claude-opus-4-5");
+		expect(plan.laneEnvelopes[AgentRole.PLANNER]?.selectedModel).toBe("gpt-4o");
 		expect(plan.notes.some((note) => note.includes("active session is anthropic"))).toBe(true);
 	});
 });

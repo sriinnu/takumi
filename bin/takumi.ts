@@ -5,6 +5,7 @@ import type { TakumiConfig } from "@takumi/core";
 import { parseArgs } from "./cli/args.js";
 import { cmdAttach, cmdJobs, cmdStop, cmdWatch, startDetachedJob } from "./cli/detached-jobs.js";
 import { cmdDoctor } from "./cli/doctor.js";
+import { EXEC_EXIT_CODES, createExecRunId, createRunFailedEvent, emitExecEvent } from "./cli/exec-protocol.js";
 import { printHelp } from "./cli/help.js";
 import { fetchIssueContext, readStdin, runOneShot } from "./cli/one-shot.js";
 import { cmdPlatform } from "./cli/platform.js";
@@ -257,6 +258,13 @@ async function runInteractiveApp(config: TakumiConfig, args: ReturnType<typeof p
 
 async function main(): Promise<void> {
 	const args = parseArgs(process.argv);
+	const isExecMode = args.subcommand === "exec";
+	const execRunId = isExecMode || args.headless ? createExecRunId() : undefined;
+
+	if (args.invalidStream) {
+		console.error(`Error: Unsupported stream format \"${args.invalidStream}\". Use \"text\" or \"ndjson\".`);
+		process.exit(EXEC_EXIT_CODES.USAGE);
+	}
 
 	if (args.version) {
 		console.log(`takumi v${VERSION}`);
@@ -290,6 +298,8 @@ async function main(): Promise<void> {
 
 	if (args.subcommand) {
 		switch (args.subcommand) {
+			case "exec":
+				break;
 			case "list":
 					await cmdList(args.json);
 				return;
@@ -357,7 +367,7 @@ async function main(): Promise<void> {
 	}
 	const prompt = args.prompt.join(" ");
 	const isNonTTY = !process.stdin.isTTY;
-	const isOneShot = prompt.length > 0 || args.print || isNonTTY;
+	const isOneShot = isExecMode || prompt.length > 0 || args.print || args.headless || isNonTTY;
 
 	// ── Zero-config auth: try every source before showing any UI ─────────────
 	// If the user explicitly passed --provider or --api-key we skip auto-detect
@@ -389,6 +399,16 @@ async function main(): Promise<void> {
 
 	// ── Hard fail if still nothing ───────────────────────────────────────────
 	if (!config.apiKey && !config.proxyUrl && !canSkipApiKey(config) && !hasProviderEnvKey(config)) {
+		if (isExecMode && args.stream === "ndjson" && execRunId) {
+			emitExecEvent(
+				createRunFailedEvent({
+					runId: execRunId,
+					exitCode: EXEC_EXIT_CODES.CONFIG,
+					phase: "config",
+					error: new Error("No API key or local provider path found"),
+				}),
+			);
+		}
 		console.error(
 			"\nError: No API key found.\n\n" +
 				"Takumi uses kosha-discovery to scan for credentials:\n" +
@@ -403,7 +423,7 @@ async function main(): Promise<void> {
 				"Install any CLI, set an env var, or pass --api-key <key>.\n" +
 				"Or use --proxy <url> to connect through a Darpana proxy.\n",
 		);
-		process.exit(1);
+		process.exit(EXEC_EXIT_CODES.CONFIG);
 	}
 
 	if (config.workingDirectory && config.workingDirectory !== process.cwd()) {
@@ -428,10 +448,25 @@ async function main(): Promise<void> {
 		let finalPrompt = prompt;
 		if (!finalPrompt && isNonTTY) finalPrompt = await readStdin();
 		if (!finalPrompt) {
+			if (isExecMode && args.stream === "ndjson" && execRunId) {
+				emitExecEvent(
+					createRunFailedEvent({
+						runId: execRunId,
+						exitCode: EXEC_EXIT_CODES.USAGE,
+						phase: "usage",
+						error: new Error("No prompt provided"),
+					}),
+				);
+			}
 			console.error("Error: No prompt provided. Pass a message as a positional argument or pipe to stdin.");
-			process.exit(1);
+			process.exit(EXEC_EXIT_CODES.USAGE);
 		}
-		await runOneShot(config, issueContext + finalPrompt, args.fallback, args.stream);
+		const result = await runOneShot(config, issueContext + finalPrompt, args.fallback, args.stream, {
+			runId: execRunId ?? createExecRunId(),
+			headless: Boolean(args.headless || isExecMode || args.print || isNonTTY),
+			enableChitraguptaBootstrap: Boolean(isExecMode || args.headless),
+		});
+		process.exit(result.exitCode);
 		return;
 	}
 
@@ -440,5 +475,5 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
 	console.error(`Fatal error: ${err.message}`);
-	process.exit(1);
+	process.exit(EXEC_EXIT_CODES.FATAL);
 });

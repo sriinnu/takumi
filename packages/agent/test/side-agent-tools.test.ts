@@ -119,13 +119,23 @@ describe("takumi_agent_start", () => {
 
 		const data = parse(result);
 		expect(data.id).toBe("side-1");
-		expect(data.status).toBe("starting");
+		expect(data.status).toBe("running");
 		expect(data.worktree).toBe("/tmp/worktrees/wt-0001");
 		expect(data.branch).toContain("side-1");
 
 		expect(deps.pool.allocate).toHaveBeenCalledWith("side-1");
 		expect(deps.agents.register).toHaveBeenCalled();
 		expect(deps.tmux.createWindow).toHaveBeenCalledWith("side-1", "/tmp/worktrees/wt-0001");
+		expect(deps.agents.transition).toHaveBeenCalledWith("side-1", "running");
+	});
+
+	it("sends an initial prompt when provided", async () => {
+		const deps = createMockDeps();
+		const handler = createAgentStartHandler(deps);
+
+		await handler({ description: "Plan auth refactor", initialPrompt: "produce a plan" });
+
+		expect(deps.tmux.sendKeys).toHaveBeenCalledWith("side-1", "produce a plan");
 	});
 
 	it("fails when pool is at capacity", async () => {

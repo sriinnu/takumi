@@ -138,6 +138,8 @@ export {
 	isRetryable,
 	ProviderUnavailableError,
 } from "./errors.js";
+export type { ExecBootstrapOptions, ExecBootstrapResult } from "./exec-bootstrap.js";
+export { bootstrapChitraguptaForExec } from "./exec-bootstrap.js";
 // Phase 45 — Convention file loader
 export type { ConventionFiles, ToolRule } from "./extensions/convention-loader.js";
 export { loadConventionFiles } from "./extensions/convention-loader.js";
