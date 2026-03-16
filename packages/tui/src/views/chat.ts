@@ -47,6 +47,8 @@ export class ChatView extends Component {
 			onSubmit: (text) => this.handleSubmit(text),
 			commands: props.commands,
 			projectRoot: props.projectRoot,
+			getProviderCatalog: () => this.state.availableProviderModels.value,
+			getCurrentProvider: () => this.state.provider.value,
 		});
 		this.statusBar = new StatusBarPanel({ state: this.state, config: this.config });
 

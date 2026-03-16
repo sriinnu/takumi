@@ -39,6 +39,7 @@ export class StatusBarPanel extends Component {
 			// Context pressure signals (Phase 20.4)
 			const _contextPercent = this.state.contextPercent.value;
 			const _contextPressure = this.state.contextPressure.value;
+			const _consolidation = this.state.consolidationInProgress.value;
 			this.markDirty();
 			return undefined;
 		});
@@ -101,7 +102,11 @@ export class StatusBarPanel extends Component {
 					return { text: "", fg: 7, bg: 236 };
 				}
 				case "status":
-					return { text: ` ${status} `, fg: isStreaming ? 3 : 7, bg: 236 };
+					return {
+						text: this.state.consolidationInProgress.value ? " ⟳ consolidating… " : ` ${status} `,
+						fg: this.state.consolidationInProgress.value ? 214 : isStreaming ? 3 : 7,
+						bg: 236,
+					};
 				case "metrics": {
 					const tokens = this.state.totalTokens.value;
 					const cost = this.state.totalCost.value;
@@ -145,7 +150,7 @@ export class StatusBarPanel extends Component {
 		const statusBarConfig = this.config.statusBar || {
 			left: ["model", "mesh", "cluster"],
 			center: ["status"],
-			right: ["metrics", "keybinds"],
+			right: ["metrics", "context", "scarlett", "keybinds"],
 		};
 
 		// ── Branded anchor: 匠 always pinned at position 0 ──────────────────────

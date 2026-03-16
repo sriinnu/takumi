@@ -13,6 +13,8 @@ import { KEY_CODES } from "@takumi/core";
 import type { Screen } from "@takumi/render";
 import { Component, effect } from "@takumi/render";
 import type { SlashCommandRegistry } from "../commands.js";
+import type { KeyBindingRegistry } from "../keybinds.js";
+import { DialogOverlay } from "../panels/dialog-overlay.js";
 import { FilePreviewPanel } from "../panels/file-preview.js";
 import { FileTreePanel } from "../panels/file-tree.js";
 import { SidebarPanel } from "../panels/sidebar.js";
@@ -23,7 +25,9 @@ export interface RootViewProps {
 	state: AppState;
 	config: TakumiConfig;
 	commands?: SlashCommandRegistry;
+	keybinds?: KeyBindingRegistry;
 	onFileSelect?: (filePath: string) => void;
+	onResumeSession?: (sessionId: string) => Promise<void> | void;
 	projectRoot?: string;
 }
 
@@ -32,6 +36,7 @@ export class RootView extends Component {
 	private config: TakumiConfig;
 	readonly chatView: ChatView;
 	readonly sidebar: SidebarPanel;
+	readonly dialogOverlay: DialogOverlay;
 	readonly fileTree: FileTreePanel;
 	readonly filePreview: FilePreviewPanel;
 	private disposeEffects: (() => void)[] = [];
@@ -50,6 +55,12 @@ export class RootView extends Component {
 			projectRoot: props.projectRoot,
 		});
 		this.sidebar = new SidebarPanel({ state: this.state });
+		this.dialogOverlay = new DialogOverlay({
+			state: this.state,
+			commands: props.commands,
+			keybinds: props.keybinds,
+			onResumeSession: props.onResumeSession,
+		});
 		this.fileTree = new FileTreePanel({
 			state: this.state,
 			onFileSelect: (filePath: string) => {
@@ -62,6 +73,7 @@ export class RootView extends Component {
 
 		this.appendChild(this.chatView);
 		this.appendChild(this.sidebar);
+		this.appendChild(this.dialogOverlay);
 		this.appendChild(this.fileTree);
 		this.appendChild(this.filePreview);
 
@@ -86,6 +98,11 @@ export class RootView extends Component {
 	}
 
 	handleKey(event: KeyEvent): boolean {
+		if (this.dialogOverlay.active) {
+			const consumed = this.dialogOverlay.handleKey(event);
+			if (consumed) return true;
+		}
+
 		// Ctrl+P: toggle file preview pane
 		if (event.raw === KEY_CODES.CTRL_P) {
 			this.togglePreview();
@@ -226,5 +243,7 @@ export class RootView extends Component {
 				});
 			}
 		}
+
+		this.dialogOverlay.render(screen, rect);
 	}
 }

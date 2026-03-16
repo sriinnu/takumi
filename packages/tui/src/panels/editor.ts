@@ -8,7 +8,7 @@ import { KEY_CODES } from "@takumi/core";
 import type { Screen } from "@takumi/render";
 import { Component, Input as InputComponent } from "@takumi/render";
 import type { SlashCommandRegistry } from "../commands.js";
-import type { CompletionItem } from "../completion.js";
+import type { CompletionItem, ProviderModelCatalog } from "../completion.js";
 import { CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "../completion.js";
 import type { EditorOp } from "../vim.js";
 import { VimMode } from "../vim.js";
@@ -18,6 +18,8 @@ export interface EditorPanelProps {
 	placeholder?: string;
 	commands?: SlashCommandRegistry;
 	projectRoot?: string;
+	getProviderCatalog?: () => ProviderModelCatalog;
+	getCurrentProvider?: () => string | undefined;
 }
 
 export class EditorPanel extends Component {
@@ -53,6 +55,12 @@ export class EditorPanel extends Component {
 		}
 		if (props.projectRoot) {
 			this.engine.setProjectRoot(props.projectRoot);
+		}
+		if (props.getProviderCatalog) {
+			this.engine.setProviderCatalog(props.getProviderCatalog);
+		}
+		if (props.getCurrentProvider) {
+			this.engine.setCurrentProvider(props.getCurrentProvider);
 		}
 	}
 

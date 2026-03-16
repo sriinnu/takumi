@@ -77,6 +77,7 @@ export class AgentRunner {
 		this.extensionRunner = extensionRunner ?? null;
 		this.conventionFiles = conventionFiles ?? null;
 		this.steeringQueue = steeringQueue ?? null;
+		this.tools.setPermissionChecker((tool, args) => this.getToolPermissionDecision(tool, args));
 		this.memoryHooks.load();
 		this.principleMemory.load();
 
@@ -92,7 +93,7 @@ export class AgentRunner {
 	emitExtensionEvent = (event: ExtensionEvent): Promise<void> => this.extensionRunner?.emit(event) ?? Promise.resolve();
 
 	/** Submit a user message and start the agent loop. */
-	async submit(text: string): Promise<void> {
+	async submit(text: string, options?: { images?: Array<{ mediaType: string; data: string }> }): Promise<void> {
 		if (this.state.isStreaming.value) {
 			log.warn("Already streaming, ignoring submit");
 			return;
@@ -144,10 +145,11 @@ export class AgentRunner {
 				: undefined;
 			const selectedModel = this.state.model.value.trim() || undefined;
 
-			const loop = agentLoop(text, this.history, {
+			const loop = agentLoop({ text, images: options?.images }, this.history, {
 				sendMessage: this.sendMessageFn,
 				model: selectedModel,
 				tools: this.tools,
+				checkToolPermission: (tool, args) => this.getToolPermissionDecision(tool, args),
 				systemPrompt: enrichedPrompt,
 				maxTurns: this.config.maxTurns,
 				signal: this.abortController.signal,
@@ -330,15 +332,42 @@ export class AgentRunner {
 	clearHistory(): void {
 		this.history = [];
 		this.experienceMemory.clear();
+		this.toolStartTimes.clear();
+		this.consolidationTriggered = false;
+	}
+
+	/** Rebuild runner history from persisted UI messages after a session restore. */
+	hydrateHistory(messages: Message[]): void {
+		this.clearHistory();
+		this.history = messages.map((message) => ({
+			role: message.role,
+			content: message.content.map((block) => {
+				switch (block.type) {
+					case "tool_result":
+						return {
+							type: "tool_result",
+							tool_use_id: block.toolUseId,
+							content: block.content,
+							is_error: block.isError,
+						};
+					default:
+						return block;
+				}
+			}),
+		}));
 	}
 
 	/** Check permissions before executing a tool. Returns true if allowed. */
 	async checkToolPermission(tool: string, args: Record<string, unknown>): Promise<boolean> {
-		const decision = await this.permissions.check(tool, args);
+		const decision = await this.getToolPermissionDecision(tool, args);
 		if (!decision.allowed) {
 			log.info(`Permission denied for ${tool}: ${decision.reason ?? "no reason"}`);
 		}
 		return decision.allowed;
+	}
+
+	async getToolPermissionDecision(tool: string, args: Record<string, unknown>): Promise<PermissionDecision> {
+		return this.permissions.check(tool, args);
 	}
 
 	/**

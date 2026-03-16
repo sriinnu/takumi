@@ -186,7 +186,11 @@ function installFatalHandlers(): void {
 	});
 }
 
-async function runInteractiveApp(config: TakumiConfig, args: ReturnType<typeof parseArgs>): Promise<void> {
+async function runInteractiveApp(
+	config: TakumiConfig,
+	args: ReturnType<typeof parseArgs>,
+	startupAuthSource: string,
+): Promise<void> {
 	installFatalHandlers();
 
 	// Show the colourful splash banner before entering the alternate screen
@@ -196,7 +200,7 @@ async function runInteractiveApp(config: TakumiConfig, args: ReturnType<typeof p
 		await new Promise((r) => setTimeout(r, 600));
 	}
 
-	const { TakumiApp } = await import("@takumi/tui");
+	const { PROVIDER_MODELS, TakumiApp } = await import("@takumi/tui");
 	const {
 		discoverAndLoadExtensions,
 		ExtensionRunner,
@@ -206,10 +210,14 @@ async function runInteractiveApp(config: TakumiConfig, args: ReturnType<typeof p
 		syncModelTiersFromKosha,
 	} = await import("@takumi/agent");
 
-	// Sync model tiers from kosha-discovery (non-blocking, best-effort)
-	koshaProviderModels()
-		.then((pm) => syncModelTiersFromKosha(pm))
-		.catch(() => {});
+	let availableProviderModels = { ...PROVIDER_MODELS };
+	try {
+		const discoveredProviderModels = await koshaProviderModels();
+		availableProviderModels = { ...PROVIDER_MODELS, ...discoveredProviderModels };
+		syncModelTiersFromKosha(discoveredProviderModels);
+	} catch {
+		// best effort only
+	}
 
 	const provider = await createProvider(config, args.fallback);
 	const tools = new ToolRegistry();
@@ -217,6 +225,17 @@ async function runInteractiveApp(config: TakumiConfig, args: ReturnType<typeof p
 
 	// Phase 45 — Discover and load extensions
 	const cwd = process.cwd();
+	let localModels: string[] = [];
+	try {
+		const providers = await koshaProviders();
+		const ollama = providers.find((provider) => mapKoshaToTakumi(provider.id) === "ollama");
+		localModels = (ollama?.models ?? [])
+			.filter((model) => model.mode === "chat")
+			.map((model) => model.id)
+			.slice(0, 4);
+	} catch {
+		// best effort only
+	}
 	const configuredPaths = config.plugins?.map((p) => p.name) ?? [];
 	const configuredPackagePaths = config.packages?.map((pkg) => pkg.name) ?? [];
 	const extResult = await discoverAndLoadExtensions(configuredPaths, cwd, configuredPackagePaths);
@@ -236,6 +255,13 @@ async function runInteractiveApp(config: TakumiConfig, args: ReturnType<typeof p
 
 	const app = new TakumiApp({
 		config,
+		startupSummary: {
+			provider: config.provider,
+			model: config.model,
+			authSource: startupAuthSource,
+			localModels,
+			availableProviderModels,
+		},
 		sendMessage: (messages: any, system: any, toolDefs: any, signal: any, options: any) =>
 			provider.sendMessage(messages, system, toolDefs, signal, options),
 		tools,
@@ -470,7 +496,19 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	await runInteractiveApp(config, args);
+	const startupAuthSource = config.proxyUrl
+		? "proxy"
+		: config.apiKey
+			? args.apiKey
+				? "explicit api key"
+				: hasProviderEnvKey(config)
+					? `${config.provider} environment`
+					: "auto-detected credential"
+			: canSkipApiKey(config)
+				? "local endpoint"
+				: "unknown";
+
+	await runInteractiveApp(config, args, startupAuthSource);
 }
 
 main().catch((err) => {

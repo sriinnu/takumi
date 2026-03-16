@@ -68,6 +68,9 @@ beforeEach(() => {
 		"MISTRAL_API_KEY",
 		"TOGETHER_API_KEY",
 		"OPENROUTER_API_KEY",
+		"ZAI_API_KEY",
+		"KIMI_API_KEY",
+		"MOONSHOT_API_KEY",
 		"TAKUMI_API_KEY",
 		"GITHUB_TOKEN",
 	]) {
@@ -245,6 +248,22 @@ describe("autoDetectAuth", () => {
 		const result = await autoDetectAuth();
 		expect(result!.provider).toBe("openrouter");
 		expect(result!.apiKey).toBe("or-test-key");
+	});
+
+	it("returns zai for ZAI_API_KEY", async () => {
+		process.env.ZAI_API_KEY = "zai-test-key";
+		const result = await autoDetectAuth();
+		expect(result!.provider).toBe("zai");
+		expect(result!.apiKey).toBe("zai-test-key");
+		expect(result!.source).toBe("ZAI_API_KEY");
+	});
+
+	it("returns zai for KIMI_API_KEY", async () => {
+		process.env.KIMI_API_KEY = "kimi-test-key";
+		const result = await autoDetectAuth();
+		expect(result!.provider).toBe("zai");
+		expect(result!.apiKey).toBe("kimi-test-key");
+		expect(result!.source).toBe("KIMI_API_KEY");
 	});
 
 	it("returns anthropic for TAKUMI_API_KEY", async () => {

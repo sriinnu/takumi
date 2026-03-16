@@ -32,6 +32,8 @@ export interface CompletionItem {
 	detail?: string;
 }
 
+export type ProviderModelCatalog = Record<string, string[]>;
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
 /** Directories to always skip during file completion. */
@@ -60,15 +62,24 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
 	openai: ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3", "o4-mini"],
 	gemini: ["gemini-2.5-pro", "gemini-2.5-flash"],
 	groq: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+	xai: ["grok-4", "grok-3", "grok-3-mini"],
+	grok: ["grok-4", "grok-3", "grok-3-mini"],
 	deepseek: ["deepseek-chat", "deepseek-reasoner"],
 	mistral: ["mistral-large-latest", "mistral-small-latest"],
 	together: ["meta-llama/Llama-3-70b-chat-hf", "mistralai/Mixtral-8x7B-v0.1"],
 	openrouter: ["anthropic/claude-3-5-sonnet", "openai/gpt-4o", "google/gemini-pro-1.5"],
+	alibaba: ["qwen-max", "qwen-plus", "qwen-turbo"],
+	bedrock: ["anthropic.claude-3-7-sonnet-20250219-v1:0", "amazon.nova-pro-v1:0", "meta.llama3-1-70b-instruct-v1:0"],
+	zai: ["kimi-k2-0711-preview", "kimi-latest", "moonshot-v1-8k"],
 	ollama: ["llama3", "codellama", "mistral", "phi3"],
 };
 
+export function cloneProviderModelCatalog(catalog: ProviderModelCatalog): ProviderModelCatalog {
+	return Object.fromEntries(Object.entries(catalog).map(([provider, models]) => [provider, [...models]]));
+}
+
 /** Flat list of all known model IDs across providers. */
-const KNOWN_MODELS = Object.values(PROVIDER_MODELS).flat();
+const _KNOWN_MODELS = Object.values(PROVIDER_MODELS).flat();
 
 /** All supported provider names. */
 export const KNOWN_PROVIDERS = Object.keys(PROVIDER_MODELS);
@@ -78,6 +89,8 @@ export const KNOWN_PROVIDERS = Object.keys(PROVIDER_MODELS);
 export class CompletionEngine {
 	private projectRoot = "";
 	private commands: SlashCommandRegistry | null = null;
+	private providerCatalogProvider: () => ProviderModelCatalog = () => PROVIDER_MODELS;
+	private currentProviderProvider: () => string | undefined = () => undefined;
 
 	/** Set the project root for file completions. */
 	setProjectRoot(root: string): void {
@@ -87,6 +100,16 @@ export class CompletionEngine {
 	/** Set the command registry for slash command completions. */
 	setCommands(commands: SlashCommandRegistry): void {
 		this.commands = commands;
+	}
+
+	/** Set the provider/model catalog source for /provider and /model completions. */
+	setProviderCatalog(provider: () => ProviderModelCatalog): void {
+		this.providerCatalogProvider = provider;
+	}
+
+	/** Set the current provider source so /model can prioritize active-provider models. */
+	setCurrentProvider(provider: () => string | undefined): void {
+		this.currentProviderProvider = provider;
 	}
 
 	/**
@@ -250,8 +273,11 @@ export class CompletionEngine {
 	 * When a provider is specified, only that provider's models are returned.
 	 */
 	getModelCompletions(partial: string, provider?: string): CompletionItem[] {
+		const providerModels = this.providerCatalogProvider();
+		const knownModels = [...new Set(Object.values(providerModels).flat())];
 		const lower = partial.toLowerCase();
-		const models = provider ? (PROVIDER_MODELS[provider] ?? KNOWN_MODELS) : KNOWN_MODELS;
+		const activeProvider = provider ?? this.currentProviderProvider();
+		const models = activeProvider ? (providerModels[activeProvider] ?? knownModels) : knownModels;
 		return models
 			.filter((m) => m.toLowerCase().includes(lower))
 			.map((m) => ({
@@ -267,13 +293,17 @@ export class CompletionEngine {
 	 * Get provider name completions for the partial text after "/provider ".
 	 */
 	getProviderCompletions(partial: string): CompletionItem[] {
+		const providerModels = this.providerCatalogProvider();
+		const knownProviders = Object.keys(providerModels);
 		const lower = partial.toLowerCase();
-		return KNOWN_PROVIDERS.filter((p) => p.includes(lower)).map((p) => ({
-			label: p,
-			insertText: `/provider ${p}`,
-			kind: "command" as CompletionKind,
-			detail: `${PROVIDER_MODELS[p]?.length ?? 0} models`,
-		}));
+		return knownProviders
+			.filter((p) => p.includes(lower))
+			.map((p) => ({
+				label: p,
+				insertText: `/provider ${p}`,
+				kind: "command" as CompletionKind,
+				detail: `${providerModels[p]?.length ?? 0} models`,
+			}));
 	}
 }
 

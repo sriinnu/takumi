@@ -1,7 +1,14 @@
 import type { TakumiConfig } from "@takumi/core";
-import { PROVIDER_ENDPOINTS } from "@takumi/core";
+import { normalizeProviderName, PROVIDER_ENDPOINT_ENV_KEYS, PROVIDER_ENDPOINTS } from "@takumi/core";
 import { tryResolveCliToken } from "./cli-auth.js";
 import { koshaEndpoint } from "./kosha-bridge.js";
+
+function resolveConfigApiKey(providerName: string, config: TakumiConfig): string | undefined {
+	if (!config.apiKey) return undefined;
+
+	const configuredProvider = config.provider || "anthropic";
+	return configuredProvider === providerName ? config.apiKey : undefined;
+}
 
 export function canSkipApiKey(config: TakumiConfig): boolean {
 	if (config.provider === "ollama") return true;
@@ -22,10 +29,15 @@ export async function buildSingleProvider(
 	agent: any,
 ): Promise<any | null> {
 	const env = process.env;
+	const normalizedProvider = normalizeProviderName(providerName) ?? providerName;
+	const configApiKey = resolveConfigApiKey(normalizedProvider, config);
 
 	// Resolve endpoint: CLI override → kosha-discovery → hardcoded fallback
 	const resolveEndpoint = async (name: string): Promise<string> => {
 		if (config.endpoint) return config.endpoint;
+		for (const envVar of PROVIDER_ENDPOINT_ENV_KEYS[name] ?? []) {
+			if (env[envVar]) return env[envVar];
+		}
 		try {
 			const koshaUrl = await koshaEndpoint(name);
 			if (koshaUrl) return koshaUrl;
@@ -35,22 +47,22 @@ export async function buildSingleProvider(
 		return PROVIDER_ENDPOINTS[name] || "";
 	};
 
-	if (providerName === "anthropic") {
+	if (normalizedProvider === "anthropic") {
 		// Priority: CLI tools → env vars (pi-mono ecosystem standard)
 		const key =
-			config.apiKey ||
+			configApiKey ||
 			tryResolveCliToken("anthropic") ||
 			env.ANTHROPIC_API_KEY ||
 			env.CLAUDE_CODE_OAUTH_TOKEN ||
 			env.TAKUMI_API_KEY;
 		if (!key) return null;
-		return new agent.DirectProvider({ ...config, apiKey: key });
+		return new agent.DirectProvider({ ...config, provider: normalizedProvider, apiKey: key });
 	}
 
-	if (providerName === "gemini") {
+	if (normalizedProvider === "gemini") {
 		// Priority: CLI tools → env vars
 		const key =
-			config.apiKey ||
+			configApiKey ||
 			tryResolveCliToken("gemini") ||
 			env.GEMINI_API_KEY ||
 			env.GOOGLE_API_KEY ||
@@ -59,6 +71,7 @@ export async function buildSingleProvider(
 		const endpoint = await resolveEndpoint("google");
 		return new agent.GeminiProvider({
 			...config,
+			provider: normalizedProvider,
 			apiKey: key,
 			endpoint,
 		});
@@ -68,28 +81,37 @@ export async function buildSingleProvider(
 		openai: "OPENAI_API_KEY",
 		github: "GITHUB_TOKEN",
 		groq: "GROQ_API_KEY",
+		xai: "XAI_API_KEY",
 		deepseek: "DEEPSEEK_API_KEY",
 		mistral: "MISTRAL_API_KEY",
 		together: "TOGETHER_API_KEY",
 		openrouter: "OPENROUTER_API_KEY",
+		alibaba: "ALIBABA_API_KEY",
+		bedrock: "BEDROCK_API_KEY",
+		zai: "ZAI_API_KEY",
 		ollama: "",
 	};
 
-	const envVar = keyMap[providerName];
+	const envVar = keyMap[normalizedProvider];
 	// Priority: CLI tools → env vars (pi-mono ecosystem standard)
 	const key =
-		config.apiKey ||
-		(providerName === "openai" ? tryResolveCliToken("codex") : undefined) ||
-		(providerName === "github" ? tryResolveCliToken("github") : undefined) ||
-		tryResolveCliToken(providerName) ||
+		configApiKey ||
+		(normalizedProvider === "openai" ? tryResolveCliToken("codex") : undefined) ||
+		(normalizedProvider === "github" ? tryResolveCliToken("github") : undefined) ||
+		tryResolveCliToken(normalizedProvider) ||
+		(normalizedProvider === "zai" ? env.KIMI_API_KEY || env.MOONSHOT_API_KEY : undefined) ||
+		(normalizedProvider === "xai" ? env.GROK_API_KEY : undefined) ||
+		(normalizedProvider === "alibaba" ? env.DASHSCOPE_API_KEY : undefined) ||
+		(normalizedProvider === "bedrock" ? env.AWS_BEARER_TOKEN : undefined) ||
 		(envVar ? env[envVar] : undefined) ||
 		env.TAKUMI_API_KEY;
-	if (!key && providerName !== "ollama") return null;
+	if (!key && normalizedProvider !== "ollama") return null;
 
-	const endpoint = await resolveEndpoint(providerName);
+	const endpoint = await resolveEndpoint(normalizedProvider);
 
 	return new agent.OpenAIProvider({
 		...config,
+		provider: normalizedProvider,
 		apiKey: key || "",
 		endpoint,
 	});

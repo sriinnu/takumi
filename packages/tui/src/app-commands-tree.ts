@@ -121,7 +121,7 @@ export function registerSessionTreeCommands(ctx: AppCommandContext): void {
 			const header = breadcrumb ? `📍 ${breadcrumb}\n\n` : "";
 			ctx.addInfoMessage(`${header}Session Tree:\n${tree}`);
 		},
-		["/branches"],
+		["/branches", "/tree"],
 	);
 
 	// /switch <id> — switch to a different session

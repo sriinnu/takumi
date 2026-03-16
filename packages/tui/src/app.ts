@@ -1,7 +1,8 @@
 import type { ConventionFiles, ExtensionRunner, MessagePayload, ToolRegistry } from "@takumi/agent";
+import { type HttpBridgeServer, reconstructFromDaemon } from "@takumi/bridge";
 import type { AgentEvent, AutoSaver, Message, SessionData, TakumiConfig, ToolDefinition } from "@takumi/core";
 import { ANSI, createAutoSaver, createLogger, generateSessionId, LIMITS, loadSession } from "@takumi/core";
-import { effect, initYoga, RenderScheduler } from "@takumi/render";
+import { batch, effect, initYoga, RenderScheduler } from "@takumi/render";
 import { AgentRunner } from "./agent-runner.js";
 import { connectChitragupta, disconnectChitragupta } from "./app-chitragupta.js";
 import type { AppCommandContext, ProviderFactory } from "./app-command-context.js";
@@ -11,8 +12,10 @@ import { parseKeyEvent, parseMouseEvent } from "./app-input.js";
 import type { AutocycleAgent } from "./autocycle-agent.js";
 import type { CodingAgent } from "./coding-agent.js";
 import { SlashCommandRegistry } from "./commands.js";
+import { startDesktopBridge } from "./http-bridge-runtime.js";
 import { KeyBindingRegistry } from "./keybinds.js";
 import { handleReplayKey } from "./replay-keybinds.js";
+import { cycleProviderModel, cycleThinkingLevel, describeThinkingLevel } from "./runtime-ux.js";
 import { AppState } from "./state.js";
 import type { ChatView } from "./views/chat.js";
 import { RootView } from "./views/root.js";
@@ -21,6 +24,13 @@ const log = createLogger("app");
 
 export interface TakumiAppOptions {
 	config: TakumiConfig;
+	startupSummary?: {
+		provider: string;
+		model: string;
+		authSource: string;
+		localModels?: string[];
+		availableProviderModels?: Record<string, string[]>;
+	};
 	stdin?: NodeJS.ReadableStream;
 	stdout?: NodeJS.WritableStream;
 	sendMessage?: (
@@ -65,6 +75,8 @@ export class TakumiApp {
 	private providerFactory?: ProviderFactory;
 	private extensionRunner: ExtensionRunner | null = null;
 	private conventionFiles: ConventionFiles | null = null;
+	private startupSummary?: TakumiAppOptions["startupSummary"];
+	private httpBridge: HttpBridgeServer | null = null;
 
 	constructor(options: TakumiAppOptions) {
 		this.config = options.config;
@@ -76,10 +88,23 @@ export class TakumiApp {
 		this.providerFactory = options.providerFactory;
 		this.extensionRunner = options.extensionRunner ?? null;
 		this.conventionFiles = options.conventionFiles ?? null;
+		this.startupSummary = options.startupSummary;
 		this.state = new AppState();
+		this.state.provider.value = this.config.provider;
+		this.state.model.value = this.config.model;
+		this.state.setAvailableProviderModels(this.startupSummary?.availableProviderModels ?? {});
+		this.state.theme.value = typeof this.config.theme === "string" ? this.config.theme : "default";
+		this.state.thinking.value = this.config.thinking;
+		this.state.thinkingBudget.value = this.config.thinkingBudget;
 		this.keybinds = new KeyBindingRegistry();
 		this.commands = new SlashCommandRegistry();
-		this.rootView = new RootView({ state: this.state, config: this.config, commands: this.commands });
+		this.rootView = new RootView({
+			state: this.state,
+			config: this.config,
+			commands: this.commands,
+			keybinds: this.keybinds,
+			onResumeSession: (sessionId) => this.resumeSession(sessionId),
+		});
 		if (options.sendMessage && options.tools) {
 			this.agentRunner = new AgentRunner(
 				this.state,
@@ -103,12 +128,7 @@ export class TakumiApp {
 		if (this.resumeSessionId) {
 			const loaded = await loadSession(this.resumeSessionId);
 			if (loaded) {
-				this.state.sessionId.value = loaded.id;
-				this.state.model.value = loaded.model;
-				this.state.messages.value = loaded.messages;
-				this.state.totalInputTokens.value = loaded.tokenUsage.inputTokens;
-				this.state.totalOutputTokens.value = loaded.tokenUsage.outputTokens;
-				this.state.totalCost.value = loaded.tokenUsage.totalCost;
+				this.applySessionState(loaded);
 				log.info(`Resumed session: ${loaded.id} (${loaded.messages.length} messages)`);
 			} else {
 				this.state.sessionId.value = generateSessionId();
@@ -147,6 +167,22 @@ export class TakumiApp {
 		this.running = true;
 		this.scheduler.start();
 		this.state.terminalSize.value = { width: columns, height: rows };
+
+		if (this.startupSummary) {
+			const localModels = this.startupSummary.localModels ?? [];
+			const localHint =
+				localModels.length > 0 ? `Local models detected: ${localModels.join(", ")}` : "Local models detected: none";
+			this.addInfoMessage(
+				[
+					`Runtime ready`,
+					`Provider: ${this.startupSummary.provider}`,
+					`Model: ${this.startupSummary.model}`,
+					`Auth: ${this.startupSummary.authSource}`,
+					localHint,
+					`Hints: Enter submits • /provider <name> • /model <name> • /help`,
+				].join("\n"),
+			);
+		}
 
 		// Phase 45 — bind extension runner actions
 		if (this.extensionRunner) {
@@ -214,11 +250,29 @@ export class TakumiApp {
 			},
 			this.config.chitraguptaDaemon?.socketPath,
 		);
+
+		this.httpBridge = await startDesktopBridge(this.state, this.agentRunner);
+
+		effect(() => {
+			void this.state.messages.value;
+			void this.state.streamingText.value;
+			void this.state.isStreaming.value;
+			void this.state.activeTool.value;
+			void this.state.contextPercent.value;
+			void this.state.pendingPermission.value;
+			void this.state.sessionId.value;
+			void this.state.provider.value;
+			void this.state.model.value;
+			void this.state.chitraguptaConnected.value;
+			this.httpBridge?.notifyStateChange();
+			return undefined;
+		});
 	}
 
 	async quit(): Promise<void> {
 		if (!this.running) return;
 		this.running = false;
+		await this.cleanupActiveWork("Application exit requested.");
 		if (this.autoSaver) {
 			try {
 				await this.autoSaver.save();
@@ -233,6 +287,8 @@ export class TakumiApp {
 			this.vasanaRefreshInterval = null;
 		}
 		await disconnectChitragupta(this.state);
+		await this.httpBridge?.stop();
+		this.httpBridge = null;
 		this.scheduler?.stop();
 		this.write(ANSI.BRACKETED_PASTE_OFF);
 		this.write(ANSI.MOUSE_OFF);
@@ -307,6 +363,135 @@ export class TakumiApp {
 		this.state.addMessage(msg);
 	}
 
+	private applySessionState(session: SessionData): void {
+		batch(() => {
+			this.state.clearDialogs();
+			this.state.pendingPermission.value = null;
+			this.state.canonicalSessionId.value = "";
+			this.state.sessionId.value = session.id;
+			this.state.model.value = session.model;
+			this.state.messages.value = session.messages;
+			this.state.totalInputTokens.value = session.tokenUsage.inputTokens;
+			this.state.totalOutputTokens.value = session.tokenUsage.outputTokens;
+			this.state.totalCost.value = session.tokenUsage.totalCost;
+		});
+		this.agentRunner?.hydrateHistory(session.messages);
+	}
+
+	private async cleanupActiveWork(reason: string): Promise<void> {
+		if (this.agentRunner?.isRunning) {
+			this.agentRunner.cancel();
+		}
+
+		const activeAutocycle = this.activeAutocycle;
+		this.activeAutocycle = null;
+		if (activeAutocycle?.isActive) {
+			activeAutocycle.cancel();
+		}
+
+		const activeCoder = this.activeCoder;
+		this.activeCoder = null;
+		if (!activeCoder) {
+			return;
+		}
+
+		if (activeCoder.isActive) {
+			await activeCoder.cancel(reason);
+		}
+		await activeCoder.shutdown();
+	}
+
+	private async rotateAutoSaver(): Promise<void> {
+		if (!this.autoSaver) return;
+		try {
+			await this.autoSaver.save();
+		} catch {
+			/* best effort */
+		}
+		this.autoSaver.stop();
+		this.autoSaver = null;
+	}
+
+	private async activateSession(
+		session: SessionData,
+		notice?: string,
+		reason: "new" | "resume" = "resume",
+	): Promise<void> {
+		const previousSessionId = this.state.sessionId.value || undefined;
+		if (this.extensionRunner) {
+			const cancelled = await this.extensionRunner.emitCancellable({
+				type: "session_before_switch",
+				reason,
+				targetSessionId: session.id,
+			});
+			if (cancelled?.cancel) {
+				this.addInfoMessage("Session switch blocked by extension.");
+				return;
+			}
+		}
+
+		await this.cleanupActiveWork(`Switching to session ${session.id}.`);
+		await this.rotateAutoSaver();
+		this.applySessionState(session);
+		this.resumeSessionId = session.id;
+		this.startAutoSaver();
+		if (this.extensionRunner) {
+			await this.extensionRunner.emit({
+				type: "session_switch",
+				reason,
+				previousSessionId,
+			});
+		}
+		if (notice) {
+			this.addInfoMessage(notice);
+		}
+		this.scheduler?.scheduleRender();
+	}
+
+	private async resumeSession(sessionId: string): Promise<void> {
+		const loaded = await loadSession(sessionId);
+		if (loaded) {
+			await this.activateSession(
+				loaded,
+				`Resumed session ${loaded.id} (${loaded.messages.length} messages).`,
+				"resume",
+			);
+			return;
+		}
+
+		// Fallback: reconstruct from Chitragupta daemon
+		const bridge = this.state.chitraguptaBridge.value;
+		if (bridge?.isConnected) {
+			try {
+				const recovered = await reconstructFromDaemon(bridge, sessionId);
+				if (recovered && recovered.messages.length > 0) {
+					const session: SessionData = {
+						id: recovered.sessionId,
+						title:
+							recovered.messages[0]?.content[0]?.type === "text"
+								? recovered.messages[0].content[0].text.slice(0, 80).replace(/\n/g, " ")
+								: "Recovered session",
+						messages: recovered.messages,
+						model: this.state.model.value,
+						createdAt: recovered.createdAt,
+						updatedAt: recovered.updatedAt,
+						tokenUsage: { inputTokens: 0, outputTokens: 0, totalCost: 0 },
+					};
+					await this.activateSession(
+						session,
+						`Attached daemon session ${recovered.sessionId} (${recovered.turnCount} turns).`,
+						"resume",
+					);
+					return;
+				}
+			} catch {
+				// daemon reconstruction failed — fall through to error
+			}
+		}
+
+		this.addInfoMessage(`Could not resume session: ${sessionId}`);
+	}
+
 	private buildSessionData(): SessionData {
 		const messages = this.state.messages.value;
 		let title = "Untitled session";
@@ -359,7 +544,7 @@ export class TakumiApp {
 		};
 		this.keybinds.register("ctrl+p", "Command palette", toggleCommandPalette);
 		this.keybinds.register("ctrl+k", "Command palette", toggleCommandPalette);
-		this.keybinds.register("ctrl+m", "Model picker", () => {
+		this.keybinds.register("alt+m", "Model picker", () => {
 			if (this.state.topDialog === "model-picker") this.state.popDialog();
 			else this.state.pushDialog("model-picker");
 		});
@@ -370,8 +555,24 @@ export class TakumiApp {
 			this.rootView.sidebar.clusterPanel.toggle();
 		});
 		this.keybinds.register("ctrl+o", "Session list", () => this.state.pushDialog("session-list"));
+		this.keybinds.register("ctrl+t", "Session tree", () => {
+			void this.commands.execute("/session-tree");
+		});
 		this.keybinds.register("ctrl+d", "Exit", () => {
 			if (!this.chatView.getEditorValue()) void this.quit();
+		});
+		this.keybinds.register("shift+tab", "Toggle thinking", () => {
+			const level = cycleThinkingLevel(this.state, 1);
+			this.addInfoMessage(`Thinking level: ${describeThinkingLevel(level)}`);
+		});
+		this.keybinds.register("ctrl+shift+m", "Cycle model", () => {
+			const selected = cycleProviderModel(this.state, 1);
+			if (selected) {
+				this.addInfoMessage(`Model cycled to: ${selected} (${this.state.provider.value})`);
+			}
+		});
+		this.keybinds.register("ctrl+g", "External editor", () => {
+			void this.commands.execute("/editor");
 		});
 	}
 
@@ -391,6 +592,8 @@ export class TakumiApp {
 			addInfoMessage: (text) => this.addInfoMessage(text),
 			buildSessionData: () => this.buildSessionData(),
 			startAutoSaver: () => this.startAutoSaver(),
+			resumeSession: (sessionId) => this.resumeSession(sessionId),
+			activateSession: (session, notice, reason) => this.activateSession(session, notice, reason),
 			quit: () => this.quit(),
 			getActiveCoder: () => this.activeCoder,
 			setActiveCoder: (coder) => {

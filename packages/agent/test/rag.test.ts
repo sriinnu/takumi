@@ -197,4 +197,31 @@ describe("formatRagContext", () => {
 		// Both symbols are in the same file — should only appear once as heading
 		expect(fileHeadings).toBe(1);
 	});
+
+	it("respects maxBytes limit and truncates oversized output", () => {
+		const bigResults = Array.from({ length: 50 }, (_, i) => ({
+			symbol: {
+				name: `longFunction${i}`,
+				kind: "function",
+				line: i + 1,
+				snippet: "x".repeat(200),
+				relPath: `src/file${i}.ts`,
+			},
+			score: 1,
+		}));
+		const context = formatRagContext(bigResults, 500);
+		expect(context.length).toBeLessThanOrEqual(600); // some overhead for joining
+		expect(context).toContain("Relevant codebase symbols");
+	});
+
+	it("returns empty string when maxBytes is too small for any symbol", () => {
+		const results = [
+			{
+				symbol: { name: "fn", kind: "function", line: 1, snippet: "x".repeat(200), relPath: "a.ts" },
+				score: 1,
+			},
+		];
+		const context = formatRagContext(results, 10);
+		expect(context).toBe("");
+	});
 });

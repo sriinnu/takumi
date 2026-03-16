@@ -30,6 +30,8 @@ export interface AppCommandContext {
 	addInfoMessage(text: string): void;
 	buildSessionData(): SessionData;
 	startAutoSaver(): void;
+	resumeSession?(sessionId: string): Promise<void>;
+	activateSession?(session: SessionData, notice?: string, reason?: "new" | "resume"): Promise<void>;
 	quit(): Promise<void>;
 	getActiveCoder(): CodingAgent | null;
 	setActiveCoder(coder: CodingAgent | null): void;

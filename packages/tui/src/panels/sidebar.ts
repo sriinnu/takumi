@@ -8,6 +8,9 @@ import type { ListItem, Screen } from "@takumi/render";
 import { Border, Component, effect, List } from "@takumi/render";
 import type { AppState } from "../state.js";
 import { ClusterStatusPanel } from "./cluster-status.js";
+import { LaneTrackerPanel } from "./lane-tracker.js";
+import { RouteCardPanel } from "./route-card.js";
+import { SabhaPanel } from "./sabha-panel.js";
 
 export interface SidebarPanelProps {
 	state: AppState;
@@ -31,6 +34,12 @@ export class SidebarPanel extends Component {
 	private disposeEffects: (() => void)[] = [];
 	/** Cluster status widget — toggle with Ctrl+Shift+C. */
 	readonly clusterPanel: ClusterStatusPanel;
+	/** Route card — latest routing decision with authority/enforcement badges. */
+	readonly routeCard: RouteCardPanel;
+	/** Lane tracker — recent routing history shown as lanes. */
+	readonly laneTracker: LaneTrackerPanel;
+	/** Sabha panel — deliberation council state and predictions. */
+	readonly sabhaPanel: SabhaPanel;
 
 	constructor(props: SidebarPanelProps) {
 		super();
@@ -79,6 +88,9 @@ export class SidebarPanel extends Component {
 		);
 
 		this.clusterPanel = new ClusterStatusPanel({ state: props.state });
+		this.routeCard = new RouteCardPanel({ state: props.state });
+		this.laneTracker = new LaneTrackerPanel({ state: props.state, maxLanes: 4 });
+		this.sabhaPanel = new SabhaPanel({ state: props.state });
 	}
 
 	onUnmount(): void {
@@ -87,6 +99,9 @@ export class SidebarPanel extends Component {
 		}
 		this.disposeEffects = [];
 		this.clusterPanel.onUnmount();
+		this.routeCard.onUnmount();
+		this.laneTracker.onUnmount();
+		this.sabhaPanel.onUnmount();
 		super.onUnmount();
 	}
 
@@ -207,6 +222,51 @@ export class SidebarPanel extends Component {
 					y: cursorY,
 					width: innerW,
 					height: clusterHeight,
+				});
+				cursorY += clusterHeight;
+			}
+		}
+
+		// ── Section: Route Card ────────────────────────────────────────────
+		const routeHeight = this.routeCard.height;
+		if (routeHeight > 0 && cursorY + routeHeight <= maxY) {
+			cursorY += SECTION_GAP;
+			if (cursorY < maxY) {
+				this.routeCard.render(screen, {
+					x: innerX,
+					y: cursorY,
+					width: innerW,
+					height: routeHeight,
+				});
+				cursorY += routeHeight;
+			}
+		}
+
+		// ── Section: Lane Tracker ──────────────────────────────────────────
+		const laneHeight = this.laneTracker.height;
+		if (laneHeight > 0 && cursorY + laneHeight <= maxY) {
+			cursorY += SECTION_GAP;
+			if (cursorY < maxY) {
+				this.laneTracker.render(screen, {
+					x: innerX,
+					y: cursorY,
+					width: innerW,
+					height: laneHeight,
+				});
+				cursorY += laneHeight;
+			}
+		}
+
+		// ── Section: Sabha Panel ───────────────────────────────────────────
+		const sabhaHeight = this.sabhaPanel.height;
+		if (sabhaHeight > 0 && cursorY + sabhaHeight <= maxY) {
+			cursorY += SECTION_GAP;
+			if (cursorY < maxY) {
+				this.sabhaPanel.render(screen, {
+					x: innerX,
+					y: cursorY,
+					width: innerW,
+					height: sabhaHeight,
 				});
 			}
 		}

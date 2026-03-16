@@ -89,7 +89,15 @@ export function convertMessages(messages: MessagePayload[]): OpenAIMessage[] {
 		for (const block of blocks) {
 			if (block.type === "text") texts.push(block.text);
 			else if (block.type === "thinking") {
-				// Skip Anthropic-only thought blocks for OpenAI APIs.
+				// Preserve thinking context as tagged text so cross-provider
+				// handoffs retain the reasoning chain instead of losing it.
+				if (block.thinking) texts.push(`<thinking>\n${block.thinking}\n</thinking>`);
+			} else if (block.type === "image") {
+				// OpenAI vision models accept image_url content parts; however
+				// the chat completions text-only path cannot embed images. We
+				// include a placeholder so the conversation doesn't silently
+				// lose an image reference.
+				texts.push("[image attached]");
 			} else texts.push(JSON.stringify(block));
 		}
 

@@ -77,14 +77,35 @@ const config = {
 	logLevel: "info",
 };
 
+/** @type {import('esbuild').BuildOptions} */
+const telemetryConfig = {
+	entryPoints: [join(root, "bin", "telemetry-snapshot.ts")],
+	bundle: true,
+	platform: "node",
+	target: "node22",
+	format: "cjs",
+	outfile: join(root, "dist", "takumi-telemetry-snapshot.cjs"),
+	external: ["yoga-wasm-web", "better-sqlite3", "fsevents"],
+	banner: { js: "#!/usr/bin/env node" },
+	alias: config.alias,
+	splitting: false,
+	treeShaking: true,
+	minify: false,
+	sourcemap: false,
+	logLevel: "info",
+};
+
 if (isWatch) {
 	const ctx = await esbuild.context(config);
 	await ctx.watch();
 	console.log("Watching for changes…");
 } else {
-	const result = await esbuild.build(config);
+	const [result, telResult] = await Promise.all([
+		esbuild.build(config),
+		esbuild.build(telemetryConfig),
+	]);
 
-	if (result.errors.length) {
+	if (result.errors.length || telResult.errors.length) {
 		process.exit(1);
 	}
 
@@ -128,8 +149,15 @@ if (isWatch) {
 		const { chmodSync } = await import("node:fs");
 		chmodSync(join(root, "dist", "takumi.cjs"), 0o755);
 		chmodSync(shimPath, 0o755);
+		chmodSync(join(root, "dist", "takumi-telemetry-snapshot.cjs"), 0o755);
 	} catch {}
 
+	// Fix shebang for telemetry snapshot
+	let telSrc = readFileSync(join(root, "dist", "takumi-telemetry-snapshot.cjs"), "utf-8");
+	telSrc = telSrc.replace(/^(#!.*\r?\n)+/, "#!/usr/bin/env node\n");
+	wfs(join(root, "dist", "takumi-telemetry-snapshot.cjs"), telSrc, "utf-8");
+
 	console.log("\n✓ dist/takumi.cjs ready");
+	console.log("✓ dist/takumi-telemetry-snapshot.cjs ready");
 	console.log("  npm install -g . && takumi --help");
 }

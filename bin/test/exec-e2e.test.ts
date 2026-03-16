@@ -23,7 +23,7 @@ interface ExecRunResult {
 describe("takumi exec e2e", () => {
 	beforeAll(() => {
 		buildExecRuntimeDependencies();
-	});
+	}, 30_000);
 
 	afterEach(async () => {
 		await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));

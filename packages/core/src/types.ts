@@ -298,7 +298,7 @@ export interface TakumiConfig {
 	/** Darpana proxy URL (if using proxy) */
 	proxyUrl: string;
 
-	/** Provider name: anthropic, openai, gemini, groq, ollama, openrouter, deepseek, mistral, together, custom */
+	/** Provider name: anthropic, openai, gemini, groq, ollama, openrouter, deepseek, mistral, together, zai, custom */
 	provider: string;
 
 	/** Custom API endpoint (for openai-compat providers, ollama, etc.) */

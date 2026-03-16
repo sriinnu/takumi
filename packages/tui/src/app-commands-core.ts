@@ -3,7 +3,14 @@ import { gitDiff, reconstructFromDaemon } from "@takumi/bridge";
 import type { Message } from "@takumi/core";
 import type { AppCommandContext } from "./app-command-context.js";
 import { registerChitraguptaCommands } from "./app-commands-chitragupta.js";
-import { KNOWN_PROVIDERS, PROVIDER_MODELS } from "./completion.js";
+import {
+	applyThinkingLevel,
+	cycleProviderModel,
+	cycleThinkingLevel,
+	describeThinkingLevel,
+	getThinkingLevel,
+	normalizeThinkingLevel,
+} from "./runtime-ux.js";
 
 export function registerCoreCommands(ctx: AppCommandContext): void {
 	ctx.commands.register("/quit", "Exit Takumi", () => ctx.quit(), ["/exit"]);
@@ -12,27 +19,53 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 		ctx.agentRunner?.clearHistory();
 	});
 	ctx.commands.register("/model", "Change model (tab for autocomplete)", (args) => {
+		const trimmed = args.trim();
+		const provider = ctx.state.provider.value;
+		const models = ctx.state.availableProviderModels.value[provider] ?? [];
 		if (!args) {
-			const prov = ctx.state.provider.value;
-			const models = PROVIDER_MODELS[prov] ?? [];
 			const lines = [
-				`Current model: ${ctx.state.model.value}  (provider: ${prov})`,
+				`Current model: ${ctx.state.model.value}  (provider: ${provider})`,
 				models.length > 0
-					? `Available for ${prov}:\n${models.map((m) => `  ${m}`).join("\n")}`
+					? `Available for ${provider}:\n${models.map((m) => `  ${m}`).join("\n")}`
 					: "Use /model <name> to set a model (any model ID is accepted).",
+				"",
+				"Shortcuts: /model next | /model prev",
 			];
 			ctx.addInfoMessage(lines.join("\n"));
 			return;
 		}
-		ctx.state.model.value = args.trim();
-		ctx.addInfoMessage(`Model set to: ${args.trim()}`);
+
+		if (trimmed === "next" || trimmed === "cycle") {
+			const selected = cycleProviderModel(ctx.state, 1);
+			ctx.addInfoMessage(
+				selected
+					? `Model cycled to: ${selected} (${provider})`
+					: `No provider-scoped model catalog is available for ${provider}`,
+			);
+			return;
+		}
+
+		if (trimmed === "prev" || trimmed === "previous") {
+			const selected = cycleProviderModel(ctx.state, -1);
+			ctx.addInfoMessage(
+				selected
+					? `Model cycled to: ${selected} (${provider})`
+					: `No provider-scoped model catalog is available for ${provider}`,
+			);
+			return;
+		}
+
+		ctx.state.model.value = trimmed;
+		ctx.addInfoMessage(`Model set to: ${trimmed}`);
 	});
 	ctx.commands.register("/provider", "Switch AI provider (tab for autocomplete)", async (args) => {
+		const providerModels = ctx.state.availableProviderModels.value;
+		const knownProviders = ctx.state.availableProviders.value;
 		if (!args) {
 			const current = ctx.state.provider.value;
-			const lines = KNOWN_PROVIDERS.map((p) => {
+			const lines = knownProviders.map((p) => {
 				const marker = p === current ? "▶ " : "  ";
-				const count = PROVIDER_MODELS[p]?.length ?? 0;
+				const count = providerModels[p]?.length ?? 0;
 				return `${marker}${p.padEnd(12)} (${count} models)`;
 			});
 			ctx.addInfoMessage(`Available providers:\n${lines.join("\n")}\n\nUse /provider <name> to switch.`);
@@ -40,8 +73,8 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 		}
 
 		const name = args.trim().toLowerCase();
-		if (!KNOWN_PROVIDERS.includes(name) && name !== "custom") {
-			ctx.addInfoMessage(`Unknown provider: "${name}"\nAvailable: ${KNOWN_PROVIDERS.join(", ")}`);
+		if (!knownProviders.includes(name) && name !== "custom") {
+			ctx.addInfoMessage(`Unknown provider: "${name}"\nAvailable: ${knownProviders.join(", ")}`);
 			return;
 		}
 		if (ctx.providerFactory && ctx.agentRunner) {
@@ -56,7 +89,7 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 				}
 				ctx.agentRunner.setSendMessageFn(newSendFn);
 				ctx.state.provider.value = name;
-				const defaultModel = PROVIDER_MODELS[name]?.[1] ?? PROVIDER_MODELS[name]?.[0] ?? "";
+				const defaultModel = providerModels[name]?.[1] ?? providerModels[name]?.[0] ?? "";
 				ctx.state.model.value = defaultModel || ctx.state.model.value;
 				ctx.addInfoMessage(
 					defaultModel
@@ -69,7 +102,7 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 			return;
 		}
 		ctx.state.provider.value = name;
-		const defaultModel = PROVIDER_MODELS[name]?.[1] ?? PROVIDER_MODELS[name]?.[0] ?? "";
+		const defaultModel = providerModels[name]?.[1] ?? providerModels[name]?.[0] ?? "";
 		if (defaultModel) ctx.state.model.value = defaultModel;
 		ctx.addInfoMessage(
 			`Provider set to: ${name}${defaultModel ? ` | model: ${defaultModel}` : ""}\n` +
@@ -200,18 +233,11 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 		if (args.startsWith("resume ")) {
 			const sessionId = args.slice(7).trim();
 			if (!sessionId) return;
-			const { loadSession } = await import("@takumi/core");
-			const loaded = await loadSession(sessionId);
-			if (!loaded) return ctx.addInfoMessage(`Session not found: ${sessionId}`);
-			ctx.state.sessionId.value = loaded.id;
-			ctx.state.model.value = loaded.model;
-			ctx.state.messages.value = loaded.messages;
-			ctx.state.totalInputTokens.value = loaded.tokenUsage.inputTokens;
-			ctx.state.totalOutputTokens.value = loaded.tokenUsage.outputTokens;
-			ctx.state.totalCost.value = loaded.tokenUsage.totalCost;
-			ctx.agentRunner?.clearHistory();
-			ctx.startAutoSaver();
-			ctx.addInfoMessage(`Resumed session: ${sessionId} (${loaded.messages.length} messages)`);
+			if (ctx.resumeSession) {
+				await ctx.resumeSession(sessionId);
+				return;
+			}
+			ctx.addInfoMessage("Session resume is unavailable in this runtime.");
 			return;
 		}
 		if (args === "save") {
@@ -225,7 +251,50 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 			}
 			return;
 		}
-		ctx.addInfoMessage("Usage: /session [info|list|resume <id>|save|dates [project]|projects|delete <id>]");
+		if (args.startsWith("attach ")) {
+			const sessionId = args.slice(7).trim();
+			if (!sessionId) {
+				ctx.addInfoMessage("Usage: /session attach <daemon-session-id>");
+				return;
+			}
+			if (!bridge?.isConnected) {
+				ctx.addInfoMessage("/session attach requires Chitragupta connection");
+				return;
+			}
+			ctx.addInfoMessage(`Attaching daemon session ${sessionId}...`);
+			try {
+				const recovered = await reconstructFromDaemon(bridge, sessionId);
+				if (!recovered || recovered.messages.length === 0) {
+					ctx.addInfoMessage(`Session "${sessionId}" not found on daemon or has no messages.`);
+					return;
+				}
+				const session: import("@takumi/core").SessionData = {
+					id: recovered.sessionId,
+					title:
+						recovered.messages[0]?.content[0]?.type === "text"
+							? recovered.messages[0].content[0].text.slice(0, 80).replace(/\n/g, " ")
+							: "Recovered session",
+					messages: recovered.messages,
+					model: ctx.state.model.value,
+					createdAt: recovered.createdAt,
+					updatedAt: recovered.updatedAt,
+					tokenUsage: { inputTokens: 0, outputTokens: 0, totalCost: 0 },
+				};
+				if (ctx.activateSession) {
+					await ctx.activateSession(
+						session,
+						`Attached daemon session ${recovered.sessionId} (${recovered.turnCount} turns).`,
+						"resume",
+					);
+				} else {
+					ctx.addInfoMessage("Session activation is unavailable in this runtime.");
+				}
+			} catch (err) {
+				ctx.addInfoMessage(`Failed to attach session: ${(err as Error).message}`);
+			}
+			return;
+		}
+		ctx.addInfoMessage("Usage: /session [info|list|resume <id>|attach <id>|save|dates [project]|projects|delete <id>]");
 	});
 	ctx.commands.register("/diff", "Show git diff", () => {
 		const diff = gitDiff(process.cwd());
@@ -280,28 +349,58 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 		ctx.addInfoMessage("Usage: /permission [reset]");
 	});
 	ctx.commands.register("/think", "Toggle extended thinking", (args) => {
+		const trimmed = args.trim();
+		const currentLevel = getThinkingLevel(ctx.state.thinking.value, ctx.state.thinkingBudget.value);
 		if (!args) {
-			ctx.state.thinking.value = !ctx.state.thinking.value;
+			const nextLevel = cycleThinkingLevel(ctx.state, 1);
+			return ctx.addInfoMessage(`Thinking level: ${describeThinkingLevel(nextLevel)}`);
+		}
+		if (trimmed === "on") {
+			const level = applyThinkingLevel(ctx.state, currentLevel === "off" ? "normal" : currentLevel);
+			return ctx.addInfoMessage(`Thinking level: ${describeThinkingLevel(level)}`);
+		}
+		if (trimmed === "off") {
+			applyThinkingLevel(ctx.state, "off");
+			return ctx.addInfoMessage("Thinking level: Off");
+		}
+		if (trimmed === "next") {
+			const level = cycleThinkingLevel(ctx.state, 1);
+			return ctx.addInfoMessage(`Thinking level: ${describeThinkingLevel(level)}`);
+		}
+		if (trimmed === "prev" || trimmed === "previous") {
+			const level = cycleThinkingLevel(ctx.state, -1);
+			return ctx.addInfoMessage(`Thinking level: ${describeThinkingLevel(level)}`);
+		}
+		if (trimmed === "level") {
 			return ctx.addInfoMessage(
-				`Extended thinking ${ctx.state.thinking.value ? "enabled" : "disabled"}${ctx.state.thinking.value ? ` (budget: ${ctx.state.thinkingBudget.value} tokens)` : ""}`,
+				`Current thinking level: ${describeThinkingLevel(currentLevel)}\nAvailable: off, brief, normal, deep, max`,
 			);
 		}
-		if (args === "on") {
-			ctx.state.thinking.value = true;
-			return ctx.addInfoMessage(`Extended thinking enabled (budget: ${ctx.state.thinkingBudget.value} tokens)`);
+		if (trimmed.startsWith("level ")) {
+			const level = normalizeThinkingLevel(trimmed.slice(6));
+			if (!level) {
+				ctx.addInfoMessage("Invalid thinking level — use one of: off, brief, normal, deep, max");
+				return;
+			}
+			applyThinkingLevel(ctx.state, level);
+			return ctx.addInfoMessage(`Thinking level: ${describeThinkingLevel(level)}`);
 		}
-		if (args === "off") {
-			ctx.state.thinking.value = false;
-			return ctx.addInfoMessage("Extended thinking disabled");
+		const directLevel = normalizeThinkingLevel(trimmed);
+		if (directLevel) {
+			applyThinkingLevel(ctx.state, directLevel);
+			return ctx.addInfoMessage(`Thinking level: ${describeThinkingLevel(directLevel)}`);
 		}
-		if (args.startsWith("budget ")) {
-			const budget = parseInt(args.slice(7).trim(), 10);
+		if (trimmed.startsWith("budget ")) {
+			const budget = parseInt(trimmed.slice(7).trim(), 10);
 			if (Number.isNaN(budget) || budget <= 0)
-				return ctx.addInfoMessage(`Invalid budget: "${args.slice(7).trim()}" — must be a positive number`);
+				return ctx.addInfoMessage(`Invalid budget: "${trimmed.slice(7).trim()}" — must be a positive number`);
 			ctx.state.thinkingBudget.value = budget;
-			return ctx.addInfoMessage(`Thinking budget set to ${budget} tokens`);
+			ctx.state.thinking.value = true;
+			return ctx.addInfoMessage(
+				`Thinking budget set to ${budget} tokens (current level: ${describeThinkingLevel(getThinkingLevel(true, budget))})`,
+			);
 		}
-		ctx.addInfoMessage("Usage: /think [on|off|budget <tokens>]");
+		ctx.addInfoMessage("Usage: /think [on|off|next|prev|level [off|brief|normal|deep|max]|budget <tokens>]");
 	});
 
 	ctx.commands.register("/fork", "Fork the current session into a new branch", async (_args) => {
@@ -318,6 +417,14 @@ export function registerCoreCommands(ctx: AppCommandContext): void {
 		const forked = await forkSession(currentId);
 		if (!forked) {
 			ctx.addInfoMessage(`Fork failed: session "${currentId}" not found on disk. Try /session save first.`);
+			return;
+		}
+		if (ctx.activateSession) {
+			await ctx.activateSession(
+				forked,
+				`Session forked.\n  Source : ${currentId}\n  New    : ${forked.id}\n\nYou are now on the forked session. The original is unchanged.`,
+				"new",
+			);
 			return;
 		}
 		ctx.state.sessionId.value = forked.id;

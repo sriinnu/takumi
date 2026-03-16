@@ -31,14 +31,13 @@ export class ExperienceMemory {
 		compacted: MessagePayload[],
 		preserved: MessagePayload[],
 	): ExperienceArchive | null {
-		const cleanSummary = summary.trim();
-		if (!cleanSummary) {
+		if (!summary.trim()) {
 			return null;
 		}
 
 		const archive: ExperienceArchive = {
 			id: `MEM-${String(++this.archiveCounter).padStart(3, "0")}`,
-			summary: collapseWhitespace(cleanSummary),
+			summary: collapseWhitespace(summary),
 			messageCount: compacted.length,
 			preservedCount: preserved.length,
 			toolNames: collectToolNames(compacted),
@@ -152,6 +151,24 @@ export class ExperienceMemory {
 		this.archives = [];
 		this.toolState.clear();
 		this.archiveCounter = 0;
+	}
+
+	/** Build a structured summary of files the agent has operated on, surviving compaction. */
+	buildFileAwarenessSummary(): string | null {
+		const fileTools = [...this.toolState.values()].filter((s) => s.fileHints.length > 0);
+		if (fileTools.length === 0) return null;
+
+		const lines = ["## File Awareness (survives compaction)"];
+		const seen = new Set<string>();
+		for (const snapshot of fileTools) {
+			for (const hint of snapshot.fileHints) {
+				if (seen.has(hint)) continue;
+				seen.add(hint);
+				const status = snapshot.lastSuccess ? "ok" : "error";
+				lines.push(`- ${hint} (last: ${snapshot.toolName}, ${status})`);
+			}
+		}
+		return lines.join("\n");
 	}
 }
 

@@ -267,7 +267,7 @@ describe("convertMessages", () => {
 		expect(result[1]).toEqual({ role: "tool", tool_call_id: "toolu_2", content: "Result 2" });
 	});
 
-	it("strips thinking blocks from content", () => {
+	it("converts thinking blocks to tagged text", () => {
 		const messages: MessagePayload[] = [
 			{
 				role: "assistant",
@@ -278,7 +278,12 @@ describe("convertMessages", () => {
 			},
 		];
 		const result = convertMessages(messages);
-		expect(result).toEqual([{ role: "assistant", content: "Here is my answer." }]);
+		expect(result).toEqual([
+			{
+				role: "assistant",
+				content: "<thinking>\nI need to think about this...\n</thinking>\nHere is my answer.",
+			},
+		]);
 	});
 
 	it("handles empty content array", () => {

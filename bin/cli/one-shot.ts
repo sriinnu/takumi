@@ -1,6 +1,5 @@
-import type { AgentEvent, TakumiConfig, Usage } from "@takumi/core";
+import type { AgentEvent, TakumiConfig, Usage, ExecLaneSnapshot } from "@takumi/core";
 import { bootstrapChitraguptaForExec } from "@takumi/agent";
-import { ChitraguptaObserver } from "@takumi/bridge";
 import {
 	EXEC_EXIT_CODES,
 	type ExecArtifact,
@@ -15,6 +14,16 @@ import {
 } from "./exec-protocol.js";
 import { createProvider } from "./provider.js";
 import { buildReflexionPrompt, loadRecentReflexions, saveReflexion } from "./reflexion-lite.js";
+import {
+	buildHubArtifacts,
+	dedupeFiles,
+	determineExecCapability,
+	ensureExecCanonicalSession,
+	isPolicyFailureOutput,
+	listChangedFiles,
+	persistExecSession,
+	resolveExecRouting,
+} from "./one-shot-helpers.js";
 
 export interface OneShotOptions {
 	runId: string;
@@ -76,6 +85,7 @@ export async function runOneShot(
 	let toolCalls = 0;
 	let toolErrors = 0;
 	let agentError: Error | undefined;
+	let policyError: Error | undefined;
 	let bootstrapConnected = false;
 	let bootstrapBridge: Awaited<ReturnType<typeof bootstrapChitraguptaForExec>>["bridge"] | null = null;
 	let sessionBinding: ExecSessionBinding = { projectPath: process.cwd() };
@@ -101,6 +111,14 @@ export async function runOneShot(
 				model: config.model,
 				session: sessionBinding,
 				routing: routingBinding,
+				lane: {
+					capability: routingBinding.capability,
+					authority: routingBinding.authority,
+					enforcement: routingBinding.enforcement,
+					selectedModel: routingBinding.model,
+					laneId: routingBinding.laneId,
+					degraded: routingBinding.degraded ?? false,
+				},
 			}),
 		);
 	}
@@ -156,13 +174,17 @@ export async function runOneShot(
 			tools,
 			systemPrompt: system,
 			maxTurns: config.maxTurns,
+			checkToolPermission: async (toolName: string) => ({
+				allowed: false,
+				reason: `Headless run denied permission-required tool: ${toolName}`,
+			}),
 		});
 
 		for await (const event of loop) {
 			trackAgentEvent(event);
 
 			if (streamFormat === "ndjson") {
-				emitExecEvent(createAgentEventEnvelope(runId, event));
+				emitExecEvent(createAgentEventEnvelope(runId, event, routingBinding.laneId));
 				continue;
 			}
 
@@ -227,6 +249,24 @@ export async function runOneShot(
 		return { runId, exitCode: EXEC_EXIT_CODES.AGENT_ERROR };
 	}
 
+	if (policyError) {
+		if (streamFormat === "ndjson") {
+			emitExecEvent(
+				createRunFailedEvent({
+					runId,
+					exitCode: EXEC_EXIT_CODES.POLICY,
+					phase: "policy",
+					error: policyError,
+					session: sessionBinding,
+					routing: routingBinding,
+				}),
+			);
+		} else {
+			process.stderr.write(`\nPolicy error: ${policyError.message}\n`);
+		}
+		return { runId, exitCode: EXEC_EXIT_CODES.POLICY };
+	}
+
 	if (streamFormat === "text") {
 		process.stdout.write("\n");
 	}
@@ -234,6 +274,16 @@ export async function runOneShot(
 	if (streamFormat === "ndjson") {
 		const filesAfter = await listChangedFiles(process.cwd());
 		const artifacts = buildExecArtifacts(fullText, failures);
+		const filesChanged = dedupeFiles([...filesBefore, ...filesAfter]);
+		const hubArtifacts = buildHubArtifacts({ fullText, failures, routing: routingBinding, filesChanged });
+		const lane: ExecLaneSnapshot = {
+			capability: routingBinding.capability,
+			authority: routingBinding.authority,
+			enforcement: routingBinding.enforcement,
+			selectedModel: routingBinding.model,
+			laneId: routingBinding.laneId,
+			degraded: routingBinding.degraded ?? false,
+		};
 		await persistExecSession(bootstrapBridge, sessionBinding, prompt, fullText, lastUsage);
 		emitExecEvent(
 			createRunCompletedEvent({
@@ -246,7 +296,9 @@ export async function runOneShot(
 				session: sessionBinding,
 				routing: routingBinding,
 				artifacts,
-				filesChanged: dedupeFiles([...filesBefore, ...filesAfter]),
+				hubArtifacts,
+				filesChanged,
+				lane,
 				validation: { status: "not-run", checks: [] },
 			}),
 		);
@@ -270,6 +322,9 @@ export async function runOneShot(
 			if (event.isError) {
 				toolErrors += 1;
 				failures.push(`${event.name}: ${event.output.slice(0, 280).replace(/\s+/g, " ")}`);
+				if (!policyError && isPolicyFailureOutput(event.output)) {
+					policyError = new Error(event.output);
+				}
 			}
 			return;
 		}
@@ -288,120 +343,6 @@ export async function runOneShot(
 			agentError = event.error;
 			failures.push(`agent_error: ${event.error.message.slice(0, 280)}`);
 		}
-	}
-}
-
-async function ensureExecCanonicalSession(
-	bridge: NonNullable<Awaited<ReturnType<typeof bootstrapChitraguptaForExec>>["bridge"]>,
-	prompt: string,
-	config: TakumiConfig,
-): Promise<ExecSessionBinding> {
-	try {
-		const result = await bridge.sessionCreate({
-			project: process.cwd(),
-			title: prompt.slice(0, 80) || "Takumi exec",
-			agent: "takumi.exec",
-			model: config.model,
-			provider: config.provider,
-			branch: await detectGitBranch(process.cwd()),
-		});
-		return {
-			projectPath: process.cwd(),
-			canonicalSessionId: result.id,
-			title: prompt.slice(0, 80) || "Takumi exec",
-		};
-	} catch {
-		return { projectPath: process.cwd() };
-	}
-}
-
-async function resolveExecRouting(
-	bridge: NonNullable<Awaited<ReturnType<typeof bootstrapChitraguptaForExec>>["bridge"]>,
-	session: ExecSessionBinding,
-	prompt: string,
-	config: TakumiConfig,
-	capability: string,
-): Promise<ExecRoutingBinding> {
-	try {
-		const observer = new ChitraguptaObserver(bridge as never);
-		const decision = await observer.routeResolve({
-			consumer: "takumi.exec",
-			sessionId: session.canonicalSessionId ?? "transient",
-			capability,
-			constraints: { requireStreaming: true, hardProviderFamily: normalizeExecProviderFamily(config.provider) ?? undefined },
-			context: {
-				projectPath: session.projectPath,
-				promptLength: prompt.length,
-				configuredModel: config.model,
-				configuredProvider: config.provider,
-			},
-		});
-		const selected = decision?.selected;
-		const selectedModel = extractSelectedModel(selected?.metadata);
-		const selectedProvider = normalizeExecProviderFamily(selected?.providerFamily);
-		const configuredProvider = normalizeExecProviderFamily(config.provider);
-		const canApplyModel = Boolean(selected && selectedModel && (!selectedProvider || selectedProvider === configuredProvider));
-		return {
-			capability,
-			authority: canApplyModel ? "engine" : "takumi-fallback",
-			enforcement: canApplyModel ? "same-provider" : "capability-only",
-			provider: selected?.providerFamily ?? config.provider,
-			model: canApplyModel ? selectedModel : config.model,
-			laneId: selected?.id,
-			degraded: decision?.degraded ?? false,
-		};
-	} catch {
-		return {
-			capability,
-			authority: "takumi-fallback",
-			enforcement: "capability-only",
-			provider: config.provider,
-			model: config.model,
-		};
-	}
-}
-
-async function persistExecSession(
-	bridge: Awaited<ReturnType<typeof bootstrapChitraguptaForExec>>["bridge"] | null,
-	session: ExecSessionBinding,
-	prompt: string,
-	fullText: string,
-	usage?: Usage,
-): Promise<void> {
-	if (!bridge?.isConnected || !session.canonicalSessionId) {
-		return;
-	}
-
-	try {
-		const maxTurn = await bridge.turnMaxNumber(session.canonicalSessionId).catch(() => 0);
-		await bridge.turnAdd(session.canonicalSessionId, session.projectPath, {
-			number: maxTurn + 1,
-			role: "user",
-			content: prompt,
-			timestamp: Date.now(),
-			model: undefined,
-		});
-		await bridge.turnAdd(session.canonicalSessionId, session.projectPath, {
-			number: maxTurn + 2,
-			role: "assistant",
-			content: fullText,
-			timestamp: Date.now(),
-			model: undefined,
-			tokens: usage
-				? {
-					prompt: usage.inputTokens,
-					completion: usage.outputTokens,
-					total: usage.inputTokens + usage.outputTokens,
-				}
-				: undefined,
-		});
-		await bridge.sessionMetaUpdate(session.canonicalSessionId, {
-			completed: true,
-			durationMs: undefined,
-			costUsd: undefined,
-		});
-	} catch {
-		// best effort
 	}
 }
 
@@ -424,81 +365,4 @@ function buildExecArtifacts(fullText: string, failures: string[]): ExecArtifact[
 		summary: fullText.trim() ? "One-shot execution completed" : "One-shot execution completed without assistant text",
 	});
 	return artifacts;
-}
-
-async function listChangedFiles(cwd: string): Promise<string[]> {
-	const { execFile } = await import("node:child_process");
-	const { promisify } = await import("node:util");
-	const execFileAsync = promisify(execFile);
-	try {
-		const { stdout } = await execFileAsync("git", ["status", "--short", "--untracked-files=all"], { cwd });
-		return stdout
-			.split("\n")
-			.map((line) => line.trim())
-			.filter(Boolean)
-			.map((line) => line.slice(3).trim())
-			.filter(Boolean);
-	} catch {
-		return [];
-	}
-}
-
-function dedupeFiles(files: string[]): string[] {
-	return Array.from(new Set(files.filter(Boolean))).sort();
-}
-
-async function detectGitBranch(cwd: string): Promise<string | undefined> {
-	const { execFile } = await import("node:child_process");
-	const { promisify } = await import("node:util");
-	const execFileAsync = promisify(execFile);
-	try {
-		const { stdout } = await execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd });
-		return stdout.trim() || undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-function determineExecCapability(prompt: string): string {
-	const lowered = prompt.toLowerCase();
-	if (/(review|audit|security|validator|validate|bug hunt|threat)/.test(lowered)) {
-		return "coding.review.strict";
-	}
-	if (prompt.length > 800 || /(design|architecture|refactor|deep|complex|root cause)/.test(lowered)) {
-		return "coding.deep-reasoning";
-	}
-	return "coding.patch-cheap";
-}
-
-function extractSelectedModel(metadata: Record<string, unknown> | undefined): string | undefined {
-	if (typeof metadata?.model === "string") {
-		return metadata.model;
-	}
-	if (typeof metadata?.modelId === "string") {
-		return metadata.modelId;
-	}
-	return undefined;
-}
-
-function normalizeExecProviderFamily(value?: string): string | null {
-	if (!value) return null;
-	switch (value.toLowerCase()) {
-		case "anthropic":
-		case "openai":
-			return value.toLowerCase();
-		case "google":
-		case "gemini":
-			return "google";
-		case "openai-compat":
-		case "openrouter":
-		case "ollama":
-		case "github":
-		case "groq":
-		case "deepseek":
-		case "mistral":
-		case "together":
-			return "openai-compat";
-		default:
-			return null;
-	}
 }

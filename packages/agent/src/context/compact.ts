@@ -266,6 +266,12 @@ export function compactMessagesDetailed(
 
 	// Build summary from older messages, preserving referenced tool_results
 	const summaryParts: string[] = ["Previous conversation summary:", ""];
+	const fileOps = extractFileOperations(toCompact);
+	if (fileOps.length > 0) {
+		summaryParts.push("Files touched in compacted turns:");
+		for (const op of fileOps) summaryParts.push(`  - ${op}`);
+		summaryParts.push("");
+	}
 
 	const preservedMessages: MessagePayload[] = [];
 
@@ -358,6 +364,38 @@ function summarizePayloadMessage(msg: MessagePayload): string {
 	}
 
 	return parts.join(" ");
+}
+
+/** Extract file paths from tool_use blocks (write, edit, read, bash with file args). */
+function extractFileOperations(messages: MessagePayload[]): string[] {
+	const ops: string[] = [];
+	const seen = new Set<string>();
+	for (const msg of messages) {
+		if (!Array.isArray(msg.content)) continue;
+		for (const block of msg.content) {
+			if (!block || typeof block !== "object" || !("type" in block) || block.type !== "tool_use") continue;
+			const b = block as Record<string, unknown>;
+			const name = typeof b.name === "string" ? b.name : "";
+			if (!name) continue;
+			const input = (b.input && typeof b.input === "object" ? b.input : {}) as Record<string, unknown>;
+			const path = extractPath(input);
+			if (!path) continue;
+			const key = `${name}:${path}`;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			ops.push(`${name} → ${path}`);
+		}
+	}
+	// Cap at 30 entries to stay within ~600 tokens in the compaction summary
+	return ops.slice(0, 30);
+}
+
+function extractPath(input: Record<string, unknown>): string | undefined {
+	for (const key of ["path", "file_path", "filePath", "file", "target", "cwd"]) {
+		const v = input[key];
+		if (typeof v === "string" && v.length > 0) return v;
+	}
+	return undefined;
 }
 
 /** Create a brief summary of a core Message for compaction. */

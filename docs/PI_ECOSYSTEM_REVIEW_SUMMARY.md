@@ -122,6 +122,72 @@ code packages/bridge/src/chitragupta-types.ts
 
 ---
 
+## 🧭 Accepted Productization Priorities
+
+After the Pi research and the later production-readiness review, the next **highest-value product additions** are now explicitly accepted in this order:
+
+1. **Approvals + audit trail**
+2. **Eval / regression gate**
+3. **Artifact persistence + handoff UX**
+4. **Packaging / distribution**
+5. **Operator observability**
+
+### Why this order
+
+- **Approvals + audit trail** turns existing permission primitives into a product-grade trust model.
+- **Eval / regression gate** keeps Takumi from becoming impossible to evolve safely.
+- **Artifact persistence + handoff UX** makes structured work survive session boundaries.
+- **Packaging / distribution** makes Takumi usable as a product across terminal, desktop, Windows, and WSL surfaces.
+- **Operator observability** turns telemetry from a data stream into an operational control plane.
+
+### Recommended execution model
+
+```text
+Phase 20-22  Pi interoperability foundation
+P-Track 1    Approvals + audit trail
+P-Track 2    Eval / regression gate
+P-Track 3    Artifact persistence + handoff UX
+P-Track 4    Packaging / distribution
+P-Track 5    Operator observability
+```
+
+### Scope of each accepted addition
+
+#### 1. Approvals + audit trail
+- approval queue and review surface (`/approvals`, pending items, escalation)
+- persistent approval records with actor / time / tool / reason
+- exportable audit log (JSONL + CSV)
+
+#### 2. Eval / regression gate
+- benchmark corpus for core coding-agent tasks
+- tracked metrics: success, cost, latency, retries, human intervention
+- release / CI gate that blocks unacceptable regressions
+
+#### 3. Artifact persistence + handoff UX
+- durable storage behind existing artifact types
+- artifact browser and export flow
+- handoff/reattach flow between sessions, branches, and side agents
+
+#### 4. Packaging / distribution
+- polished CLI install/start paths for macOS/Linux/Windows/WSL
+- packaged desktop shell release flow
+- clear surface model: terminal-first runtime + desktop companion + headless bridge
+
+#### 5. Operator observability
+- per-session and fleet-level dashboards
+- context/cost/failure alerts
+- replay/debug views for degraded runs and routing fallbacks
+
+### Product principle
+
+Takumi should not copy Pi's shape blindly. Pi is **terminal-first with companion surfaces**; Takumi should follow the same product pattern:
+
+- privileged local runtime in terminal
+- optional desktop/operator window
+- optional headless / bridge / remote surface
+
+---
+
 ## 🏗️ Architecture Decisions
 
 ### 1. Hybrid Orchestration (Phase 21)
