@@ -78,6 +78,7 @@ export class CodingAgent {
 	private classifier: TaskClassifier | null = null;
 	private orchestrator: ClusterOrchestrator | null = null;
 	private _disposeCommandEffect: (() => void) | null = null;
+	private stopRequestedReason: string | null = null;
 
 	constructor(state: AppState, runner: AgentRunner, options: CodingAgentOptions = {}) {
 		this.state = state;
@@ -140,6 +141,19 @@ export class CodingAgent {
 
 	get isActive(): boolean {
 		return this.task !== null && this.task.phase !== "idle" && this.task.phase !== "done";
+	}
+
+	async cancel(reason = "Task cancelled."): Promise<void> {
+		if (!this.isActive && !this.orchestrator) {
+			return;
+		}
+
+		this.stopRequestedReason = reason;
+		this.state.clusterCommand.value = null;
+		this.runner.cancel();
+		if (this.orchestrator) {
+			await this.orchestrator.shutdown();
+		}
 	}
 
 	async start(description: string, forceMode?: "single" | "multi"): Promise<void> {
@@ -341,6 +355,11 @@ export class CodingAgent {
 				});
 			}
 
+			if (this.stopRequestedReason) {
+				this.finalizeStop(this.stopRequestedReason);
+				return;
+			}
+
 			this.task.phase = "done";
 			this.state.codingPhase.value = "done";
 			this.addSystemMessage("Coding task complete!");
@@ -385,6 +404,12 @@ export class CodingAgent {
 				);
 			}
 		} catch (err) {
+			if (this.stopRequestedReason) {
+				this.finalizeStop(this.stopRequestedReason);
+				log.info(`Coding task stopped: ${this.stopRequestedReason}`);
+				return;
+			}
+
 			const message = err instanceof Error ? err.message : String(err);
 			this.task.error = message;
 			this.task.phase = "idle";
@@ -425,6 +450,7 @@ export class CodingAgent {
 			this.state.clusterPhase.value = "idle";
 			this.state.clusterAgentCount.value = 0;
 			this.state.clusterValidationAttempt.value = 0;
+			this.stopRequestedReason = null;
 		}
 	}
 
@@ -459,23 +485,40 @@ export class CodingAgent {
 				} else if (evt.type === "validation_complete") {
 					this.state.clusterValidationAttempt.value = evt.attempt;
 				} else if (evt.type === "cluster_complete") {
+					if (this.stopRequestedReason) {
+						this.addSystemMessage(`Cluster resume stopped: ${this.stopRequestedReason}`);
+						return;
+					}
 					this.addSystemMessage(`Cluster resumed and completed — success: ${evt.success}`);
 				} else if (evt.type === "cluster_error") {
 					this.addSystemMessage(`Cluster error: ${evt.error}`);
 				}
 			}
+			if (this.stopRequestedReason) {
+				this.addSystemMessage(`Cluster resume stopped: ${this.stopRequestedReason}`);
+			}
+		} catch (err) {
+			if (this.stopRequestedReason) {
+				this.addSystemMessage(`Cluster resume stopped: ${this.stopRequestedReason}`);
+				return;
+			}
+			throw err;
 		} finally {
 			this.state.isStreaming.value = false;
 			this.state.streamingText.value = "";
 			this.state.agentPhase.value = "idle";
 			this.state.clusterId.value = null;
 			this.state.clusterPhase.value = "idle";
+			this.stopRequestedReason = null;
 		}
 	}
 
 	async shutdown(): Promise<void> {
 		this._disposeCommandEffect?.();
 		this._disposeCommandEffect = null;
+		if (this.isActive && !this.stopRequestedReason) {
+			await this.cancel("Coding task shutdown requested.");
+		}
 		if (this.orchestrator) {
 			await this.orchestrator.shutdown();
 		}
@@ -512,6 +555,15 @@ export class CodingAgent {
 			timestamp: Date.now(),
 		};
 		this.state.addMessage(msg);
+	}
+
+	private finalizeStop(reason: string): void {
+		if (this.task) {
+			this.task.error = reason;
+			this.task.phase = "idle";
+		}
+		this.state.codingPhase.value = "idle";
+		this.addSystemMessage(`Coding task stopped: ${reason}`);
 	}
 
 	private async recordSabhaOutcome(sessionId: string, confidence: number): Promise<void> {

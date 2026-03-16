@@ -1,16 +1,6 @@
-/**
- * The agent loop — the core execution engine.
- *
- * An async generator that yields AgentEvents as it processes messages,
- * calls tools, and streams responses from the LLM provider.
- *
- * Includes:
- * - Automatic retry on transient API failures
- * - Context compaction when approaching token limits
- * - Cumulative token tracking from usage_update events
- */
+/** The agent loop — core execution engine with retry, compaction, and token tracking. */
 
-import type { AgentEvent, ToolDefinition, ToolResult, Usage } from "@takumi/core";
+import type { AgentEvent, PermissionDecision, ToolDefinition, ToolResult, Usage } from "@takumi/core";
 import { createLogger, LIMITS } from "@takumi/core";
 import {
 	compactMessagesDetailed,
@@ -19,13 +9,21 @@ import {
 	shouldCompact,
 } from "./context/compact.js";
 import type { ExperienceMemory } from "./context/experience-memory.js";
+import type { CodebaseIndex } from "./context/indexer.js";
 import type { MemoryHooks } from "./context/memory-hooks.js";
 import type { PrincipleMemory } from "./context/principles.js";
 import type { PromptCache } from "./context/prompt-cache.js";
+import { formatRagContext, queryIndex } from "./context/rag.js";
 import type { BudgetGuard } from "./cost.js";
 import { BudgetExceededError } from "./cost.js";
 import type { ExtensionRunner } from "./extensions/extension-runner.js";
-import { buildEnrichedSystemPrompt, mergeExtensionTools, selectTurnTools } from "./loop-support.js";
+import {
+	buildEnrichedSystemPrompt,
+	coreToPayload,
+	mergeExtensionTools,
+	payloadToCore,
+	selectTurnTools,
+} from "./loop-support.js";
 import { buildToolResult, buildUserMessage } from "./message.js";
 import type { ObservationCollector } from "./observation-collector.js";
 import { type RetryOptions, withRetry } from "./retry.js";
@@ -35,7 +33,6 @@ import type { ToolRegistry } from "./tools/registry.js";
 const log = createLogger("agent-loop");
 
 export interface AgentLoopOptions {
-	/** Function that sends messages to the LLM and returns a stream of events. */
 	sendMessage: (
 		messages: MessagePayload[],
 		system: string,
@@ -43,75 +40,49 @@ export interface AgentLoopOptions {
 		signal?: AbortSignal,
 		options?: SendMessageOptions,
 	) => AsyncIterable<AgentEvent>;
-
-	/** Tool registry for executing tool calls. */
 	tools: ToolRegistry;
-
-	/** System prompt override. */
 	systemPrompt?: string;
-
-	/** Maximum turns (each tool_use response + tool_result = 1 turn). */
 	maxTurns?: number;
-
-	/** Abort signal for cancellation. */
 	signal?: AbortSignal;
-
-	/** Retry options for API calls (set to false to disable retries). */
 	retryOptions?: Partial<RetryOptions> | false;
-
-	/** Context compaction options (set to false to disable compaction). */
 	compactOptions?: Partial<PayloadCompactOptions> | false;
-
-	/** Maximum context window size in tokens (for compaction). */
 	maxContextTokens?: number;
-
-	/** Optional spend-limit enforcer. Throws BudgetExceededError when the limit is crossed. */
 	budget?: BudgetGuard;
-
-	/** Optional prompt cache — deduplicates identical LLM requests (Phase 34). */
 	promptCache?: PromptCache;
-
-	/** Optional memory hooks — extracts lessons from tool patterns (Phase 33). */
 	memoryHooks?: MemoryHooks;
-
-	/** Model name (needed for prompt cache keying). */
 	model?: string;
-
-	/** Optional extension runner — emits lifecycle events to loaded extensions (Phase 45). */
 	extensionRunner?: ExtensionRunner;
-
-	/** Optional steering queue — priority directives injected between turns (Phase 48). */
 	steeringQueue?: SteeringQueue;
-
-	/** Optional observation collector — records tool usage for Chitragupta (Phase 49). */
 	observationCollector?: ObservationCollector;
-
-	/** Optional indexed experience memory — stores compaction summaries and tool runtime state. */
 	experienceMemory?: ExperienceMemory;
-
-	/** Optional principle memory — extracts reusable principles from successful turns. */
 	principleMemory?: PrincipleMemory;
+	codebaseIndex?: CodebaseIndex;
+	checkToolPermission?: (
+		tool: string,
+		args: Record<string, unknown>,
+		definition: ToolDefinition,
+	) => Promise<PermissionDecision>;
 }
 
 export interface MessagePayload {
 	role: "user" | "assistant";
-	content: any;
+	/** Flexible content — accommodates varying LLM provider response formats. Validated via blockToCore(). */
+	content: any; // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
 /** Optional per-call overrides for LLM requests. */
 export interface SendMessageOptions {
-	/** Override the model used for this call (if provider supports it). */
 	model?: string;
 }
 
-/**
- * Run the agent loop as an async generator.
- *
- * Yields AgentEvents as they occur (text deltas, tool calls, etc).
- * Automatically executes tool calls and feeds results back to the LLM.
- */
+export interface UserTurnInput {
+	text: string;
+	images?: Array<{ mediaType: string; data: string }>;
+}
+
+/** Run the agent loop as an async generator. */
 export async function* agentLoop(
-	userMessage: string,
+	userMessage: string | UserTurnInput,
 	history: MessagePayload[],
 	options: AgentLoopOptions,
 ): AsyncGenerator<AgentEvent> {
@@ -128,17 +99,21 @@ export async function* agentLoop(
 
 	const ext = options.extensionRunner;
 	mergeExtensionTools(tools, ext);
+	const userTurn = typeof userMessage === "string" ? { text: userMessage } : userMessage;
+	const userText = userTurn.text;
 
 	const toolDefs = tools.getDefinitions();
-	const enrichedSystem = buildEnrichedSystemPrompt(
+	const ragContext = options.codebaseIndex ? formatRagContext(queryIndex(options.codebaseIndex, userText)) : undefined;
+	const enrichedSystem = buildEnrichedSystemPrompt({
 		toolDefs,
-		userMessage,
-		systemPrompt,
-		options.memoryHooks,
-		options.principleMemory,
-	);
+		userMessage: userText,
+		basePrompt: systemPrompt,
+		memoryHooks: options.memoryHooks,
+		principleMemory: options.principleMemory,
+		ragContext,
+	});
 	// Push onto caller history so subsequent turns retain the full tool/result context.
-	history.push({ role: "user", content: buildUserMessage(userMessage) });
+	history.push({ role: "user", content: buildUserMessage(userText, userTurn.images) });
 	const messages: MessagePayload[] = history;
 
 	// Cumulative token tracking from usage_update events
@@ -160,7 +135,7 @@ export async function* agentLoop(
 			void ext.emit({ type: "turn_start", turnIndex: turn, timestamp: Date.now() });
 		}
 
-		const selectedToolDefs = selectTurnTools(tools, userMessage, messages, options.experienceMemory);
+		const selectedToolDefs = selectTurnTools(tools, userText, messages, options.experienceMemory);
 
 		// Context compaction check before each turn
 		if (compactOptions !== false) {
@@ -177,9 +152,15 @@ export async function* agentLoop(
 					compacted.compactedMessages,
 					compacted.preservedMessages,
 				);
-				// Replace contents in-place so the `history` alias stays in sync.
+				// Inject file awareness from ExperienceMemory into the compacted summary
+				const fileAwareness = options.experienceMemory?.buildFileAwarenessSummary();
+				if (fileAwareness && compacted.messages.length > 0) {
+					const first = compacted.messages[0];
+					if (Array.isArray(first.content) && first.content[0]?.type === "text") {
+						first.content[0].text = `${first.content[0].text}\n\n${fileAwareness}`;
+					}
+				}
 				messages.splice(0, messages.length, ...compacted.messages);
-				// Re-estimate after compaction
 				cumulativeTokens = estimateTotalPayloadTokens(messages);
 			}
 		}
@@ -191,7 +172,23 @@ export async function* agentLoop(
 		let stopReason: string | undefined;
 		let _usage: Usage | undefined;
 
-		// Phase 34 — Check prompt cache before LLM call (only for non-tool-result turns)
+		// Phase 45 — allow extensions to transform messages before LLM call
+		if (ext?.hasHandlers("context")) {
+			try {
+				const coreMessages = payloadToCore(messages);
+				const transformed = await ext.emitContext(coreMessages);
+				if (transformed !== coreMessages) {
+					messages.splice(0, messages.length, ...transformed.map(coreToPayload));
+				}
+			} catch (extErr) {
+				log.error("Extension context handler failed, continuing without transformation", extErr);
+				const raw = extErr instanceof Error ? extErr.message : String(extErr);
+				const msg = raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+				yield { type: "error" as const, error: new Error(`Extension context error: ${msg}`) };
+			}
+		}
+
+		// Phase 34 — prompt cache (first turn only)
 		const cacheKey =
 			options.promptCache && turn === 1
 				? options.promptCache.computeKey(options.model ?? "unknown", enrichedSystem, [
@@ -323,6 +320,20 @@ export async function* agentLoop(
 		const toolResults: Array<{ id: string; name: string; result: ToolResult }> = [];
 
 		const executions = pendingToolCalls.map(async (tc) => {
+			const definition = tools.getDefinition(tc.name);
+			if (definition?.requiresPermission) {
+				const decision = options.checkToolPermission
+					? await options.checkToolPermission(tc.name, tc.input, definition)
+					: { allowed: false, reason: `Permission required for tool: ${tc.name}` };
+				if (!decision.allowed) {
+					const fallback: ToolResult = {
+						output: decision.reason ?? `Permission denied for tool: ${tc.name}`,
+						isError: true,
+					};
+					return { id: tc.id, name: tc.name, result: fallback };
+				}
+			}
+
 			// Phase 45 — emit tool_call (blocking: can skip execution)
 			if (ext) {
 				const blocked = await ext.emitToolCall({
@@ -332,13 +343,13 @@ export async function* agentLoop(
 					args: tc.input,
 				});
 				if (blocked?.block) {
-					const fallback: ToolResult = { output: blocked.reason ?? "Blocked by extension", isError: false };
+					const fallback: ToolResult = { output: blocked.reason ?? "Blocked by extension", isError: true };
 					return { id: tc.id, name: tc.name, result: fallback };
 				}
 			}
 
 			const t0 = Date.now();
-			let result = await tools.execute(tc.name, tc.input, signal);
+			let result = await tools.execute(tc.name, tc.input, signal, { permissionChecked: true });
 			const elapsed = Date.now() - t0;
 
 			// Phase 45 — emit tool_result (can modify result)
@@ -385,7 +396,7 @@ export async function* agentLoop(
 
 		if (options.memoryHooks && toolResults.every((entry) => !entry.result.isError)) {
 			options.memoryHooks.observeSuccess(
-				userMessage,
+				userText,
 				toolResults.map((entry) => entry.name),
 			);
 		}
@@ -394,7 +405,7 @@ export async function* agentLoop(
 				.map((entry) => tools.getDefinition(entry.name)?.category)
 				.filter((value): value is NonNullable<ToolDefinition["category"]> => value !== undefined);
 			options.principleMemory.observeTurn({
-				request: userMessage,
+				request: userText,
 				toolNames: toolResults.map((entry) => entry.name),
 				toolCategories,
 				hadError: toolResults.some((entry) => entry.result.isError),

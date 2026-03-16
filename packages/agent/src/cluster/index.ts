@@ -39,8 +39,13 @@ export {
 export type { OrchestratorOptions } from "./orchestrator.js";
 // ── Orchestrator ──────────────────────────────────────────────────────────────
 export { ClusterOrchestrator } from "./orchestrator.js";
+// ── Orchestrator Factory ──────────────────────────────────────────────────────
+export { createOrchestrator, type Orchestrator } from "./orchestrator-factory.js";
 // ── Orchestrator Profile Helpers ──────────────────────────────────────────────
 export { getProfileBiasedModel, inferRoutingCaps, lucyBiasTopology } from "./orchestrator-profile.js";
+// ── Process Orchestrator (tmux fallback) ──────────────────────────────────────
+export type { ProcessWindow } from "./process-orchestrator.js";
+export { ProcessOrchestrator } from "./process-orchestrator.js";
 // ── Side Agent Registry ───────────────────────────────────────────────────────
 export type { SideAgentListener } from "./side-agent-registry.js";
 export { SideAgentRegistry } from "./side-agent-registry.js";

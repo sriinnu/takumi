@@ -3,6 +3,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { ConfigError } from "./errors.js";
 import type { OrchestrationConfig } from "./orchestration-types.js";
+import {
+	collectConfiguredProviders,
+	loadMergedEnv,
+	normalizeProviderName,
+	resolveProviderCredential,
+	resolveProviderEndpoint,
+} from "./provider-env.js";
 import type { TakumiConfig } from "./types.js";
 
 /** Default API endpoints per provider (OpenAI-compatible chat completions). */
@@ -11,10 +18,14 @@ export const PROVIDER_ENDPOINTS: Record<string, string> = {
 	// GitHub Models — OpenAI-compatible, uses a `gh auth token` as the API key
 	github: "https://models.inference.ai.azure.com/chat/completions",
 	groq: "https://api.groq.com/openai/v1/chat/completions",
+	xai: "https://api.x.ai/v1/chat/completions",
+	grok: "https://api.x.ai/v1/chat/completions",
 	deepseek: "https://api.deepseek.com/v1/chat/completions",
 	mistral: "https://api.mistral.ai/v1/chat/completions",
 	together: "https://api.together.xyz/v1/chat/completions",
 	openrouter: "https://openrouter.ai/api/v1/chat/completions",
+	alibaba: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+	zai: "https://api.z.ai/api/paas/v4/chat/completions",
 	ollama: "http://localhost:11434/v1/chat/completions",
 };
 
@@ -128,43 +139,36 @@ function readConfigFile(path: string): Partial<TakumiConfig> | null {
  * API key priority: TAKUMI_API_KEY > provider-specific key > ANTHROPIC_API_KEY
  * Provider detection: TAKUMI_PROVIDER > inferred from env key present
  */
-function envOverrides(): Partial<TakumiConfig> {
+function envOverrides(baseConfig: TakumiConfig): Partial<TakumiConfig> {
 	const overrides: Partial<TakumiConfig> = {};
-	const env = process.env;
+	const env = loadMergedEnv(baseConfig.workingDirectory || process.cwd());
+	const requestedProvider =
+		normalizeProviderName(env.TAKUMI_PROVIDER) ?? normalizeProviderName(baseConfig.provider) ?? "anthropic";
+	const configuredProviders = collectConfiguredProviders(env);
+	const providerCredential = resolveProviderCredential(requestedProvider, env);
 
-	// ── Provider-specific API keys (lowest to highest priority) ────────────
-	// Each sets both apiKey and provider, later entries override earlier ones.
-	// Order: provider-specific keys (alphabetical), then ANTHROPIC, then TAKUMI.
-	const providerKeys: Array<{ envVar: string; provider: string }> = [
-		{ envVar: "DEEPSEEK_API_KEY", provider: "deepseek" },
-		{ envVar: "GROQ_API_KEY", provider: "groq" },
-		{ envVar: "MISTRAL_API_KEY", provider: "mistral" },
-		{ envVar: "TOGETHER_API_KEY", provider: "together" },
-		{ envVar: "OPENROUTER_API_KEY", provider: "openrouter" },
-		{ envVar: "OPENAI_API_KEY", provider: "openai" },
-		{ envVar: "GOOGLE_API_KEY", provider: "gemini" },
-		{ envVar: "GEMINI_API_KEY", provider: "gemini" },
-	];
-
-	for (const { envVar, provider } of providerKeys) {
-		if (env[envVar]) {
-			overrides.apiKey = env[envVar];
-			overrides.provider = provider;
-		}
+	if (env.TAKUMI_PROVIDER) {
+		overrides.provider = requestedProvider;
 	}
 
-	// ANTHROPIC_API_KEY overrides provider-specific keys
-	if (env.ANTHROPIC_API_KEY) {
-		overrides.apiKey = env.ANTHROPIC_API_KEY;
-		overrides.provider = "anthropic";
+	if (providerCredential) {
+		overrides.apiKey = providerCredential;
+	} else if (!env.TAKUMI_PROVIDER && configuredProviders.length === 1) {
+		overrides.provider = configuredProviders[0].provider;
+		overrides.apiKey = configuredProviders[0].apiKey;
 	}
 
 	// TAKUMI_API_KEY is highest priority for the key itself (but doesn't set provider)
 	if (env.TAKUMI_API_KEY) overrides.apiKey = env.TAKUMI_API_KEY;
 
 	// ── Explicit provider/endpoint overrides ──────────────────────────────
-	if (env.TAKUMI_PROVIDER) overrides.provider = env.TAKUMI_PROVIDER;
-	if (env.TAKUMI_ENDPOINT) overrides.endpoint = env.TAKUMI_ENDPOINT;
+	if (env.TAKUMI_ENDPOINT) {
+		overrides.endpoint = env.TAKUMI_ENDPOINT;
+	} else {
+		const providerForEndpoint = overrides.provider ?? requestedProvider;
+		const providerEndpoint = resolveProviderEndpoint(providerForEndpoint, env);
+		if (providerEndpoint) overrides.endpoint = providerEndpoint;
+	}
 
 	// ── Other env vars ────────────────────────────────────────────────────
 	if (env.TAKUMI_MODEL) overrides.model = env.TAKUMI_MODEL;
@@ -279,7 +283,10 @@ export function detectProviderFromModel(model: string): string | undefined {
 	if (m.startsWith("gpt-") || m.startsWith("o1-") || m.startsWith("o3-") || m.startsWith("o4-")) return "openai";
 	if (m.startsWith("gemini-")) return "gemini";
 	if (m.startsWith("claude-")) return "anthropic";
+	if (m.startsWith("grok-")) return "xai";
 	if (m.startsWith("deepseek-")) return "deepseek";
+	if (m.startsWith("kimi-") || m.startsWith("moonshot-")) return "zai";
+	if (m.startsWith("qwen-")) return "alibaba";
 	if (m.startsWith("mistral-")) return "mistral";
 	// llama/mixtral without an API key likely means local ollama
 	if (m.startsWith("llama") || m.startsWith("mixtral")) return "ollama";
@@ -371,12 +378,28 @@ export function loadConfig(cliOverrides?: Partial<TakumiConfig>): TakumiConfig {
 	}
 
 	// 3. Merge environment variables
-	const env = envOverrides();
+	const env = envOverrides(config);
 	config = mergeTakumiConfig(config, env);
 
 	// 4. Merge CLI overrides
 	if (cliOverrides) {
 		config = mergeTakumiConfig(config, cliOverrides);
+	}
+
+	config.provider = normalizeProviderName(config.provider) ?? config.provider;
+
+	const mergedEnv = loadMergedEnv(config.workingDirectory || process.cwd());
+	if (!config.apiKey) {
+		const providerCredential = resolveProviderCredential(config.provider, mergedEnv);
+		if (providerCredential) {
+			config.apiKey = providerCredential;
+		}
+	}
+	if (!config.endpoint) {
+		const providerEndpoint = resolveProviderEndpoint(config.provider, mergedEnv);
+		if (providerEndpoint) {
+			config.endpoint = providerEndpoint;
+		}
 	}
 
 	// 5. Auto-detect provider from model name if provider is still the default

@@ -38,6 +38,8 @@ export interface CacheEntry {
 	model: string;
 	/** Estimated tokens saved by cache hit. */
 	tokensSaved: number;
+	/** Whether this entry has extended (pinned) retention. */
+	pinned?: boolean;
 }
 
 export interface PromptCacheConfig {
@@ -49,6 +51,8 @@ export interface PromptCacheConfig {
 	cacheDir?: string;
 	/** Whether to persist to disk (default: true). */
 	persistToDisk?: boolean;
+	/** Extended retention TTL for pinned entries (default: 24 hours). */
+	pinnedTtlMs?: number;
 }
 
 export interface CacheStats {
@@ -64,6 +68,7 @@ export interface CacheStats {
 
 const DEFAULT_MAX_ENTRIES = 100;
 const DEFAULT_TTL_MS = 60 * 60 * 1000; // 1 hour
+const DEFAULT_PINNED_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const _DEFAULT_CACHE_DIR = ".takumi/cache";
 const DISK_FILE = "prompt-cache.json";
 
@@ -73,6 +78,7 @@ export class PromptCache {
 	private memory = new Map<string, CacheEntry>();
 	private readonly maxEntries: number;
 	private readonly ttlMs: number;
+	private readonly pinnedTtlMs: number;
 	private readonly cacheDir: string | null;
 	private stats: CacheStats = {
 		hits: 0,
@@ -86,6 +92,7 @@ export class PromptCache {
 	constructor(config: PromptCacheConfig = {}) {
 		this.maxEntries = config.maxMemoryEntries ?? DEFAULT_MAX_ENTRIES;
 		this.ttlMs = config.ttlMs ?? DEFAULT_TTL_MS;
+		this.pinnedTtlMs = config.pinnedTtlMs ?? DEFAULT_PINNED_TTL_MS;
 		this.cacheDir = config.persistToDisk !== false ? (config.cacheDir ?? null) : null;
 
 		if (this.cacheDir) this.loadFromDisk();
@@ -115,8 +122,9 @@ export class PromptCache {
 			return null;
 		}
 
-		// Check TTL
-		if (Date.now() - entry.cachedAt > this.ttlMs) {
+		// Check TTL (pinned entries get extended retention)
+		const effectiveTtl = entry.pinned ? this.pinnedTtlMs : this.ttlMs;
+		if (Date.now() - entry.cachedAt > effectiveTtl) {
 			this.memory.delete(key);
 			this.stats.misses++;
 			return null;
@@ -154,6 +162,22 @@ export class PromptCache {
 		return this.memory.delete(key);
 	}
 
+	/** Pin an entry for extended retention (survives normal TTL expiry). */
+	pin(key: string): boolean {
+		const entry = this.memory.get(key);
+		if (!entry) return false;
+		entry.pinned = true;
+		return true;
+	}
+
+	/** Unpin an entry, reverting to normal TTL. */
+	unpin(key: string): boolean {
+		const entry = this.memory.get(key);
+		if (!entry) return false;
+		entry.pinned = false;
+		return true;
+	}
+
 	/** Clear all cache entries. */
 	clear(): void {
 		this.memory.clear();
@@ -172,7 +196,11 @@ export class PromptCache {
 		const dir = join(cwd, this.cacheDir);
 		mkdirSync(dir, { recursive: true });
 
-		const entries = [...this.memory.values()].filter((e) => Date.now() - e.cachedAt < this.ttlMs);
+		const now = Date.now();
+		const entries = [...this.memory.values()].filter((e) => {
+			const ttl = e.pinned ? this.pinnedTtlMs : this.ttlMs;
+			return now - e.cachedAt < ttl;
+		});
 
 		writeFileSync(join(dir, DISK_FILE), JSON.stringify(entries, null, "\t"), "utf-8");
 		this.stats.diskEntries = entries.length;
@@ -193,7 +221,8 @@ export class PromptCache {
 			let loaded = 0;
 
 			for (const entry of entries) {
-				if (now - entry.cachedAt < this.ttlMs && loaded < this.maxEntries) {
+				const ttl = entry.pinned ? this.pinnedTtlMs : this.ttlMs;
+				if (now - entry.cachedAt < ttl && loaded < this.maxEntries) {
 					this.memory.set(entry.key, entry);
 					loaded++;
 				}
@@ -218,16 +247,24 @@ export class PromptCache {
 	private evictOldest(): void {
 		let oldestKey: string | null = null;
 		let oldestTime = Number.POSITIVE_INFINITY;
+		let oldestUnpinnedKey: string | null = null;
+		let oldestUnpinnedTime = Number.POSITIVE_INFINITY;
 
 		for (const [key, entry] of this.memory) {
+			if (!entry.pinned && entry.cachedAt < oldestUnpinnedTime) {
+				oldestUnpinnedTime = entry.cachedAt;
+				oldestUnpinnedKey = key;
+			}
 			if (entry.cachedAt < oldestTime) {
 				oldestTime = entry.cachedAt;
 				oldestKey = key;
 			}
 		}
 
-		if (oldestKey) {
-			this.memory.delete(oldestKey);
+		// Prefer evicting non-pinned entries first
+		const target = oldestUnpinnedKey ?? oldestKey;
+		if (target) {
+			this.memory.delete(target);
 			this.stats.evictions++;
 		}
 	}

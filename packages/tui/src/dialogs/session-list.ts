@@ -14,6 +14,8 @@ export interface SessionEntry {
 	date: string;
 	turns: number;
 	preview: string;
+	/** Epoch ms timestamp for sorting merged local + daemon entries. */
+	sortKey?: number;
 }
 
 export class SessionList {

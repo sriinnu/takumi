@@ -59,13 +59,15 @@ Takumi now ships a package-oriented operational surface:
 - `takumi package inspect <name>` — show package resources, declarations, and warnings
 - `takumi package doctor` — validate package manifests and missing resources
 - `takumi package scaffold <name>` — create a local package skeleton under `.takumi/packages/<name>`
+- `takumi package install <path>` — copy a package directory into the global Takumi package store
+- `takumi package remove <name>` — remove a previously installed global or local package by name
 
 This is the first slice of the broader ecosystem lifecycle. The intended direction is:
 
 1. discover
 2. inspect
 3. validate
-4. scaffold
+4. scaffold / install / remove
 5. eventually add enable, verify, evaluate, and publish flows
 
 ## What is true today
@@ -76,14 +78,21 @@ What exists on `main` right now:
 - package inspection
 - package doctor/validation output
 - package scaffolding
+- package install/remove lifecycle for filesystem-backed packages
 - package-provided extensions, skills, system prompt add-ons, and tool rules
 
 What is still directional rather than fully shipped:
 
 - package enable / disable flows
 - quarantine / promote flows
-- publishing pipeline
+- registry-backed publishing pipeline
 - formal evaluation execution for packages
+
+## Current lifecycle caveats
+
+- `takumi package install` currently installs from a local filesystem path, not from npm or a remote registry.
+- `takumi package remove` removes matching packages from either the global Takumi package directory or the project's `.takumi/packages` directory.
+- Package trust and governance metadata are inspectable today, but enforcement is still advisory rather than policy-gated.
 
 ## Beyond plugins: Takumi-native governance
 

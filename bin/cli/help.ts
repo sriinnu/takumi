@@ -60,6 +60,7 @@ Providers:
   mistral                Mistral AI
   together               Together AI
   openrouter             OpenRouter (multi-provider)
+  zai                    Z.AI / Kimi (OpenAI-compatible)
   ollama                 Local Ollama (no key needed)
 
 Authentication (priority order):

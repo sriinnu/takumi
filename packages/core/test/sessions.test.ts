@@ -1,6 +1,7 @@
 import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setImmediate as waitForImmediate } from "node:timers/promises";
 import type { SessionData } from "@takumi/core";
 import {
 	createAutoSaver,
@@ -41,6 +42,18 @@ function makeSession(overrides: Partial<SessionData> = {}): SessionData {
 			totalCost: 0.01,
 		},
 	};
+}
+
+async function waitForSavedSession(id: string, sessionsDir: string, attempts = 10): Promise<SessionData | null> {
+	for (let attempt = 0; attempt < attempts; attempt++) {
+		const loaded = await loadSession(id, sessionsDir);
+		if (loaded) {
+			return loaded;
+		}
+		await waitForImmediate();
+	}
+
+	return loadSession(id, sessionsDir);
 }
 
 describe("generateSessionId", () => {
@@ -284,13 +297,8 @@ describe("createAutoSaver", () => {
 		// Advance past the interval using the async variant so the
 		// async save callback (file I/O) can settle between ticks
 		await vi.advanceTimersByTimeAsync(1100);
-		// Allow any remaining I/O promises (mkdir, writeFile) to settle
-		await vi.advanceTimersByTimeAsync(50);
-		// Flush remaining microtasks from async file operations
-		await new Promise((r) => process.nextTick(r));
-		await new Promise((r) => process.nextTick(r));
 
-		loaded = await loadSession("session-periodic", tmpDir);
+		loaded = await waitForSavedSession("session-periodic", tmpDir);
 		expect(loaded).not.toBeNull();
 		expect(loaded!.id).toBe("session-periodic");
 

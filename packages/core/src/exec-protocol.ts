@@ -1,3 +1,4 @@
+import type { HubArtifact } from "./artifact-types.js";
 import type { AgentEvent, Usage } from "./types.js";
 
 export const EXEC_PROTOCOL = "takumi.exec.v1";
@@ -7,12 +8,13 @@ export const EXEC_EXIT_CODES = {
 	OK: 0,
 	FATAL: 1,
 	AGENT_ERROR: 2,
+	POLICY: 77,
 	USAGE: 64,
 	CONFIG: 78,
 } as const;
 
 export type ExecExitCode = (typeof EXEC_EXIT_CODES)[keyof typeof EXEC_EXIT_CODES];
-export type ExecFailurePhase = "usage" | "config" | "bootstrap" | "agent_loop" | "internal";
+export type ExecFailurePhase = "usage" | "config" | "bootstrap" | "policy" | "agent_loop" | "internal";
 export type ExecBootstrapTransport = "daemon-socket" | "mcp-stdio" | "unavailable";
 export type ExecFailureCategory = "usage" | "config" | "bootstrap" | "agent" | "policy" | "internal";
 
@@ -33,6 +35,7 @@ export interface ExecRoutingBinding {
 	degraded?: boolean;
 }
 
+/** @deprecated Use HubArtifact for new code. Kept for wire-compat with older consumers. */
 export interface ExecArtifact {
 	type: "assistant_response" | "summary" | "validation" | "postmortem" | "exec-result";
 	summary: string;
@@ -75,6 +78,17 @@ interface ExecEnvelopeBase<K extends string> {
 	timestamp: string;
 }
 
+export interface ExecLaneSnapshot {
+	capability: string;
+	authority: "engine" | "takumi-fallback";
+	enforcement: "same-provider" | "capability-only";
+	selectedModel?: string;
+	fallbackModel?: string;
+	laneId?: string;
+	degraded: boolean;
+	reason?: string;
+}
+
 export interface ExecRunStartedEvent extends ExecEnvelopeBase<"run_started"> {
 	cwd: string;
 	prompt: string;
@@ -84,6 +98,7 @@ export interface ExecRunStartedEvent extends ExecEnvelopeBase<"run_started"> {
 	model?: string;
 	session?: ExecSessionBinding;
 	routing?: ExecRoutingBinding;
+	lane?: ExecLaneSnapshot;
 }
 
 export interface ExecBootstrapStatusEvent extends ExecEnvelopeBase<"bootstrap_status"> {
@@ -92,6 +107,7 @@ export interface ExecBootstrapStatusEvent extends ExecEnvelopeBase<"bootstrap_st
 
 export interface ExecAgentEventEnvelope extends ExecEnvelopeBase<"agent_event"> {
 	event: Record<string, unknown>;
+	laneId?: string;
 }
 
 export interface ExecRunCompletedEvent extends ExecEnvelopeBase<"run_completed"> {
@@ -108,7 +124,10 @@ export interface ExecRunCompletedEvent extends ExecEnvelopeBase<"run_completed">
 	bootstrapConnected: boolean;
 	session?: ExecSessionBinding;
 	routing?: ExecRoutingBinding;
+	lane?: ExecLaneSnapshot;
+	/** @deprecated Prefer hubArtifacts for typed artifact data. */
 	artifacts: ExecArtifact[];
+	hubArtifacts: HubArtifact[];
 	filesChanged: string[];
 	validation: ExecValidationSummary;
 	postRunPolicy: ExecPostRunPolicy;
@@ -178,6 +197,7 @@ export function createRunStartedEvent(input: {
 	model?: string;
 	session?: ExecSessionBinding;
 	routing?: ExecRoutingBinding;
+	lane?: ExecLaneSnapshot;
 }): ExecRunStartedEvent {
 	return {
 		...envelopeBase("run_started", input.runId),
@@ -189,6 +209,7 @@ export function createRunStartedEvent(input: {
 		model: input.model,
 		session: input.session,
 		routing: input.routing,
+		lane: input.lane,
 	};
 }
 
@@ -205,10 +226,11 @@ export function createBootstrapStatusEvent(input: {
 	};
 }
 
-export function createAgentEventEnvelope(runId: string, event: AgentEvent): ExecAgentEventEnvelope {
+export function createAgentEventEnvelope(runId: string, event: AgentEvent, laneId?: string): ExecAgentEventEnvelope {
 	return {
 		...envelopeBase("agent_event", runId),
 		event: sanitizeAgentEvent(event),
+		laneId,
 	};
 }
 
@@ -221,7 +243,9 @@ export function createRunCompletedEvent(input: {
 	bootstrapConnected: boolean;
 	session?: ExecSessionBinding;
 	routing?: ExecRoutingBinding;
+	lane?: ExecLaneSnapshot;
 	artifacts?: ExecArtifact[];
+	hubArtifacts?: HubArtifact[];
 	filesChanged?: string[];
 	validation?: ExecValidationSummary;
 	postRunPolicy?: ExecPostRunPolicy;
@@ -237,7 +261,9 @@ export function createRunCompletedEvent(input: {
 		bootstrapConnected: input.bootstrapConnected,
 		session: input.session,
 		routing: input.routing,
+		lane: input.lane,
 		artifacts: input.artifacts ?? [],
+		hubArtifacts: input.hubArtifacts ?? [],
 		filesChanged: input.filesChanged ?? [],
 		validation: input.validation ?? { status: "not-run", checks: [] },
 		postRunPolicy: input.postRunPolicy ?? {
@@ -275,6 +301,8 @@ function phaseToFailureCategory(phase: ExecFailurePhase): ExecFailureCategory {
 			return "config";
 		case "bootstrap":
 			return "bootstrap";
+		case "policy":
+			return "policy";
 		case "agent_loop":
 			return "agent";
 		case "internal":

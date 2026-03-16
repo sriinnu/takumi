@@ -126,4 +126,62 @@ describe("AgentRunner", () => {
 		expect(state.cognitiveState.value.workspace.mode).toBe("stabilize");
 		expect(state.cognitiveState.value.workspace.recommendedDirectives.length).toBeGreaterThan(0);
 	});
+
+	it("rehydrates persisted session messages into runner history for the next submission", async () => {
+		const sendMessageFn = createSendMessageFn();
+		const tools = new ToolRegistry();
+		const runner = new AgentRunner(
+			state,
+			{ maxTurns: 4, systemPrompt: "You are Takumi." } as never,
+			sendMessageFn,
+			tools,
+		);
+
+		runner.hydrateHistory([
+			{
+				id: "msg-user",
+				role: "user",
+				content: [{ type: "text", text: "previous user request" }],
+				timestamp: Date.now(),
+			},
+			{
+				id: "msg-assistant",
+				role: "assistant",
+				content: [
+					{ type: "tool_use", id: "toolu_1", name: "read_file", input: { path: "/tmp/a" } },
+					{ type: "text", text: "looking now" },
+				],
+				timestamp: Date.now(),
+			},
+			{
+				id: "msg-tool",
+				role: "user",
+				content: [{ type: "tool_result", toolUseId: "toolu_1", content: "file contents", isError: false }],
+				timestamp: Date.now(),
+			},
+		]);
+
+		await runner.submit("continue from there");
+
+		const firstCallMessages = sendMessageFn.mock.calls[0]?.[0];
+		expect(firstCallMessages).toBeDefined();
+		expect(firstCallMessages[0]).toMatchObject({
+			role: "user",
+			content: [{ type: "text", text: "previous user request" }],
+		});
+		expect(firstCallMessages[1]).toMatchObject({
+			role: "assistant",
+			content: expect.arrayContaining([
+				expect.objectContaining({ type: "tool_use", id: "toolu_1", name: "read_file" }),
+			]),
+		});
+		expect(firstCallMessages[2]).toMatchObject({
+			role: "user",
+			content: [expect.objectContaining({ type: "tool_result", tool_use_id: "toolu_1", is_error: false })],
+		});
+		expect(firstCallMessages[3]).toMatchObject({
+			role: "user",
+			content: [{ type: "text", text: "continue from there" }],
+		});
+	});
 });

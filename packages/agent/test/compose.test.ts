@@ -2,7 +2,7 @@
  * Tests for Tool Compose Pipelines (Phase 31).
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { executePipeline, type PipelineSpec } from "../src/tools/compose.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 
@@ -148,5 +148,33 @@ describe("executePipeline", () => {
 
 		const result = await executePipeline(spec, registry);
 		expect(result.finalOutput).toBe("got: data");
+	});
+
+	it("does not allow permission-required steps to bypass the registry gate", async () => {
+		const registry = createTestRegistry();
+		const writer = vi.fn(async (input: Record<string, unknown>) => ({
+			output: `wrote ${input.path}`,
+			isError: false,
+		}));
+		registry.register(
+			{
+				name: "write_file",
+				description: "Writes to disk",
+				inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+				requiresPermission: true,
+				category: "write",
+			},
+			writer,
+		);
+
+		const spec: PipelineSpec = {
+			name: "guarded-write",
+			steps: [{ tool: "write_file", input: { path: "/tmp/guarded.txt" } }],
+		};
+
+		const result = await executePipeline(spec, registry);
+		expect(result.success).toBe(false);
+		expect(writer).not.toHaveBeenCalled();
+		expect(result.steps[0]?.output).toContain("Permission required");
 	});
 });

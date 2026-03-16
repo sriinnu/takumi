@@ -198,6 +198,97 @@ describe("agentLoop", () => {
 				expect(toolResult.output).toContain("Unknown tool");
 			}
 		});
+
+		it("blocks tools that require permission when no permission checker is provided", async () => {
+			const toolHandler = vi.fn(async () => ({ output: "should not run", isError: false }));
+			const registry = new ToolRegistry();
+			registry.register(makeDef("write_file", { requiresPermission: true, category: "write" }), toolHandler);
+
+			const sendMessage = mockSendMessage([
+				[
+					{ type: "tool_use", id: "toolu_perm", name: "write_file", input: { path: "/tmp/test.txt" } },
+					{ type: "done", stopReason: "tool_use" },
+				],
+				[{ type: "done", stopReason: "end_turn" }],
+			]);
+
+			const events = await collectEvents("write file", [], {
+				sendMessage,
+				tools: registry,
+			});
+
+			expect(toolHandler).not.toHaveBeenCalled();
+			const toolResult = events.find((e) => e.type === "tool_result");
+			expect(toolResult).toBeDefined();
+			if (toolResult?.type === "tool_result") {
+				expect(toolResult.isError).toBe(true);
+				expect(toolResult.output).toContain("Permission required");
+			}
+		});
+
+		it("executes tools that require permission after approval", async () => {
+			const toolHandler = vi.fn(async (input: Record<string, unknown>) => ({
+				output: `wrote ${input.path}`,
+				isError: false,
+			}));
+			const registry = new ToolRegistry();
+			registry.register(makeDef("write_file", { requiresPermission: true, category: "write" }), toolHandler);
+			const checkToolPermission = vi.fn(async () => ({ allowed: true, reason: "approved" }));
+
+			const sendMessage = mockSendMessage([
+				[
+					{ type: "tool_use", id: "toolu_perm_ok", name: "write_file", input: { path: "/tmp/ok.txt" } },
+					{ type: "done", stopReason: "tool_use" },
+				],
+				[{ type: "done", stopReason: "end_turn" }],
+			]);
+
+			await collectEvents("write file", [], {
+				sendMessage,
+				tools: registry,
+				checkToolPermission,
+			});
+
+			expect(checkToolPermission).toHaveBeenCalledOnce();
+			expect(checkToolPermission).toHaveBeenCalledWith(
+				"write_file",
+				{ path: "/tmp/ok.txt" },
+				expect.objectContaining({ name: "write_file", requiresPermission: true }),
+			);
+			expect(toolHandler).toHaveBeenCalledOnce();
+		});
+
+		it("treats extension-blocked tools as errors", async () => {
+			const registry = createRegistry([{ name: "read_file", handler: okHandler("contents") }]);
+			const sendMessage = mockSendMessage([
+				[
+					{ type: "tool_use", id: "toolu_blocked", name: "read_file", input: { path: "/tmp/a" } },
+					{ type: "done", stopReason: "tool_use" },
+				],
+				[{ type: "done", stopReason: "end_turn" }],
+			]);
+			const extensionRunner = {
+				getAllTools: vi.fn(() => new Map()),
+				emit: vi.fn(async () => undefined),
+				emitToolCall: vi.fn(async () => ({ block: true, reason: "blocked by policy" })),
+				emitToolResult: vi.fn(async () => undefined),
+				hasHandlers: vi.fn(() => false),
+				emitContext: vi.fn(async (msgs: unknown[]) => msgs),
+			} as never;
+
+			const events = await collectEvents("read file", [], {
+				sendMessage,
+				tools: registry,
+				extensionRunner,
+			});
+
+			const toolResult = events.find((e) => e.type === "tool_result");
+			expect(toolResult).toBeDefined();
+			if (toolResult?.type === "tool_result") {
+				expect(toolResult.isError).toBe(true);
+				expect(toolResult.output).toContain("blocked by policy");
+			}
+		});
 	});
 
 	/* ---- Max turns exceeded --------------------------------------------- */
@@ -785,6 +876,79 @@ describe("agentLoop", () => {
 			expect(capturedSystem).toContain("## Self-Evolving Principles");
 			rmSync(TEST_DIR, { recursive: true, force: true });
 		});
+
+		it("injects RAG context into system prompt when codebaseIndex is provided", async () => {
+			let capturedSystem = "";
+			const sendMessage: AgentLoopOptions["sendMessage"] = async function* (_messages, system) {
+				capturedSystem = system;
+				yield { type: "done" as const, stopReason: "end_turn" as const };
+			};
+
+			const fakeIndex = {
+				root: "/fake",
+				builtAt: Date.now(),
+				files: [
+					{
+						relPath: "src/utils.ts",
+						symbols: [
+							{
+								name: "buildIndex",
+								kind: "function",
+								line: 10,
+								snippet: "export function buildIndex(root: string) { /* ... */ }",
+								relPath: "src/utils.ts",
+							},
+						],
+					},
+				],
+			};
+
+			await collectEvents("how does buildIndex work?", [], {
+				sendMessage,
+				tools: createRegistry(),
+				systemPrompt: "Base prompt.",
+				codebaseIndex: fakeIndex,
+			});
+
+			expect(capturedSystem).toContain("Relevant codebase symbols");
+			expect(capturedSystem).toContain("buildIndex");
+			expect(capturedSystem).toContain("src/utils.ts");
+		});
+
+		it("does not inject RAG context when codebaseIndex is absent", async () => {
+			let capturedSystem = "";
+			const sendMessage: AgentLoopOptions["sendMessage"] = async function* (_messages, system) {
+				capturedSystem = system;
+				yield { type: "done" as const, stopReason: "end_turn" as const };
+			};
+
+			await collectEvents("hello", [], {
+				sendMessage,
+				tools: createRegistry(),
+				systemPrompt: "Base prompt.",
+			});
+
+			expect(capturedSystem).toBe("Base prompt.");
+		});
+
+		it("does not inject RAG when index yields no matching symbols", async () => {
+			let capturedSystem = "";
+			const sendMessage: AgentLoopOptions["sendMessage"] = async function* (_messages, system) {
+				capturedSystem = system;
+				yield { type: "done" as const, stopReason: "end_turn" as const };
+			};
+
+			const emptyIndex = { root: "/fake", builtAt: Date.now(), files: [] };
+
+			await collectEvents("something totally unrelated", [], {
+				sendMessage,
+				tools: createRegistry(),
+				systemPrompt: "Base prompt.",
+				codebaseIndex: emptyIndex,
+			});
+
+			expect(capturedSystem).toBe("Base prompt.");
+		});
 	});
 
 	describe("dynamic tool selection", () => {
@@ -887,6 +1051,216 @@ describe("agentLoop", () => {
 			});
 
 			expect(events).toHaveLength(2);
+		});
+	});
+
+	/* ---- Extension context transformation ------------------------------- */
+
+	describe("extension context transformation", () => {
+		it("applies emitContext transforms when extension returns new messages", async () => {
+			const capturedMessages: MessagePayload[][] = [];
+			const sendMessage = vi.fn(async function* (msgs: MessagePayload[], _system: string, _tools?: ToolDefinition[]) {
+				capturedMessages.push(structuredClone(msgs));
+				yield { type: "text_delta" as const, text: "ok" };
+				yield { type: "done" as const, stopReason: "end_turn" as const };
+			});
+
+			const extensionRunner = {
+				getAllTools: vi.fn(() => new Map()),
+				emit: vi.fn(async () => undefined),
+				emitToolCall: vi.fn(async () => ({ block: false })),
+				emitToolResult: vi.fn(async () => undefined),
+				hasHandlers: vi.fn((ev: string) => ev === "context"),
+				emitContext: vi.fn(async (msgs: unknown[]) => {
+					// Return a NEW array with an injected system hint
+					return [
+						{
+							role: "user",
+							content: [{ type: "text", text: "[injected by extension]" }],
+							id: "ext-1",
+							timestamp: Date.now(),
+						},
+						...msgs,
+					];
+				}),
+			} as never;
+
+			const events = await collectEvents("hello", [], {
+				sendMessage,
+				tools: createRegistry(),
+				extensionRunner,
+			});
+
+			expect(events.some((e) => e.type === "text_delta")).toBe(true);
+			// Verify the messages sent to LLM include the injected message
+			expect(capturedMessages.length).toBeGreaterThan(0);
+			const firstCall = capturedMessages[0];
+			expect(firstCall[0].content).toEqual([{ type: "text", text: "[injected by extension]" }]);
+		});
+
+		it("skips message replacement when emitContext returns the same reference", async () => {
+			const capturedMessages: MessagePayload[][] = [];
+			const sendMessage = vi.fn(async function* (msgs: MessagePayload[], _system: string, _tools?: ToolDefinition[]) {
+				capturedMessages.push(structuredClone(msgs));
+				yield { type: "text_delta" as const, text: "unchanged" };
+				yield { type: "done" as const, stopReason: "end_turn" as const };
+			});
+
+			const extensionRunner = {
+				getAllTools: vi.fn(() => new Map()),
+				emit: vi.fn(async () => undefined),
+				emitToolCall: vi.fn(async () => ({ block: false })),
+				emitToolResult: vi.fn(async () => undefined),
+				hasHandlers: vi.fn((ev: string) => ev === "context"),
+				emitContext: vi.fn(async (msgs: unknown[]) => msgs), // same reference
+			} as never;
+
+			const events = await collectEvents("hello", [], {
+				sendMessage,
+				tools: createRegistry(),
+				extensionRunner,
+			});
+
+			expect(events.some((e) => e.type === "text_delta")).toBe(true);
+			// Messages should only contain the user message (no injection)
+			expect(capturedMessages[0]).toHaveLength(1);
+			expect(capturedMessages[0][0].role).toBe("user");
+		});
+
+		it("catches emitContext errors and yields error event", async () => {
+			const sendMessage = mockSendMessage([
+				[
+					{ type: "text_delta", text: "fallback" },
+					{ type: "done", stopReason: "end_turn" },
+				],
+			]);
+
+			const extensionRunner = {
+				getAllTools: vi.fn(() => new Map()),
+				emit: vi.fn(async () => undefined),
+				emitToolCall: vi.fn(async () => ({ block: false })),
+				emitToolResult: vi.fn(async () => undefined),
+				hasHandlers: vi.fn((ev: string) => ev === "context"),
+				emitContext: vi.fn(async () => {
+					throw new Error("Extension context failure");
+				}),
+			} as never;
+
+			const events = await collectEvents("hello", [], {
+				sendMessage,
+				tools: createRegistry(),
+				extensionRunner,
+			});
+
+			const errorEvents = events.filter((e) => e.type === "error");
+			expect(errorEvents).toHaveLength(1);
+			expect((errorEvents[0] as { type: "error"; error: Error }).error.message).toContain("Extension context failure");
+			// Loop continues and yields text after error (error first, then LLM response)
+			const errorIdx = events.findIndex((e) => e.type === "error");
+			const textIdx = events.findIndex((e) => e.type === "text_delta");
+			const doneIdx = events.findIndex((e) => e.type === "done");
+			expect(errorIdx).toBeGreaterThanOrEqual(0);
+			expect(textIdx).toBeGreaterThan(errorIdx);
+			expect(doneIdx).toBeGreaterThan(errorIdx);
+		});
+
+		it("catches non-Error throws from emitContext", async () => {
+			const sendMessage = mockSendMessage([
+				[
+					{ type: "text_delta", text: "ok" },
+					{ type: "done", stopReason: "end_turn" },
+				],
+			]);
+
+			const extensionRunner = {
+				getAllTools: vi.fn(() => new Map()),
+				emit: vi.fn(async () => undefined),
+				emitToolCall: vi.fn(async () => ({ block: false })),
+				emitToolResult: vi.fn(async () => undefined),
+				hasHandlers: vi.fn((ev: string) => ev === "context"),
+				emitContext: vi.fn(async () => {
+					throw "string-error"; // non-Error throw
+				}),
+			} as never;
+
+			const events = await collectEvents("hello", [], {
+				sendMessage,
+				tools: createRegistry(),
+				extensionRunner,
+			});
+
+			const errorEvents = events.filter((e) => e.type === "error");
+			expect(errorEvents).toHaveLength(1);
+			expect((errorEvents[0] as { type: "error"; error: Error }).error.message).toContain("string-error");
+			expect(events.some((e) => e.type === "done")).toBe(true);
+		});
+
+		it("preserves original messages when emitContext throws", async () => {
+			const capturedMessages: MessagePayload[][] = [];
+			let callIndex = 0;
+			const sendMessage: AgentLoopOptions["sendMessage"] = async function* (msgs) {
+				capturedMessages.push([...msgs]);
+				const responses = [
+					[
+						{ type: "text_delta" as const, text: "response" },
+						{ type: "done" as const, stopReason: "end_turn" as const },
+					],
+				];
+				for (const event of responses[callIndex] ?? []) yield event;
+				callIndex++;
+			};
+
+			const extensionRunner = {
+				getAllTools: vi.fn(() => new Map()),
+				emit: vi.fn(async () => undefined),
+				emitToolCall: vi.fn(async () => ({ block: false })),
+				emitToolResult: vi.fn(async () => undefined),
+				hasHandlers: vi.fn((ev: string) => ev === "context"),
+				emitContext: vi.fn(async () => {
+					throw new Error("transform boom");
+				}),
+			} as never;
+
+			await collectEvents("hello world", [], {
+				sendMessage,
+				tools: createRegistry(),
+				extensionRunner,
+			});
+
+			// Original user message should be preserved (not transformed)
+			expect(capturedMessages[0]).toHaveLength(1);
+			expect(capturedMessages[0][0].role).toBe("user");
+		});
+
+		it("strips ANSI codes from extension error messages", async () => {
+			const sendMessage = mockSendMessage([
+				[
+					{ type: "text_delta", text: "ok" },
+					{ type: "done", stopReason: "end_turn" },
+				],
+			]);
+
+			const extensionRunner = {
+				getAllTools: vi.fn(() => new Map()),
+				emit: vi.fn(async () => undefined),
+				emitToolCall: vi.fn(async () => ({ block: false })),
+				emitToolResult: vi.fn(async () => undefined),
+				hasHandlers: vi.fn((ev: string) => ev === "context"),
+				emitContext: vi.fn(async () => {
+					throw new Error("\x1b[31mred error\x1b[0m");
+				}),
+			} as never;
+
+			const events = await collectEvents("hello", [], {
+				sendMessage,
+				tools: createRegistry(),
+				extensionRunner,
+			});
+
+			const errorEvent = events.find((e) => e.type === "error") as { type: "error"; error: Error };
+			expect(errorEvent).toBeDefined();
+			expect(errorEvent.error.message).not.toContain("\x1b[");
+			expect(errorEvent.error.message).toContain("red error");
 		});
 	});
 });

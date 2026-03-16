@@ -13,10 +13,11 @@ import type {
 	RoutingDecision,
 	VasanaTendency,
 } from "@takumi/bridge";
-import type { Message, PermissionDecision, Size, Usage } from "@takumi/core";
+import { AlertEngine, ApprovalQueue, type Message, type PermissionDecision, type Size, type Usage } from "@takumi/core";
 import type { ReadonlySignal, Signal } from "@takumi/render";
 import { computed, signal } from "@takumi/render";
 import { resetRecentDirectiveHistory } from "./chitragupta-runtime-helpers.js";
+import { cloneProviderModelCatalog, PROVIDER_MODELS } from "./completion.js";
 import { ValidationResultsDialog } from "./dialogs/validation-results.js";
 import type { ScarlettIntegrityReport } from "./scarlett-runtime.js";
 import { buildScarlettIntegrityReport } from "./scarlett-runtime.js";
@@ -35,6 +36,10 @@ export type ClusterCommandEvent =
 	| { type: "isolation_set"; mode: "none" | "worktree" | "docker" };
 
 export class AppState {
+	approvalQueue: ApprovalQueue = new ApprovalQueue();
+	alertEngine: AlertEngine = new AlertEngine();
+	readonly acknowledgedAlerts: Signal<Set<string>> = signal(new Set<string>());
+
 	constructor() {
 		this.steeringQueue.onSizeChanged((size) => {
 			this.steeringPending.value = size;
@@ -58,6 +63,9 @@ export class AppState {
 	readonly canonicalSessionId: Signal<string> = signal("");
 	readonly model: Signal<string> = signal("claude-sonnet-4-20250514");
 	readonly provider: Signal<string> = signal("anthropic");
+	readonly availableProviderModels: Signal<Record<string, string[]>> = signal(
+		cloneProviderModelCatalog(PROVIDER_MODELS),
+	);
 	readonly theme: Signal<string> = signal("default");
 
 	// ── Thinking ──────────────────────────────────────────────────────────────
@@ -291,6 +299,10 @@ export class AppState {
 		return `$${cost.toFixed(2)}`;
 	});
 
+	readonly availableProviders: ReadonlySignal<string[]> = computed(() =>
+		Object.keys(this.availableProviderModels.value).sort(),
+	);
+
 	readonly statusText: ReadonlySignal<string> = computed(() => {
 		const clusterId = this.clusterId.value;
 		if (clusterId) {
@@ -365,6 +377,13 @@ export class AppState {
 		this.totalCost.value += inputCost + outputCost - cacheReadDiscount;
 	}
 
+	setAvailableProviderModels(catalog: Record<string, string[]>): void {
+		this.availableProviderModels.value = {
+			...cloneProviderModelCatalog(PROVIDER_MODELS),
+			...cloneProviderModelCatalog(catalog),
+		};
+	}
+
 	/** Reset all state for a new session. */
 	reset(): void {
 		this.messages.value = [];
@@ -427,6 +446,9 @@ export class AppState {
 		this.contextTokens.value = 0;
 		this.contextWindow.value = 200000;
 		this.consolidationInProgress.value = false;
+		this.approvalQueue = new ApprovalQueue();
+		this.alertEngine = new AlertEngine();
+		this.acknowledgedAlerts.value = new Set<string>();
 		this.steeringQueue.clear();
 		this.steeringPending.value = 0;
 		resetRecentDirectiveHistory();

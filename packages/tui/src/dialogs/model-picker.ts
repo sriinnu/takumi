@@ -23,6 +23,12 @@ export class ModelPicker {
 		this._models = signal(models ?? DEFAULT_MODELS);
 	}
 
+	/** Replace the available model list shown in the picker. */
+	setModels(models: string[]): void {
+		this._models.value = models.length > 0 ? models : DEFAULT_MODELS;
+		this._selectedIndex.value = 0;
+	}
+
 	/** Show the picker and reset selection. */
 	open(): void {
 		this._isOpen.value = true;

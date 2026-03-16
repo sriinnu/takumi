@@ -134,6 +134,86 @@ takumi --print "summarize this repository"
 takumi exec --headless --stream=ndjson "fix the login bug"
 ```
 
+### Simple `.env` setup
+
+Takumi reads provider credentials from normal shell env vars and from `.env` files.
+
+Lookup order is:
+
+1. shell environment
+2. project `.env`
+3. `.takumi/.env`
+4. `~/.takumi/.env`
+5. `~/.config/takumi/.env`
+
+Recommended pattern when you keep more than one provider key around:
+
+```bash
+TAKUMI_PROVIDER=anthropic
+TAKUMI_MODEL=claude-sonnet-4-20250514
+ANTHROPIC_API_KEY=...
+OPENAI_API_KEY=...
+XAI_API_KEY=...
+ZAI_API_KEY=...
+```
+
+Recognized provider env vars include:
+
+- `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`
+- `OPENAI_API_KEY`
+- `GITHUB_TOKEN`
+- `GEMINI_API_KEY`, `GOOGLE_API_KEY`
+- `GROQ_API_KEY`
+- `XAI_API_KEY`, `GROK_API_KEY`
+- `DEEPSEEK_API_KEY`
+- `MISTRAL_API_KEY`
+- `TOGETHER_API_KEY`
+- `OPENROUTER_API_KEY`
+- `ALIBABA_API_KEY`, `DASHSCOPE_API_KEY`
+- `ZAI_API_KEY`, `KIMI_API_KEY`, `MOONSHOT_API_KEY`
+- `BEDROCK_API_KEY`, `AWS_BEARER_TOKEN`
+
+For providers that need a custom compatible endpoint, Takumi also recognizes:
+
+- `TAKUMI_ENDPOINT`
+- `XAI_ENDPOINT`, `GROK_ENDPOINT`
+- `ALIBABA_ENDPOINT`, `DASHSCOPE_ENDPOINT`
+- `ZAI_ENDPOINT`
+- `BEDROCK_ENDPOINT`, `AWS_BEDROCK_ENDPOINT`
+
+### Current surface model
+
+Takumi is intentionally **terminal-first**, but it is not terminal-only.
+
+| Surface | Status | What it is |
+|---|---|---|
+| **Terminal TUI** | ✅ current primary surface | Full-screen coding/runtime UI started with `takumi` |
+| **Headless / exec** | ✅ current | Automation / orchestration mode via `takumi exec ...` |
+| **Desktop companion** | ⚠️ early | `apps/desktop/` operator shell that can observe and steer a running Takumi instance via the local bridge |
+
+What Takumi does **not** have yet is a fully productized, packaged native **Takumi Build Window** with a stable release/install/update story. That is now part of the accepted productization roadmap.
+
+### Startup matrix
+
+| Launch path | Status today | Notes |
+|---|---|---|
+| macOS / Linux terminal | ✅ | primary supported mode |
+| Ghostty / WezTerm / iTerm / Terminal.app | ✅ | good fit for the terminal-first runtime |
+| tmux-hosted session | ✅ | good fit for long-running and side-agent workflows |
+| Windows Terminal / PowerShell / CMD | ⚠️ partial | CLI can start, but shell-backed tools should be treated as bash-first and validated against Git Bash / WSL |
+| WSL | ⚠️ target support path | intended path for strong Windows support |
+| Native packaged desktop app | 🚧 in progress | desktop shell exists, packaging/distribution still needs to be completed |
+
+### Build Window direction
+
+Takumi should follow a **companion-surface architecture**:
+
+- **Takumi terminal runtime** remains the privileged local executor
+- **Takumi Build Window** becomes the desktop/operator shell for visibility, approvals, artifacts, and steering
+- **Headless / bridge mode** supports automation and remote control
+
+This means the Build Window should not replace the terminal runtime; it should attach to it, supervise it, and make it easier to operate across Ghostty, tmux, desktop, and Windows/WSL workflows.
+
 After Takumi is running, you can switch runtimes from inside the app with `/provider` and `/model`.
 
 ### First run in 30 seconds
@@ -169,10 +249,13 @@ Takumi can construct providers directly for:
 - Gemini
 - GitHub Models
 - Groq
+- xAI / Grok-compatible endpoints
 - DeepSeek
 - Mistral
 - Together
 - OpenRouter
+- Alibaba / DashScope-compatible endpoints
+- Bedrock-compatible gateway endpoints
 - Ollama
 
 ### 2. Darpana proxy mode

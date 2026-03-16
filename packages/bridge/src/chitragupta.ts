@@ -251,7 +251,29 @@ export class ChitraguptaBridge {
 	 */
 	async vasanaTendencies(limit?: number): Promise<VasanaTendency[]> {
 		if (this._socketMode) {
-			// Vasana extraction is MCP-only (requires @chitragupta/tantra)
+			// Daemon lacks a dedicated vasana RPC — approximate from pattern.query
+			if (this._socket?.isConnected) {
+				try {
+					const result = await this._socket.call<{
+						patterns: Array<{ type: string; pattern?: string; confidence: number; occurrences?: number }>;
+					}>("pattern.query", { minConfidence: 0.6, limit: limit ?? 10 });
+					return (result.patterns ?? []).map((p) => {
+						const conf = typeof p.confidence === "number" && !Number.isNaN(p.confidence) ? p.confidence : 0;
+						const occ = typeof p.occurrences === "number" && p.occurrences > 0 ? p.occurrences : 1;
+						return {
+							tendency: p.pattern ?? p.type,
+							valence: "neutral" as const,
+							description: `Detected pattern: ${p.type}`,
+							strength: conf,
+							stability: Math.min(1, occ / 20),
+							predictiveAccuracy: conf * 0.8,
+							reinforcementCount: occ,
+						};
+					});
+				} catch {
+					return [];
+				}
+			}
 			return [];
 		}
 		const params: Record<string, unknown> = {};

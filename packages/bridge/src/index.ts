@@ -8,7 +8,7 @@ export type {
 export { EXEC_EXIT_CODES, EXEC_PROTOCOL, EXEC_PROTOCOL_VERSION } from "@takumi/core";
 export { ChitraguptaBridge } from "./chitragupta.js";
 export type { NotificationCallbacks } from "./chitragupta-observe.js";
-export { subscribeNotifications } from "./chitragupta-observe.js";
+export { routeResolve, subscribeNotifications } from "./chitragupta-observe.js";
 export { ChitraguptaObserver } from "./chitragupta-observer.js";
 export type {
 	AgentTelemetry,
@@ -132,7 +132,7 @@ export {
 	gitWorktreeRemove,
 	isGitRepo,
 } from "./git.js";
-export type { HttpBridgeConfig } from "./http-bridge.js";
+export type { AgentStateSnapshot, HttpBridgeConfig } from "./http-bridge.js";
 export { HttpBridgeServer } from "./http-bridge.js";
 export type { McpClientOptions } from "./mcp-client.js";
 export { McpClient } from "./mcp-client.js";
@@ -215,3 +215,5 @@ export {
 } from "./takumi-exec-runner.js";
 export { telemetryCleanup, telemetryHeartbeat, telemetrySnapshot } from "./telemetry.js";
 export { messageToTurn, turnsToMessages, turnToMessage } from "./turn-mapper.js";
+export type { WsTransportConfig, WsTransportServer } from "./ws-transport.js";
+export { createWsTransport } from "./ws-transport.js";

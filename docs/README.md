@@ -35,6 +35,7 @@ The important distinction: **not every document here describes fully shipped beh
 - [`chitragupta-takumi-exec-handoff.md`](./chitragupta-takumi-exec-handoff.md) — parent-side Takumi spawn/IPC handoff
 - [`cli-adapter-contract.md`](./cli-adapter-contract.md) — reusable local-process adapter contract for any CLI
 - [`ui-ux-roadmap.md`](./ui-ux-roadmap.md) — current terminal-first UX reality and the path to a stronger visual operator experience
+- [`build-window-v1.md`](./build-window-v1.md) — concrete spec for the Takumi Build Window desktop/operator shell
 - [`checkpoints.md`](./checkpoints.md) — checkpoint and resume behavior
 
 ### Performance and diagrams

@@ -54,16 +54,17 @@ export class HeaderPanel extends Component {
 
 		// Center: working directory
 		const cwd = process.cwd();
-		const maxCwd = rect.width - logo.length - 20;
+		const provider = this.state.provider.value;
+		const model = this.state.model.value;
+		const rightText = ` ${provider}/${model} `;
+		const maxCwd = rect.width - logo.length - rightText.length - 4;
 		const cwdDisplay = cwd.length > maxCwd ? `...${cwd.slice(-maxCwd + 3)}` : cwd;
 		screen.writeText(rect.y, rect.x + logo.length + 2, cwdDisplay, { fg: fgBrand, bg: bgBrand });
 
-		// Right: session info
-		const sessionId = this.state.sessionId.value;
-		if (sessionId) {
-			const sessionText = ` ${sessionId} `;
-			const rightCol = rect.x + rect.width - sessionText.length;
-			screen.writeText(rect.y, rightCol, sessionText, { fg: theme.ansi.muted, bg: bgBrand });
+		// Right: provider/model runtime identity
+		const rightCol = rect.x + rect.width - rightText.length;
+		if (rightCol > rect.x + logo.length + cwdDisplay.length + 3) {
+			screen.writeText(rect.y, rightCol, rightText, { fg: theme.ansi.muted, bg: bgBrand });
 		}
 	}
 }

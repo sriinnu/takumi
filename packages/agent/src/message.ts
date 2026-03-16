@@ -40,9 +40,16 @@ export function buildSystemPrompt(tools: ToolDefinition[]): string {
 
 /**
  * Build the content array for a user message.
+ * Supports plain text and optional image attachments.
  */
-export function buildUserMessage(text: string): any[] {
-	return [{ type: "text", text }];
+export function buildUserMessage(text: string, images?: Array<{ mediaType: string; data: string }>): any[] {
+	const blocks: any[] = [{ type: "text", text }];
+	if (images) {
+		for (const img of images) {
+			blocks.push({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } });
+		}
+	}
+	return blocks;
 }
 
 /**

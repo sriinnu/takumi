@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
+import { homedir } from "node:os";
 import type { LoadedTakumiPackage } from "@takumi/agent";
 import { discoverTakumiPackages } from "@takumi/agent";
 import type { TakumiConfig } from "@takumi/core";
@@ -269,6 +270,38 @@ export async function scaffoldPackage(name: string, cwd = process.cwd()): Promis
 	return rootPath;
 }
 
+function globalPackagesDir(): string {
+	return join(homedir(), ".config", "takumi", "packages");
+}
+
+async function installPackage(source: string): Promise<string> {
+	const absSource = resolve(source);
+	if (!existsSync(absSource)) {
+		throw new Error(`Source not found: ${absSource}`);
+	}
+	const name = absSource.split(sep).pop() ?? "unknown";
+	const dest = join(globalPackagesDir(), slugifyPackageName(name) ?? name);
+	if (existsSync(dest)) throw new Error(`Package already installed: ${dest}`);
+	const { cp } = await import("node:fs/promises");
+	await cp(absSource, dest, { recursive: true });
+	return dest;
+}
+
+async function removePackage(name: string, config: TakumiConfig): Promise<boolean> {
+	const slug = slugifyPackageName(name) ?? name;
+	const candidates = [
+		join(globalPackagesDir(), slug),
+		join(config.projectRoot ?? process.cwd(), ".takumi", "packages", slug),
+	];
+	for (const dir of candidates) {
+		if (existsSync(dir)) {
+			await rm(dir, { recursive: true, force: true });
+			return true;
+		}
+	}
+	return false;
+}
+
 export async function cmdPackage(
 	config: TakumiConfig,
 	action = "list",
@@ -287,6 +320,37 @@ export async function cmdPackage(
 			return;
 		}
 		console.log(`Created package scaffold: ${rootPath}`);
+		return;
+	}
+
+	if (action === "install" || action === "add") {
+		const source = args[0];
+		if (!source) {
+			console.error("Usage: takumi package install <path>");
+			process.exit(1);
+		}
+		const installed = await installPackage(source);
+		if (asJson) {
+			console.log(JSON.stringify({ installed: true, path: installed }, null, 2));
+			return;
+		}
+		console.log(`Installed package to: ${installed}`);
+		return;
+	}
+
+	if (action === "remove" || action === "uninstall" || action === "rm") {
+		const name = args[0];
+		if (!name) {
+			console.error("Usage: takumi package remove <name>");
+			process.exit(1);
+		}
+		const removed = await removePackage(name, config);
+		if (asJson) {
+			console.log(JSON.stringify({ removed, name }, null, 2));
+			return;
+		}
+		if (removed) console.log(`Removed package: ${name}`);
+		else console.error(`Package not found: ${name}`);
 		return;
 	}
 

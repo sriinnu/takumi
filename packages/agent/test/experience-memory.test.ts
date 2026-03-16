@@ -45,6 +45,32 @@ describe("ExperienceMemory", () => {
 		expect(ranked[0]?.name).toBe("read_file");
 		expect(ranked[0]?.score).toBeGreaterThan(ranked[1]?.score ?? -1);
 	});
+
+	it("buildFileAwarenessSummary returns null when no tool state recorded", () => {
+		const memory = new ExperienceMemory();
+		expect(memory.buildFileAwarenessSummary()).toBeNull();
+	});
+
+	it("buildFileAwarenessSummary categorizes written and read files", () => {
+		const memory = new ExperienceMemory();
+		memory.recordToolUse("write_file", { path: "src/app.ts" }, { output: "ok", isError: false });
+		memory.recordToolUse("read_file", { path: "src/config.ts" }, { output: "contents", isError: false });
+		memory.recordToolUse("edit_file", { path: "src/utils.ts" }, { output: "ok", isError: false });
+
+		const summary = memory.buildFileAwarenessSummary();
+		expect(summary).not.toBeNull();
+		expect(summary).toContain("src/app.ts");
+		expect(summary).toContain("src/config.ts");
+	});
+
+	it("buildFileAwarenessSummary includes failed tools", () => {
+		const memory = new ExperienceMemory();
+		memory.recordToolUse("write_file", { path: "locked.ts" }, { output: "EPERM", isError: true });
+
+		const summary = memory.buildFileAwarenessSummary();
+		expect(summary).not.toBeNull();
+		expect(summary).toContain("locked.ts");
+	});
 });
 
 describe("buildStrategyPrompt", () => {
@@ -86,5 +112,79 @@ describe("compactMessagesDetailed", () => {
 		expect(result.compactedMessages).toHaveLength(3);
 		expect(result.keptMessages).toHaveLength(2);
 		expect(result.messages[0]?.role).toBe("user");
+	});
+
+	it("preserves file operation references in compaction summary", () => {
+		const messages: MessagePayload[] = [
+			{ role: "user", content: [{ type: "text", text: "Edit the config" }] },
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "tc-1", name: "write_file", input: { path: "src/config.ts" } }],
+			},
+			{
+				role: "user",
+				content: [{ type: "tool_result", tool_use_id: "tc-1", content: "written", is_error: false }],
+			},
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "tc-2", name: "read_file", input: { filePath: "src/app.ts" } }],
+			},
+			{
+				role: "user",
+				content: [{ type: "tool_result", tool_use_id: "tc-2", content: "contents", is_error: false }],
+			},
+			{ role: "assistant", content: [{ type: "text", text: "Done with the changes" }] },
+			{ role: "user", content: [{ type: "text", text: "Thanks" }] },
+		];
+
+		const result = compactMessagesDetailed(messages, { preserveRecent: 2 });
+
+		expect(result.summary).toContain("Files touched");
+		expect(result.summary).toContain("src/config.ts");
+		expect(result.summary).toContain("src/app.ts");
+		expect(result.summary).toContain("write_file");
+		expect(result.summary).toContain("read_file");
+	});
+
+	it("deduplicates identical file operations in summary", () => {
+		const messages: MessagePayload[] = [
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "tc-1", name: "read_file", input: { path: "foo.ts" } }],
+			},
+			{
+				role: "user",
+				content: [{ type: "tool_result", tool_use_id: "tc-1", content: "v1", is_error: false }],
+			},
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "tc-2", name: "read_file", input: { path: "foo.ts" } }],
+			},
+			{
+				role: "user",
+				content: [{ type: "tool_result", tool_use_id: "tc-2", content: "v2", is_error: false }],
+			},
+			{ role: "assistant", content: [{ type: "text", text: "done" }] },
+			{ role: "user", content: [{ type: "text", text: "ok" }] },
+		];
+
+		const result = compactMessagesDetailed(messages, { preserveRecent: 2 });
+
+		// "read_file → foo.ts" should appear only once
+		const matches = result.summary.match(/read_file → foo\.ts/g);
+		expect(matches).toHaveLength(1);
+	});
+
+	it("skips file operations section when no tool_use blocks exist", () => {
+		const messages: MessagePayload[] = [
+			{ role: "user", content: [{ type: "text", text: "Hello" }] },
+			{ role: "assistant", content: [{ type: "text", text: "Hi there" }] },
+			{ role: "user", content: [{ type: "text", text: "What can you do?" }] },
+			{ role: "assistant", content: [{ type: "text", text: "I can help" }] },
+		];
+
+		const result = compactMessagesDetailed(messages, { preserveRecent: 2 });
+
+		expect(result.summary).not.toContain("Files touched");
 	});
 });

@@ -1,4 +1,5 @@
 import type { KeyEvent, MouseEvent } from "@takumi/core";
+import { KEY_CODES } from "@takumi/core";
 
 /**
  * Parse SGR-encoded mouse escape sequences into a MouseEvent.
@@ -57,6 +58,15 @@ export function parseMouseEvent(raw: string): MouseEvent | null {
 
 /** Parse raw terminal input into a KeyEvent. */
 export function parseKeyEvent(raw: string): KeyEvent {
+	// CR (Enter) and Tab are control chars at the byte level, but in UI semantics
+	// they should not be decoded as Ctrl+M / Ctrl+I shortcuts.
+	if (raw === KEY_CODES.ENTER) {
+		return { key: "return", ctrl: false, alt: false, shift: false, meta: false, raw };
+	}
+	if (raw === KEY_CODES.TAB) {
+		return { key: "tab", ctrl: false, alt: false, shift: false, meta: false, raw };
+	}
+
 	const ctrl = raw.length === 1 && raw.charCodeAt(0) < 32;
 	const alt = raw.startsWith("\x1b") && raw.length === 2;
 	const shift = false;

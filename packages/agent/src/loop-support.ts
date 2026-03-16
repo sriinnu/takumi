@@ -1,4 +1,4 @@
-import type { ToolDefinition } from "@takumi/core";
+import type { Message, ToolDefinition } from "@takumi/core";
 import type { ExperienceMemory } from "./context/experience-memory.js";
 import type { MemoryHooks } from "./context/memory-hooks.js";
 import type { PrincipleMemory } from "./context/principles.js";
@@ -31,24 +31,30 @@ export function mergeExtensionTools(tools: ToolRegistry, extensionRunner?: Exten
 	}
 }
 
-export function buildEnrichedSystemPrompt(
-	toolDefs: ToolDefinition[],
-	userMessage: string,
-	basePrompt?: string,
-	memoryHooks?: MemoryHooks,
-	principleMemory?: PrincipleMemory,
-): string {
-	let system = basePrompt ?? buildSystemPrompt(toolDefs);
-	if (memoryHooks) {
-		const lessons = memoryHooks.recall(userMessage, 5);
-		const lessonBlock = memoryHooks.formatForPrompt(lessons);
+export interface EnrichedSystemPromptOptions {
+	toolDefs: ToolDefinition[];
+	userMessage: string;
+	basePrompt?: string;
+	memoryHooks?: MemoryHooks;
+	principleMemory?: PrincipleMemory;
+	ragContext?: string;
+}
+
+export function buildEnrichedSystemPrompt(opts: EnrichedSystemPromptOptions): string {
+	let system = opts.basePrompt ?? buildSystemPrompt(opts.toolDefs);
+	if (opts.ragContext) {
+		system = `${system}\n\n${opts.ragContext}`;
+	}
+	if (opts.memoryHooks) {
+		const lessons = opts.memoryHooks.recall(opts.userMessage, 5);
+		const lessonBlock = opts.memoryHooks.formatForPrompt(lessons);
 		if (lessonBlock) {
 			system = `${system}\n\n${lessonBlock}`;
 		}
 	}
-	if (principleMemory) {
-		const principles = principleMemory.recall(userMessage, 5);
-		const principleBlock = principleMemory.formatForPrompt(principles);
+	if (opts.principleMemory) {
+		const principles = opts.principleMemory.recall(opts.userMessage, 5);
+		const principleBlock = opts.principleMemory.formatForPrompt(principles);
 		if (principleBlock) {
 			system = `${system}\n\n${principleBlock}`;
 		}
@@ -104,4 +110,53 @@ function flattenTextContent(content: unknown): string[] {
 		}
 		return [];
 	});
+}
+
+/** Convert MessagePayload[] to core Message[] for extension context events. */
+export function payloadToCore(messages: MessagePayload[]): Message[] {
+	return messages.map((m, i) => ({
+		id: `turn-${i}`,
+		role: m.role,
+		content: Array.isArray(m.content)
+			? m.content.map(blockToCore)
+			: [{ type: "text" as const, text: typeof m.content === "string" ? m.content : JSON.stringify(m.content) }],
+		timestamp: Date.now(),
+	}));
+}
+
+function blockToCore(block: unknown): Message["content"][number] {
+	if (typeof block === "string") return { type: "text", text: block };
+	if (!block || typeof block !== "object") return { type: "text", text: "" };
+	const b = block as Record<string, unknown>;
+	if (b.type === "text") return { type: "text", text: (b.text as string) ?? "" };
+	if (b.type === "thinking") return { type: "thinking", thinking: (b.thinking as string) ?? "" };
+	if (b.type === "tool_use") {
+		return {
+			type: "tool_use",
+			id: (b.id as string) ?? "",
+			name: (b.name as string) ?? "",
+			input: (b.input as Record<string, unknown>) ?? {},
+		};
+	}
+	if (b.type === "tool_result") {
+		return {
+			type: "tool_result",
+			toolUseId: (b.tool_use_id as string) ?? (b.toolUseId as string) ?? "",
+			content: (b.content as string) ?? (b.text as string) ?? "",
+			isError: (b.is_error as boolean) ?? (b.isError as boolean) ?? false,
+		};
+	}
+	if (b.type === "image") {
+		return {
+			type: "image",
+			mediaType: typeof b.mediaType === "string" ? b.mediaType : "image/png",
+			data: typeof b.data === "string" ? b.data : "",
+		};
+	}
+	return { type: "text", text: typeof b.text === "string" ? b.text : "" };
+}
+
+/** Convert core Message[] back to MessagePayload[]. */
+export function coreToPayload(msg: Message): MessagePayload {
+	return { role: msg.role, content: msg.content as MessagePayload["content"] };
 }

@@ -20,7 +20,7 @@
 	},
 	"bin": {
 		"takumi": "dist/takumi.cjs",
-		"takumi-telemetry-snapshot": "./bin/telemetry-snapshot.ts"
+		"takumi-telemetry-snapshot": "dist/takumi-telemetry-snapshot.cjs"
 	},
 	"files": [
 		"dist/",

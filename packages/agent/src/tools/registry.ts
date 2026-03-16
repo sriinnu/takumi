@@ -3,7 +3,7 @@
  * and dispatches execution.
  */
 
-import type { ToolDefinition, ToolResult } from "@takumi/core";
+import type { PermissionDecision, ToolDefinition, ToolResult } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import type { ExperienceMemory } from "../context/experience-memory.js";
 import { type RankedTool, rankToolDefinitions, selectToolDefinitions, type ToolSelectionOptions } from "./selection.js";
@@ -11,6 +11,11 @@ import { type RankedTool, rankToolDefinitions, selectToolDefinitions, type ToolS
 const log = createLogger("tool-registry");
 
 export type ToolHandler = (input: Record<string, unknown>, signal?: AbortSignal) => Promise<ToolResult>;
+export type ToolPermissionChecker = (
+	tool: string,
+	input: Record<string, unknown>,
+	definition: ToolDefinition,
+) => Promise<PermissionDecision>;
 
 interface RegisteredTool {
 	definition: ToolDefinition;
@@ -19,6 +24,7 @@ interface RegisteredTool {
 
 export class ToolRegistry {
 	private tools = new Map<string, RegisteredTool>();
+	private permissionChecker: ToolPermissionChecker | null = null;
 
 	/** Register a tool with its definition and handler. */
 	register(definition: ToolDefinition, handler: ToolHandler): void {
@@ -70,8 +76,18 @@ export class ToolRegistry {
 		return [...this.tools.keys()];
 	}
 
+	/** Configure a permission checker for tools that require explicit approval. */
+	setPermissionChecker(checker: ToolPermissionChecker | null): void {
+		this.permissionChecker = checker;
+	}
+
 	/** Execute a tool by name with the given input. */
-	async execute(name: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> {
+	async execute(
+		name: string,
+		input: Record<string, unknown>,
+		signal?: AbortSignal,
+		options?: { permissionChecked?: boolean },
+	): Promise<ToolResult> {
 		const tool = this.tools.get(name);
 		if (!tool) {
 			return {
@@ -81,6 +97,19 @@ export class ToolRegistry {
 		}
 
 		log.info(`Executing tool: ${name}`, { input: summarizeInput(input) });
+
+		if (tool.definition.requiresPermission && !options?.permissionChecked) {
+			const decision = this.permissionChecker
+				? await this.permissionChecker(name, input, tool.definition)
+				: { allowed: false, reason: `Permission required for tool: ${name}` };
+			if (!decision.allowed) {
+				log.info(`Tool ${name} blocked by permission gate`, { reason: decision.reason ?? "denied" });
+				return {
+					output: decision.reason ?? `Permission denied for tool: ${name}`,
+					isError: true,
+				};
+			}
+		}
 
 		try {
 			const result = await tool.handler(input, signal);

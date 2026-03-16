@@ -290,7 +290,14 @@ export type { AgentLoopOptions, MessagePayload } from "./loop.js";
 export { agentLoop } from "./loop.js";
 // Message building
 export { buildSystemPrompt, buildToolResult, buildUserMessage } from "./message.js";
-export type { EngineRouteClass, ModelRecommendation, ModelTier, ProviderFamily, RouterRole } from "./model-router.js";
+export type {
+	EngineRouteClass,
+	ModelRecommendation,
+	ModelTier,
+	ProviderFamily,
+	RouterRole,
+	TopicDomain,
+} from "./model-router.js";
 // Smart model router
 export {
 	inferProvider,
@@ -302,6 +309,9 @@ export {
 // Phase 49 — Observation Collector
 export type { ObservationCollectorConfig } from "./observation-collector.js";
 export { ObservationCollector } from "./observation-collector.js";
+// Prompt template engine
+export type { PromptTemplate, TemplateParams, TemplateValue } from "./prompt-template.js";
+export { compileTemplate, renderTemplate } from "./prompt-template.js";
 // Providers
 export { DarpanaProvider } from "./providers/darpana.js";
 export { DirectProvider } from "./providers/direct.js";
@@ -309,6 +319,8 @@ export type { FailoverEntry, FailoverProviderConfig, ProviderLike, ProviderStatu
 export { FailoverProvider } from "./providers/failover.js";
 export type { GeminiProviderConfig } from "./providers/gemini.js";
 export { GeminiProvider } from "./providers/gemini.js";
+export type { HandoffResult } from "./providers/handoff.js";
+export { HandoffTransformer } from "./providers/handoff.js";
 export type { OpenAIProviderConfig } from "./providers/openai.js";
 export { OpenAIProvider } from "./providers/openai.js";
 export type { RetryOptions } from "./retry.js";
@@ -327,6 +339,12 @@ export { buildDefaultRules, mergeAllowlist, parseAllowlistConfig } from "./safet
 export { PermissionEngine } from "./safety/permissions.js";
 // Safety — sandbox
 export { DANGEROUS_PATTERNS, SAFE_COMMANDS, validateCommand } from "./safety/sandbox.js";
+// SDK embedding API
+export type { SessionOptions, TakumiSession } from "./sdk.js";
+export { createSession } from "./sdk.js";
+// P-Track 3 — Structured Handoff/Reattach
+export type { CreateHandoffInput, HandoffManagerConfig } from "./session-handoff.js";
+export { HandoffManager } from "./session-handoff.js";
 // Phase 48 — Steering Queue
 export type {
 	EnqueueOptions,

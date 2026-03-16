@@ -1,14 +1,17 @@
 import type {
 	ExecAgentEventEnvelope,
+	ExecArtifact,
 	ExecBootstrapTransport,
 	ExecBootstrapSnapshot,
 	ExecBootstrapStatusEvent,
 	ExecExitCode,
 	ExecFailurePhase,
 	ExecProtocolEvent,
+	ExecRoutingBinding,
 	ExecRunCompletedEvent,
 	ExecRunFailedEvent,
 	ExecRunStartedEvent,
+	ExecSessionBinding,
 	SerializedError,
 } from "@takumi/core";
 import {
@@ -40,15 +43,18 @@ export {
 };
 export type {
 	ExecAgentEventEnvelope,
+	ExecArtifact,
 	ExecBootstrapTransport,
 	ExecBootstrapSnapshot,
 	ExecBootstrapStatusEvent,
 	ExecExitCode,
 	ExecFailurePhase,
 	ExecProtocolEvent,
+	ExecRoutingBinding,
 	ExecRunCompletedEvent,
 	ExecRunFailedEvent,
 	ExecRunStartedEvent,
+	ExecSessionBinding,
 	SerializedError,
 };
 

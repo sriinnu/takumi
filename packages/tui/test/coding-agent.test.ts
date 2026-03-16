@@ -203,6 +203,31 @@ describe("CodingAgent", () => {
 		});
 	});
 
+	/* ---- cancellation ---------------------------------------------------- */
+
+	describe("cancellation", () => {
+		it("cancel stops the runner when a task is active", async () => {
+			const blockingRunner = mockRunner();
+			const agent = new CodingAgent(state, blockingRunner);
+			(agent as any).task = {
+				description: "Cancel me",
+				phase: "planning",
+				branchName: null,
+				plan: null,
+				filesModified: [],
+				testsPassed: null,
+				error: null,
+				orchestrationMode: "single",
+			};
+
+			expect(agent.isActive).toBe(true);
+			await agent.cancel("Session switch requested.");
+
+			expect(blockingRunner.cancel).toHaveBeenCalledOnce();
+			expect((agent as any).stopRequestedReason).toBe("Session switch requested.");
+		});
+	});
+
 	/* ---- system messages ------------------------------------------------- */
 
 	describe("system messages", () => {

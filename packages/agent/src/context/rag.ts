@@ -128,19 +128,25 @@ export function queryIndex(index: CodebaseIndex, query: string, opts: RagOptions
  * Format RAG results as a Markdown section ready for system prompt injection.
  * Returns an empty string when there are no results.
  */
-export function formatRagContext(results: RagResult[]): string {
+export function formatRagContext(results: RagResult[], maxBytes = 8192): string {
 	if (results.length === 0) return "";
 
 	const lines: string[] = ["## Relevant codebase symbols\n"];
 	let lastFile = "";
+	let totalLen = lines[0].length;
 
 	for (const { symbol: sym } of results) {
-		if (sym.relPath !== lastFile) {
-			lines.push(`\n**${sym.relPath}**`);
+		const fileLine = sym.relPath !== lastFile ? `\n**${sym.relPath}**` : "";
+		const snippetLine = `\`\`\`\n// ${sym.kind} ${sym.name} (line ${sym.line})\n${sym.snippet}\n\`\`\``;
+		const blockLen = fileLine.length + snippetLine.length + 2; // +2 for join newlines
+		if (totalLen + blockLen > maxBytes) break;
+		if (fileLine) {
+			lines.push(fileLine);
 			lastFile = sym.relPath;
 		}
-		lines.push(`\`\`\`\n// ${sym.kind} ${sym.name} (line ${sym.line})\n${sym.snippet}\n\`\`\``);
+		lines.push(snippetLine);
+		totalLen += blockLen;
 	}
 
-	return lines.join("\n");
+	return lines.length <= 1 ? "" : lines.join("\n");
 }

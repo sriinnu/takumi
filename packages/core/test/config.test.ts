@@ -5,13 +5,38 @@ describe("loadConfig", () => {
 	const origEnv = { ...process.env };
 
 	beforeEach(() => {
-		// Clear takumi-specific env vars
-		for (const key of Object.keys(process.env)) {
-			if (key.startsWith("TAKUMI_")) {
-				delete process.env[key];
-			}
+		for (const key of [
+			...Object.keys(process.env).filter((key) => key.startsWith("TAKUMI_")),
+			"ANTHROPIC_API_KEY",
+			"CLAUDE_CODE_OAUTH_TOKEN",
+			"OPENAI_API_KEY",
+			"GITHUB_TOKEN",
+			"GEMINI_API_KEY",
+			"GOOGLE_API_KEY",
+			"GROQ_API_KEY",
+			"XAI_API_KEY",
+			"GROK_API_KEY",
+			"DEEPSEEK_API_KEY",
+			"MISTRAL_API_KEY",
+			"TOGETHER_API_KEY",
+			"OPENROUTER_API_KEY",
+			"ALIBABA_API_KEY",
+			"DASHSCOPE_API_KEY",
+			"ZAI_API_KEY",
+			"KIMI_API_KEY",
+			"MOONSHOT_API_KEY",
+			"BEDROCK_API_KEY",
+			"AWS_BEARER_TOKEN",
+			"XAI_ENDPOINT",
+			"GROK_ENDPOINT",
+			"ALIBABA_ENDPOINT",
+			"DASHSCOPE_ENDPOINT",
+			"ZAI_ENDPOINT",
+			"BEDROCK_ENDPOINT",
+			"AWS_BEDROCK_ENDPOINT",
+		]) {
+			delete process.env[key];
 		}
-		delete process.env.ANTHROPIC_API_KEY;
 	});
 
 	afterEach(() => {
@@ -80,6 +105,30 @@ describe("loadConfig", () => {
 		expect(config.thinking).toBe(true);
 	});
 
+	it("uses a provider-specific key when exactly one provider is configured", () => {
+		process.env.XAI_API_KEY = "xai-test-key";
+		const config = loadConfig();
+		expect(config.provider).toBe("xai");
+		expect(config.apiKey).toBe("xai-test-key");
+	});
+
+	it("uses the configured provider's key when multiple keys exist", () => {
+		process.env.XAI_API_KEY = "xai-test-key";
+		process.env.ALIBABA_API_KEY = "ali-test-key";
+		const config = loadConfig({ provider: "alibaba" });
+		expect(config.provider).toBe("alibaba");
+		expect(config.apiKey).toBe("ali-test-key");
+	});
+
+	it("uses provider-specific endpoint aliases when explicit endpoint is not set", () => {
+		process.env.BEDROCK_API_KEY = "bedrock-test-key";
+		process.env.BEDROCK_ENDPOINT = "https://bedrock.example.com/v1/chat/completions";
+		const config = loadConfig({ provider: "bedrock" });
+		expect(config.provider).toBe("bedrock");
+		expect(config.apiKey).toBe("bedrock-test-key");
+		expect(config.endpoint).toBe("https://bedrock.example.com/v1/chat/completions");
+	});
+
 	it("workingDirectory defaults to cwd", () => {
 		const config = loadConfig();
 		expect(config.workingDirectory).toBe(process.cwd());
@@ -88,7 +137,18 @@ describe("loadConfig", () => {
 
 describe("PROVIDER_ENDPOINTS", () => {
 	it("includes all expected providers", () => {
-		const expected = ["openai", "github", "groq", "deepseek", "mistral", "together", "openrouter"];
+		const expected = [
+			"openai",
+			"github",
+			"groq",
+			"xai",
+			"deepseek",
+			"mistral",
+			"together",
+			"openrouter",
+			"alibaba",
+			"zai",
+		];
 		for (const p of expected) {
 			expect(PROVIDER_ENDPOINTS).toHaveProperty(p);
 			expect(typeof PROVIDER_ENDPOINTS[p]).toBe("string");

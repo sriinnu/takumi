@@ -59,7 +59,20 @@ export type EngineRouteClass =
  * Known provider families.
  * Extend this union as new providers are added.
  */
-export type ProviderFamily = "anthropic" | "openai" | "google" | "openai-compat" | "darpana";
+export type ProviderFamily =
+	| "anthropic"
+	| "openai"
+	| "google"
+	| "openai-compat"
+	| "darpana"
+	| "azure-openai"
+	| "bedrock"
+	| "mistral"
+	| "groq"
+	| "deepseek"
+	| "together"
+	| "xai"
+	| "openrouter";
 
 /** Agent roles that can influence model selection. */
 export type RouterRole =
@@ -94,43 +107,10 @@ export interface ModelRecommendation {
 
 // ─── Model Tier Tables ────────────────────────────────────────────────────────
 
-/**
- * Preferred model per tier for each provider family.
- * Update these strings when new models are released.
- */
-export const MODEL_TIERS: Record<ProviderFamily, Record<ModelTier, string>> = {
-	anthropic: {
-		fast: "claude-haiku-4-20250514",
-		balanced: "claude-sonnet-4-20250514",
-		powerful: "claude-sonnet-4-5",
-		frontier: "claude-opus-4-5",
-	},
-	openai: {
-		fast: "gpt-4o-mini",
-		balanced: "gpt-4o",
-		powerful: "gpt-4o",
-		frontier: "o3",
-	},
-	google: {
-		fast: "gemini-2.0-flash",
-		balanced: "gemini-2.5-flash",
-		powerful: "gemini-2.5-pro",
-		frontier: "gemini-2.5-pro",
-	},
-	"openai-compat": {
-		fast: "gpt-4o-mini",
-		balanced: "gpt-4o",
-		powerful: "gpt-4o",
-		frontier: "gpt-4o",
-	},
-	darpana: {
-		// Darpana proxies Anthropic models by default
-		fast: "claude-haiku-4-20250514",
-		balanced: "claude-sonnet-4-20250514",
-		powerful: "claude-sonnet-4-5",
-		frontier: "claude-opus-4-5",
-	},
-};
+// Tier tables extracted to model-tiers.ts to stay under the 450-LOC guardrail.
+export { MODEL_TIERS } from "./model-tiers.js";
+
+import { MODEL_TIERS } from "./model-tiers.js";
 
 // ─── Complexity → Base Tier ───────────────────────────────────────────────────
 
@@ -214,6 +194,51 @@ function resolveTierForRouteClass(baseTier: ModelTier, routeClass: EngineRouteCl
 	}
 }
 
+// ─── Topic-Based Model Selection ──────────────────────────────────────────────
+
+/**
+ * Task domain for sub-agent topic-based routing.
+ * Sub-agents working on different topics should use models best suited
+ * for that domain — code review needs reasoning, translation needs speed.
+ */
+export type TopicDomain =
+	| "code-generation"
+	| "code-review"
+	| "code-refactor"
+	| "debugging"
+	| "security-analysis"
+	| "testing"
+	| "documentation"
+	| "translation"
+	| "data-analysis"
+	| "architecture"
+	| "general";
+
+/** Maps a topic domain to the best-fit role + a tier bias offset. */
+const TOPIC_ROLE_MAP: Record<TopicDomain, { role: RouterRole; tierBias: number }> = {
+	"code-generation": { role: "IMPLEMENTER", tierBias: 0 },
+	"code-review": { role: "REVIEWER", tierBias: 1 },
+	"code-refactor": { role: "IMPLEMENTER", tierBias: 0 },
+	debugging: { role: "FIXER", tierBias: 1 },
+	"security-analysis": { role: "VALIDATOR_SECURITY", tierBias: 1 },
+	testing: { role: "VALIDATOR_TESTS", tierBias: 0 },
+	documentation: { role: "SUMMARIZER", tierBias: -1 },
+	translation: { role: "WORKER", tierBias: -1 },
+	"data-analysis": { role: "RESEARCHER", tierBias: 0 },
+	architecture: { role: "PLANNER", tierBias: 1 },
+	general: { role: "WORKER", tierBias: 0 },
+};
+
+/**
+ * Optional provider preference per topic. For instance, reasoning-heavy
+ * tasks may prefer Anthropic, while speed-sensitive tasks prefer Groq.
+ * `undefined` means "use the default provider".
+ */
+const TOPIC_PROVIDER_PREFERENCE: Partial<Record<TopicDomain, ProviderFamily>> = {
+	"security-analysis": "anthropic",
+	architecture: "anthropic",
+};
+
 // ─── ModelRouter ──────────────────────────────────────────────────────────────
 
 /**
@@ -261,6 +286,40 @@ export class ModelRouter {
 	getTierMap(): Record<ModelTier, string> {
 		return { ...MODEL_TIERS[this.provider] };
 	}
+
+	/**
+	 * Topic-aware recommendation for sub-agents. Different task domains benefit
+	 * from different model strengths — a code review sub-agent wants a reasoning
+	 * model, while a translation sub-agent can use a fast model.
+	 *
+	 * @param topic - The task domain (e.g. "code-review", "translation").
+	 * @param complexity - Task complexity from `TaskClassifier`.
+	 */
+	recommendForTopic(topic: TopicDomain, complexity: string): ModelRecommendation {
+		const mapping = TOPIC_ROLE_MAP[topic] ?? { role: "WORKER" as const, tierBias: 0 };
+		const baseTier: ModelTier = COMPLEXITY_TIER[complexity] ?? "balanced";
+		const routeClass = recommendRouteClass(complexity, mapping.role);
+		let tier = resolveTierForRouteClass(baseTier, routeClass);
+
+		// Apply topic tier bias (e.g. security analysis gets +1 tier)
+		if (mapping.tierBias > 0) {
+			for (let i = 0; i < mapping.tierBias; i++) tier = TIER_UPGRADE[tier];
+		} else if (mapping.tierBias < 0) {
+			for (let i = 0; i < Math.abs(mapping.tierBias); i++) tier = TIER_DOWNGRADE[tier];
+		}
+
+		// Topic-specific provider preference: if the topic prefers a different
+		// provider and we have multiple available, note it in the rationale.
+		const preferredProvider = TOPIC_PROVIDER_PREFERENCE[topic];
+		const provider = preferredProvider && MODEL_TIERS[preferredProvider] ? preferredProvider : this.provider;
+		const tiers = MODEL_TIERS[provider];
+		const model = tiers[tier];
+		const rationale =
+			`topic=${topic}, complexity=${complexity}, role=${mapping.role}, ` +
+			`routeClass=${routeClass}, tier=${tier}, provider=${provider}`;
+
+		return { routeClass, model, tier, provider, rationale };
+	}
 }
 
 /**
@@ -272,8 +331,14 @@ export class ModelRouter {
 export function inferProvider(modelString: string): ProviderFamily {
 	const m = modelString.toLowerCase();
 	if (m.startsWith("claude")) return "anthropic";
-	if (m.startsWith("gpt") || m.startsWith("o1") || m.startsWith("o3")) return "openai";
+	if (m.startsWith("anthropic.claude") || m.startsWith("anthropic/")) return "bedrock";
+	if (m.startsWith("gpt") || m.startsWith("o1") || m.startsWith("o3") || m.startsWith("o4")) return "openai";
 	if (m.startsWith("gemini")) return "google";
+	if (m.startsWith("mistral")) return "mistral";
+	if (m.startsWith("grok")) return "xai";
+	if (m.startsWith("deepseek")) return "deepseek";
+	if (m.startsWith("llama") || m.startsWith("meta-llama")) return "together";
+	if (m.includes("/")) return "openrouter";
 	return "openai-compat";
 }
 
@@ -289,12 +354,15 @@ export function syncModelTiersFromKosha(providerModels: Record<string, string[]>
 		gemini: "google",
 		google: "google",
 		ollama: "openai-compat",
-		openrouter: "openai-compat",
-		groq: "openai-compat",
-		deepseek: "openai-compat",
-		mistral: "openai-compat",
-		together: "openai-compat",
+		openrouter: "openrouter",
+		groq: "groq",
+		deepseek: "deepseek",
+		mistral: "mistral",
+		together: "together",
 		github: "openai-compat",
+		xai: "xai",
+		"azure-openai": "azure-openai",
+		bedrock: "bedrock",
 	};
 
 	for (const [provider, models] of Object.entries(providerModels)) {
@@ -322,83 +390,5 @@ export function syncModelTiersFromKosha(providerModels: Record<string, string[]>
 
 // ─── Dynamic Temperature Scaling ──────────────────────────────────────────────
 
-/**
- * Calculates the optimal temperature for a task based on complexity, phase, and retry count.
- *
- * **Research Foundation:** Temperature controls exploration vs exploitation in LLM sampling.
- * - Low temperature (0.0-0.3): Deterministic, focused, good for validation/critical tasks
- * - Medium temperature (0.4-0.7): Balanced, good for standard coding
- * - High temperature (0.8-1.0): Creative, diverse, good for brainstorming/first attempts
- *
- * **Algorithm:**
- * 1. Base temperature from complexity:
- *    - TRIVIAL: 0.3 (deterministic, one clear solution)
- *    - SIMPLE: 0.5 (slight variation acceptable)
- *    - STANDARD: 0.7 (moderate creativity)
- *    - CRITICAL: 0.9 (explore solution space on first try)
- *
- * 2. Adjust by phase:
- *    - PLANNING: +0.1 (want diverse plan options)
- *    - EXECUTING: base (default worker behavior)
- *    - VALIDATING: always 0.2 (consistency matters for validators)
- *    - FIXING: -0.2 (more focused repair)
- *
- * 3. Decay on retries:
- *    - attemptNumber > 1: reduce by 0.1 per retry (max 3 retries)
- *    - Rationale: if high temp failed, try more deterministic approach
- *
- * 4. Clamp to [0.0, 1.0]
- *
- * @param complexity - Task complexity level (string to avoid circular dep)
- * @param phase - Current cluster phase (string to avoid circular dep)
- * @param attemptNumber - 1-indexed retry count (default: 1)
- * @returns Temperature value in [0.0, 1.0]
- *
- * @example
- * ```ts
- * const temp = getTemperatureForTask("CRITICAL", "EXECUTING", 1);
- * console.log(temp); // 0.9 (high exploration for first critical attempt)
- *
- * const temp2 = getTemperatureForTask("CRITICAL", "EXECUTING", 3);
- * console.log(temp2); // 0.7 (reduced after 2 failed attempts)
- *
- * const temp3 = getTemperatureForTask("STANDARD", "VALIDATING", 1);
- * console.log(temp3); // 0.2 (always low for validators)
- * ```
- */
-export function getTemperatureForTask(
-	complexity: "TRIVIAL" | "SIMPLE" | "STANDARD" | "CRITICAL",
-	phase: "PLANNING" | "EXECUTING" | "VALIDATING" | "FIXING",
-	attemptNumber = 1,
-): number {
-	// Step 1: Base temperature from complexity
-	const baseTemps: Record<string, number> = {
-		TRIVIAL: 0.3,
-		SIMPLE: 0.5,
-		STANDARD: 0.7,
-		CRITICAL: 0.9,
-	};
-	let temp = baseTemps[complexity] ?? 0.7;
-
-	// Step 2: Override for validation phase (always low, regardless of complexity)
-	if (phase === "VALIDATING") {
-		return 0.2;
-	}
-
-	// Step 3: Adjust by phase
-	const phaseAdjustments: Record<string, number> = {
-		PLANNING: 0.1, // Want diverse plan options
-		EXECUTING: 0.0, // Base temp
-		FIXING: -0.2, // More focused repair
-	};
-	temp += phaseAdjustments[phase] ?? 0;
-
-	// Step 4: Decay on retries (but not below 0.3 — never fully deterministic for workers)
-	if (attemptNumber > 1) {
-		const decayFactor = Math.min(attemptNumber - 1, 3) * 0.1;
-		temp = Math.max(0.3, temp - decayFactor);
-	}
-
-	// Step 5: Clamp to [0.0, 1.0]
-	return Math.max(0.0, Math.min(1.0, temp));
-}
+// Extracted to temperature.ts for LOC guardrail — re-export for backward compat.
+export { getTemperatureForTask } from "./temperature.js";

@@ -245,6 +245,15 @@ async function legacyAutoDetect(): Promise<AutoDetectedAuth | null> {
 	if (env.OPENROUTER_API_KEY) {
 		return { provider: "openrouter", apiKey: env.OPENROUTER_API_KEY, source: "OPENROUTER_API_KEY" };
 	}
+	if (env.ZAI_API_KEY) {
+		return { provider: "zai", apiKey: env.ZAI_API_KEY, source: "ZAI_API_KEY" };
+	}
+	if (env.KIMI_API_KEY) {
+		return { provider: "zai", apiKey: env.KIMI_API_KEY, source: "KIMI_API_KEY" };
+	}
+	if (env.MOONSHOT_API_KEY) {
+		return { provider: "zai", apiKey: env.MOONSHOT_API_KEY, source: "MOONSHOT_API_KEY" };
+	}
 	if (env.TAKUMI_API_KEY) {
 		return { provider: "anthropic", apiKey: env.TAKUMI_API_KEY, source: "TAKUMI_API_KEY" };
 	}

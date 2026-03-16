@@ -18,10 +18,12 @@ These work from any view or input mode.
 | `Ctrl+L` | Clear screen | Invalidates screen and forces full re-render |
 | `Ctrl+P` | Command palette | Toggle fuzzy command search |
 | `Ctrl+K` | Command palette | Alias for Ctrl+P |
-| `Ctrl+M` | Model picker | Toggle model selection dialog |
+| `Alt+M` | Model picker | Toggle model selection dialog |
 | `Ctrl+B` | Toggle sidebar | Show/hide the sidebar panel |
 | `Ctrl+O` | Session list | Open session browser |
 | `Ctrl+Shift+C` | Cluster status | Toggle cluster status panel |
+| `Ctrl+Shift+M` | Cycle model | Rotates through models for the active provider |
+| `Shift+Tab` | Cycle thinking level | Rotates `off → brief → normal → deep → max` |
 
 ## Input Modes
 
@@ -145,7 +147,7 @@ Type `/` at the start of input to activate. Tab completes partial matches.
 |---------|-------------|----------|---------|
 | `/quit` | Exit Takumi | `Ctrl+Q` | `/exit` |
 | `/clear` | Clear conversation | `Ctrl+L` | |
-| `/model` | Change model (tab for autocomplete) | `Ctrl+M` | |
+| `/model` | Show or change model, including `next` / `prev` / `cycle` | `Alt+M` | |
 | `/provider` | Switch AI provider (tab for autocomplete) | | |
 | `/theme` | Change theme | | |
 | `/help` | Show help | | |
@@ -161,7 +163,7 @@ Type `/` at the start of input to activate. Tab completes partial matches.
 | `/undo` | Undo last file change | | |
 | `/tree` | Print directory tree (`/tree [path] [depth]`) | | |
 | `/permission` | Manage tool permissions (`list`, `reset`) | | |
-| `/think` | Toggle extended thinking (budget in tokens) | | |
+| `/think` | Toggle or set thinking level (`off`, `brief`, `normal`, `deep`, `max`) | | |
 | `/memory` | Search project memory, or `/memory scopes` | | |
 | `/sessions` | List Chitragupta sessions | | |
 | `/code` | Start coding agent | | |
@@ -196,11 +198,15 @@ Type `/` at the start of input to activate. Tab completes partial matches.
 | `/steer` | Queue a normal-priority directive | | `/st` |
 | `/interrupt` | Queue a highest-priority directive | | `/int` |
 | `/steerq` | Inspect the steering queue | | `/sq` |
+| `/template` | List, inspect, or run built-in prompt templates | | `/tmpl` |
+| `/share` | Export conversation to file, clipboard, or private GitHub gist | | |
+| `/image` | Attach an image from a file or data URL with an optional prompt | | `/img` |
 
 ### Notes
 
 - `/tree` prints the filesystem directory tree; `/session-tree` shows the conversation branch history — different commands.
 - `/help` always shows the live registered command list from the running app and should win over stale memory.
+- `/image` ships a real multimodal turn for files/data URLs today; raw clipboard image paste still depends on terminal transport support.
 
 ## Special Prefixes
 
