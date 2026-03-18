@@ -96,6 +96,16 @@ export class ArtifactStore {
 		}
 	}
 
+	/** Mark an artifact as promoted/demoted. */
+	async setPromoted(artifactId: string, promoted: boolean): Promise<boolean> {
+		const artifact = await this.load(artifactId);
+		if (!artifact) return false;
+		const dir = await ensureDir(this.baseDir);
+		const filePath = join(dir, `${safeName(artifactId)}.json`);
+		await writeFile(filePath, JSON.stringify({ ...artifact, promoted }, null, 2), "utf-8");
+		return true;
+	}
+
 	/** Query artifacts matching criteria. */
 	async query(q: ArtifactQuery): Promise<HubArtifact[]> {
 		const dir = await ensureDir(this.baseDir);

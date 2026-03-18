@@ -28,11 +28,16 @@ export type {
 	IsolationMode,
 	MeshIntegrityStatus,
 	MeshPolicyDecision,
+	Orchestrator,
 	OrchestratorOptions,
+	SideAgentListener,
+	TmuxWindow,
 	TopologyWinRate,
 	ValidationFinding,
 	ValidationResult,
 	WorkProduct,
+	WorktreePoolOptions,
+	WorktreeSlot,
 } from "./cluster/index.js";
 // Cluster orchestration
 export {
@@ -45,8 +50,11 @@ export {
 	deriveClusterConfig,
 	getTopologyGuidance,
 	inferRoutingCaps,
+	SideAgentRegistry,
 	shouldEscalateWeakConsensus,
+	TmuxOrchestrator,
 	ValidationDecision,
+	WorktreePoolManager,
 } from "./cluster/index.js";
 export { buildCognitiveState } from "./cognition/runtime.js";
 export type {

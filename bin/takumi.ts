@@ -16,6 +16,7 @@ import { cmdDelete, cmdExport, cmdList, cmdLogs, cmdStatus } from "./cli/session
 import { cmdDaemon } from "./cli/daemon.js";
 import { printSplash } from "./cli/splash.js";
 import { cmdPackage } from "./cli/packages.js";
+import { registerOptionalSideAgentTools } from "./cli/side-agent-tools.js";
 
 const VERSION = "0.1.0";
 
@@ -219,12 +220,13 @@ async function runInteractiveApp(
 		// best effort only
 	}
 
+	const cwd = process.cwd();
 	const provider = await createProvider(config, args.fallback);
 	const tools = new ToolRegistry();
 	registerBuiltinTools(tools);
+	await registerOptionalSideAgentTools(tools, config, cwd);
 
 	// Phase 45 — Discover and load extensions
-	const cwd = process.cwd();
 	let localModels: string[] = [];
 	try {
 		const providers = await koshaProviders();

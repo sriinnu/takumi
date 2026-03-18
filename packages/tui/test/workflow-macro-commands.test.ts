@@ -95,6 +95,9 @@ describe("workflow/productivity slash commands", () => {
 			"/review",
 			"/reflect",
 			"/co-plan",
+			"/question-chain",
+			"/q-chain",
+			"/questions",
 			"/co-validate",
 			"/route-plan",
 			"/worktree-spin",
@@ -164,6 +167,7 @@ describe("workflow/productivity slash commands", () => {
 
 	it("/co-plan uses native side-agent tools when available", async () => {
 		const { commands, submit, ctx, toolDefinitions, toolExecute } = createContext();
+		ctx.state.sideAgentPreferredModel.value = "o3-mini";
 		toolDefinitions.set("takumi_agent_start", {
 			name: "takumi_agent_start",
 			description: "start",
@@ -207,7 +211,7 @@ describe("workflow/productivity slash commands", () => {
 
 		expect(ctx.agentRunner?.checkToolPermission).toHaveBeenCalledWith(
 			"takumi_agent_start",
-			expect.objectContaining({ description: expect.stringContaining("improve auth flow") }),
+			expect.objectContaining({ description: expect.stringContaining("improve auth flow"), preferredModel: "o3-mini" }),
 		);
 		expect(toolExecute).toHaveBeenCalledWith(
 			"takumi_agent_query",
@@ -216,6 +220,78 @@ describe("workflow/productivity slash commands", () => {
 		expect(submit).toHaveBeenCalledOnce();
 		expect(submit.mock.calls[0][0]).toContain("Independent side-lane output");
 		expect(submit.mock.calls[0][0]).toContain("Alt plan");
+	});
+
+	it("/question-chain delegates framing, risk, and validation lanes when native side-agent tools are available", async () => {
+		const { commands, submit, ctx, toolDefinitions, toolExecute } = createContext();
+		toolDefinitions.set("takumi_agent_start", {
+			name: "takumi_agent_start",
+			description: "start",
+			inputSchema: { type: "object", properties: {} },
+			requiresPermission: true,
+			category: "execute",
+		});
+		toolDefinitions.set("takumi_agent_query", {
+			name: "takumi_agent_query",
+			description: "query",
+			inputSchema: { type: "object", properties: {} },
+			requiresPermission: false,
+			category: "interact",
+		});
+
+		let startCount = 0;
+		const lanePayloads = [
+			{ primaryQuestion: "What is the core unknown?", nextQuestion: "What architecture choice unlocks this?" },
+			{ primaryQuestion: "What can fail first?", nextQuestion: "What hidden dependency could break rollout?" },
+			{ primaryQuestion: "What evidence de-risks it?", nextQuestion: "Which tests prove the claim?" },
+		];
+		toolExecute.mockImplementation(async (name, input) => {
+			if (name === "takumi_agent_start") {
+				startCount += 1;
+				return {
+					output: JSON.stringify({
+						id: `side-${startCount}`,
+						status: "running",
+						worktree: `/tmp/wt-${startCount}`,
+						branch: `takumi/side-agent/side-${startCount}`,
+						tmuxWindow: `agent-side-${startCount}`,
+					}),
+					isError: false,
+				};
+			}
+			const laneId = Number(String(input.id).split("-")[1] ?? "1") - 1;
+			return {
+				output: JSON.stringify({
+					id: input.id,
+					query: input.query,
+					format: "json",
+					responseType: "structured",
+					response: lanePayloads[laneId],
+				}),
+				isError: false,
+			};
+		});
+
+		await commands.execute("/question-chain improve release handoff flow");
+
+		expect(ctx.agentRunner?.checkToolPermission).toHaveBeenCalledTimes(3);
+		expect(toolExecute).toHaveBeenCalledWith(
+			"takumi_agent_query",
+			expect.objectContaining({ id: "side-1", format: "json" }),
+		);
+		expect(toolExecute).toHaveBeenCalledWith(
+			"takumi_agent_query",
+			expect.objectContaining({ id: "side-2", format: "json" }),
+		);
+		expect(toolExecute).toHaveBeenCalledWith(
+			"takumi_agent_query",
+			expect.objectContaining({ id: "side-3", format: "json" }),
+		);
+		expect(submit).toHaveBeenCalledOnce();
+		expect(submit.mock.calls[0][0]).toContain("Workflow command: /question-chain");
+		expect(submit.mock.calls[0][0]).toContain("Delegated framing lane output");
+		expect(submit.mock.calls[0][0]).toContain("What can fail first?");
+		expect(submit.mock.calls[0][0]).toContain("recommended next move");
 	});
 
 	it("/worktree-spin creates a native worktree before dispatching /code", async () => {

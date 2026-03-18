@@ -63,6 +63,7 @@ export class AppState {
 	readonly canonicalSessionId: Signal<string> = signal("");
 	readonly model: Signal<string> = signal("claude-sonnet-4-20250514");
 	readonly provider: Signal<string> = signal("anthropic");
+	readonly sideAgentPreferredModel: Signal<string> = signal("");
 	readonly availableProviderModels: Signal<Record<string, string[]>> = signal(
 		cloneProviderModelCatalog(PROVIDER_MODELS),
 	);
@@ -101,6 +102,7 @@ export class AppState {
 
 	// ── Permissions ───────────────────────────────────────────────────────────
 	readonly pendingPermission: Signal<{
+		approvalId?: string;
 		tool: string;
 		args: Record<string, unknown>;
 		resolve: (decision: PermissionDecision) => void;
@@ -395,6 +397,7 @@ export class AppState {
 		this.totalCost.value = 0;
 		this.turnCount.value = 0;
 		this.canonicalSessionId.value = "";
+		this.sideAgentPreferredModel.value = "";
 		this.activeTool.value = null;
 		this.toolOutput.value = "";
 		this.toolSpinner.reset();

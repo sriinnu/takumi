@@ -18,6 +18,7 @@ import {
 	registerSideAgentTools,
 	type SideAgentToolDeps,
 } from "../src/tools/side-agent.js";
+import { inferTopicDomain } from "../src/tools/side-agent-routing.js";
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 
@@ -165,10 +166,72 @@ describe("takumi_agent_start", () => {
 		deps.defaultModel = "gpt-4o-mini";
 		const handler = createAgentStartHandler(deps);
 
-		await handler({ description: "Review docs cheaply" });
+		await handler({ description: "Handle a generic backlog task cheaply" });
 
 		const registerCall = (deps.agents.register as ReturnType<typeof vi.fn>).mock.calls[0][0] as SideAgentInfo;
 		expect(registerCall.model).toBe("gpt-4o-mini");
+	});
+
+	it("uses topic-aware routing when an explicit topic is provided", async () => {
+		const deps = createMockDeps();
+		deps.defaultModel = "gpt-4o-mini";
+		const handler = createAgentStartHandler(deps);
+
+		const result = await handler({ description: "Audit the auth layer", topic: "code-review" });
+		expect(result.isError).toBe(false);
+
+		const registerCall = (deps.agents.register as ReturnType<typeof vi.fn>).mock.calls[0][0] as SideAgentInfo;
+		expect(registerCall.model).toBe("o3");
+
+		const data = parse(result);
+		expect(data.model).toBe("o3");
+		expect(data.topic).toBe("code-review");
+		expect(data.routingSource).toBe("topic");
+	});
+
+	it("uses preferred model when provided and no topic routing applies", async () => {
+		const deps = createMockDeps();
+		deps.defaultModel = "gpt-4o-mini";
+		const handler = createAgentStartHandler(deps);
+
+		const result = await handler({ description: "Handle generic coordination work", preferredModel: "o3-mini" });
+		expect(result.isError).toBe(false);
+
+		const registerCall = (deps.agents.register as ReturnType<typeof vi.fn>).mock.calls[0][0] as SideAgentInfo;
+		expect(registerCall.model).toBe("o3-mini");
+
+		const data = parse(result);
+		expect(data.model).toBe("o3-mini");
+		expect(data.routingSource).toBe("preferred");
+	});
+
+	it("keeps topic-aware routing ahead of preferred model hints", async () => {
+		const deps = createMockDeps();
+		const handler = createAgentStartHandler(deps);
+
+		const result = await handler({
+			description: "Audit the auth patch with a second-pass review",
+			topic: "code-review",
+			preferredModel: "gpt-4o-mini",
+		});
+		expect(result.isError).toBe(false);
+
+		const registerCall = (deps.agents.register as ReturnType<typeof vi.fn>).mock.calls[0][0] as SideAgentInfo;
+		expect(registerCall.model).not.toBe("gpt-4o-mini");
+
+		const data = parse(result);
+		expect(data.routingSource).toBe("topic");
+		expect(data.topic).toBe("code-review");
+	});
+
+	it("infers topic-aware routing from the task description", async () => {
+		const deps = createMockDeps();
+		const handler = createAgentStartHandler(deps);
+
+		await handler({ description: "Write README guidance and summarize missing documentation" });
+
+		const registerCall = (deps.agents.register as ReturnType<typeof vi.fn>).mock.calls[0][0] as SideAgentInfo;
+		expect(registerCall.model).toBe("claude-haiku-4-20250514");
 	});
 
 	it("passes custom model through", async () => {
@@ -179,6 +242,36 @@ describe("takumi_agent_start", () => {
 
 		const registerCall = (deps.agents.register as ReturnType<typeof vi.fn>).mock.calls[0][0] as SideAgentInfo;
 		expect(registerCall.model).toBe("gpt-4o");
+	});
+
+	it("keeps explicit model overrides ahead of topic routing", async () => {
+		const deps = createMockDeps();
+		const handler = createAgentStartHandler(deps);
+
+		const result = await handler({
+			description: "Review the auth patch for vulnerabilities",
+			topic: "security-analysis",
+			model: "gpt-4o",
+		});
+
+		expect(result.isError).toBe(false);
+		const registerCall = (deps.agents.register as ReturnType<typeof vi.fn>).mock.calls[0][0] as SideAgentInfo;
+		expect(registerCall.model).toBe("gpt-4o");
+
+		const data = parse(result);
+		expect(data.routingSource).toBe("explicit");
+		expect(data.topic).toBeNull();
+	});
+});
+
+describe("inferTopicDomain", () => {
+	it("respects explicit valid topics", () => {
+		expect(inferTopicDomain("anything", "testing")).toBe("testing");
+	});
+
+	it("infers topics from task descriptions", () => {
+		expect(inferTopicDomain("Debug the flaky integration failure")).toBe("debugging");
+		expect(inferTopicDomain("Write docs for the mesh handoff flow")).toBe("documentation");
 	});
 });
 

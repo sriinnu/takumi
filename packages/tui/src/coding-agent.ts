@@ -163,6 +163,7 @@ export class CodingAgent {
 		let orchestrationMode: "single" | "multi" = "single";
 		let complexity: TaskComplexity | undefined;
 		let classificationResult: ClassificationResult | null = null;
+		this.state.sideAgentPreferredModel.value = "";
 
 		if (forceMode) {
 			orchestrationMode = forceMode;
@@ -200,6 +201,7 @@ export class CodingAgent {
 						result.classification,
 						this.options.orchestrationConfig,
 					);
+					this.state.sideAgentPreferredModel.value = modelPlan.sideAgentModel ?? "";
 					this.orchestrator.setModelOverrides({
 						[AgentRole.WORKER]: modelPlan.roleOverrides[AgentRole.WORKER] ?? result.recommendedModel.model,
 						[AgentRole.PLANNER]: modelPlan.roleOverrides[AgentRole.PLANNER],
@@ -450,6 +452,7 @@ export class CodingAgent {
 			this.state.clusterPhase.value = "idle";
 			this.state.clusterAgentCount.value = 0;
 			this.state.clusterValidationAttempt.value = 0;
+			this.state.sideAgentPreferredModel.value = "";
 			this.stopRequestedReason = null;
 		}
 	}

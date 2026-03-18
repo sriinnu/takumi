@@ -58,6 +58,59 @@ export interface OperatorAlert {
 	acknowledged: boolean;
 }
 
+export interface PendingApproval {
+	id: string;
+	tool: string;
+	argsSummary: string;
+	createdAt: number;
+	sessionId?: string;
+	lane?: "session" | "project" | "global";
+	reason?: string;
+	active: boolean;
+}
+
+export interface ArtifactSummary {
+	artifactId: string;
+	kind: string;
+	producer: string;
+	summary: string;
+	createdAt: string;
+	promoted: boolean;
+	taskId?: string;
+	sessionId?: string;
+}
+
+export interface ArtifactDetail extends ArtifactSummary {
+	body?: string;
+	path?: string;
+	confidence?: number;
+	laneId?: string;
+	metadata?: Record<string, unknown>;
+}
+
+export interface RepoDiffSnapshot {
+	branch: string | null;
+	isClean: boolean;
+	stagedFiles: string[];
+	modifiedFiles: string[];
+	untrackedFiles: string[];
+	stagedDiff: string;
+	workingDiff: string;
+}
+
+export interface RuntimeSummary {
+	runtimeId: string;
+	pid: number;
+	state: string;
+	startedAt: number;
+	cwd: string;
+	logFile: string;
+	command?: string;
+	args?: string[];
+	sessionId?: string;
+	runtimeSource?: string;
+}
+
 export interface FleetSummary {
 	totalAgents: number;
 	workingAgents: number;
@@ -97,6 +150,10 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 	const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
 	const [fleet, setFleet] = useState<FleetSummary | null>(null);
 	const [alerts, setAlerts] = useState<OperatorAlert[]>([]);
+	const [approvals, setApprovals] = useState<PendingApproval[]>([]);
+	const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
+	const [repoDiff, setRepoDiff] = useState<RepoDiffSnapshot | null>(null);
+	const [runtimes, setRuntimes] = useState<RuntimeSummary[]>([]);
 	const [connected, setConnected] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const fingerprintRef = useRef(0);
@@ -160,6 +217,73 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 		[baseUrl],
 	);
 
+	const fetchApprovals = useCallback(
+		async (signal: AbortSignal) => {
+			const res = await fetch(`${baseUrl}/approvals`, { signal });
+			if (!res.ok || !isMountedRef.current) return;
+			const data = (await res.json()) as { approvals: PendingApproval[] };
+			if (isMountedRef.current) setApprovals(data.approvals);
+		},
+		[baseUrl],
+	);
+
+	const fetchArtifacts = useCallback(
+		async (signal: AbortSignal, sessionId?: string | null) => {
+			const params = new URLSearchParams({ limit: "12" });
+			if (sessionId) params.set("sessionId", sessionId);
+			const res = await fetch(`${baseUrl}/artifacts?${params.toString()}`, { signal });
+			if (!res.ok || !isMountedRef.current) return;
+			const data = (await res.json()) as { artifacts: ArtifactSummary[] };
+			if (isMountedRef.current) setArtifacts(data.artifacts);
+		},
+		[baseUrl],
+	);
+
+	const fetchArtifactDetail = useCallback(
+		async (artifactId: string, signal?: AbortSignal) => {
+			const res = await fetch(`${baseUrl}/artifacts/${encodeURIComponent(artifactId)}`, { signal });
+			if (!res.ok || !isMountedRef.current) return null;
+			return (await res.json()) as ArtifactDetail;
+		},
+		[baseUrl],
+	);
+
+	const promoteArtifact = useCallback(
+		async (artifactId: string, promoted = true) => {
+			const res = await fetch(`${baseUrl}/artifacts/${encodeURIComponent(artifactId)}/promote`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ promoted }),
+			});
+			if (!res.ok) return false;
+			setArtifacts((current) =>
+				current.map((artifact) => (artifact.artifactId === artifactId ? { ...artifact, promoted } : artifact)),
+			);
+			return true;
+		},
+		[baseUrl],
+	);
+
+	const fetchRepoDiff = useCallback(
+		async (signal: AbortSignal) => {
+			const res = await fetch(`${baseUrl}/repo/diff`, { signal });
+			if (!res.ok || !isMountedRef.current) return;
+			const data = (await res.json()) as RepoDiffSnapshot;
+			if (isMountedRef.current) setRepoDiff(data);
+		},
+		[baseUrl],
+	);
+
+	const fetchRuntimes = useCallback(
+		async (signal: AbortSignal) => {
+			const res = await fetch(`${baseUrl}/runtime/list`, { signal });
+			if (!res.ok || !isMountedRef.current) return;
+			const data = (await res.json()) as { runtimes: RuntimeSummary[] };
+			if (isMountedRef.current) setRuntimes(data.runtimes);
+		},
+		[baseUrl],
+	);
+
 	const pollLoop = useCallback(async () => {
 		const controller = new AbortController();
 		abortRef.current = controller;
@@ -178,9 +302,13 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 				await fetchSessions(controller.signal);
 				await fetchFleet(controller.signal);
 				await fetchAlerts(controller.signal);
+				await fetchApprovals(controller.signal);
+				await fetchRuntimes(controller.signal);
+				await fetchRepoDiff(controller.signal);
 
 				if (pids.length > 0) {
 					await fetchState(pids[0], controller.signal);
+					await fetchArtifacts(controller.signal, state?.sessionId ?? null);
 				}
 
 				// Inner long-poll loop
@@ -208,7 +336,11 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 						await fetchSessions(controller.signal);
 						await fetchFleet(controller.signal);
 						await fetchAlerts(controller.signal);
+						await fetchApprovals(controller.signal);
+						await fetchRuntimes(controller.signal);
+						await fetchRepoDiff(controller.signal);
 						await fetchState(pids[0], controller.signal);
+						await fetchArtifacts(controller.signal, state?.sessionId ?? null);
 					}
 				}
 			} catch (err) {
@@ -229,7 +361,19 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 				return;
 			}
 		}
-	}, [baseUrl, pollTimeoutMs, fetchAlerts, fetchFleet, fetchState, fetchSessions]);
+	}, [
+		baseUrl,
+		pollTimeoutMs,
+		fetchAlerts,
+		fetchApprovals,
+		fetchArtifacts,
+		fetchFleet,
+		fetchRepoDiff,
+		fetchRuntimes,
+		fetchState,
+		fetchSessions,
+		state?.sessionId,
+	]);
 
 	useEffect(() => {
 		pollLoop();
@@ -273,18 +417,82 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 		[baseUrl],
 	);
 
+	const decideApproval = useCallback(
+		async (approvalId: string, decision: "approve" | "deny") => {
+			const res = await fetch(`${baseUrl}/approvals/${encodeURIComponent(approvalId)}/${decision}`, {
+				method: "POST",
+			});
+			if (!res.ok) return false;
+			setApprovals((current) => current.filter((approval) => approval.id !== approvalId));
+			return true;
+		},
+		[baseUrl],
+	);
+
+	const interruptAgent = useCallback(
+		async (pid: number) => {
+			const res = await fetch(`${baseUrl}/agent/${pid}/interrupt`, { method: "POST" });
+			return res.ok;
+		},
+		[baseUrl],
+	);
+
+	const refreshAgent = useCallback(
+		async (pid: number) => {
+			const res = await fetch(`${baseUrl}/agent/${pid}/refresh`, { method: "POST" });
+			return res.ok;
+		},
+		[baseUrl],
+	);
+
+	const startRuntime = useCallback(
+		async (options?: { sessionId?: string; provider?: string; model?: string }) => {
+			const res = await fetch(`${baseUrl}/runtime/start`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(options ?? {}),
+			});
+			if (!res.ok) return null;
+			const runtime = (await res.json()) as RuntimeSummary;
+			setRuntimes((current) => [runtime, ...current.filter((item) => item.runtimeId !== runtime.runtimeId)]);
+			return runtime;
+		},
+		[baseUrl],
+	);
+
+	const stopRuntime = useCallback(
+		async (runtimeId: string) => {
+			const res = await fetch(`${baseUrl}/runtime/${encodeURIComponent(runtimeId)}/stop`, { method: "POST" });
+			if (!res.ok) return false;
+			setRuntimes((current) => current.map((runtime) => (runtime.runtimeId === runtimeId ? { ...runtime, state: "stopped" } : runtime)));
+			return true;
+		},
+		[baseUrl],
+	);
+
 	return {
 		agents,
 		alerts,
+		approvals,
+		artifacts,
+		fetchArtifactDetail,
 		attachSession,
 		acknowledgeAlert,
 		connected,
+		decideApproval,
 		error,
 		fleet,
+		interruptAgent,
 		loadSessionDetail,
+		promoteArtifact,
+		repoDiff,
+		refreshAgent,
+		runtimes,
 		sendMessage,
 		sessionDetail,
 		sessions,
+		startRuntime,
 		state,
+		stopRuntime,
 	};
 }

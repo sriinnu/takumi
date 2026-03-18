@@ -24,6 +24,7 @@ import {
 	persistExecSession,
 	resolveExecRouting,
 } from "./one-shot-helpers.js";
+import { registerOptionalSideAgentTools } from "./side-agent-tools.js";
 
 export interface OneShotOptions {
 	runId: string;
@@ -127,6 +128,7 @@ export async function runOneShot(
 		const provider = await createProvider(config, fallbackName);
 		const tools = new ToolRegistry();
 		registerBuiltinTools(tools);
+		await registerOptionalSideAgentTools(tools, config);
 		const recentReflexions = await loadRecentReflexions(5);
 		const reflexionPrompt = buildReflexionPrompt(recentReflexions);
 

@@ -45,11 +45,13 @@ describe("resolveTaskModelPlan", () => {
 			isolationMode: "none",
 			modelRouting: {
 				worker: "gpt-4o",
+				sideAgent: "gpt-4.1-mini",
 				taskTypes: {
 					RESEARCH: {
 						classifier: "gpt-4o-mini",
 						worker: "gpt-4.1-mini",
 						validators: "gpt-4o-mini",
+						sideAgent: "o3-mini",
 					},
 				},
 			},
@@ -64,5 +66,6 @@ describe("resolveTaskModelPlan", () => {
 		expect(plan.classifierModel).toBe("gpt-4o-mini");
 		expect(plan.roleOverrides.WORKER).toBe("gpt-4.1-mini");
 		expect(plan.roleOverrides.VALIDATOR_SECURITY).toBe("gpt-4o-mini");
+		expect(plan.sideAgentModel).toBe("o3-mini");
 	});
 });
