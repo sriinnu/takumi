@@ -132,7 +132,15 @@ export {
 	gitWorktreeRemove,
 	isGitRepo,
 } from "./git.js";
-export type { AgentStateSnapshot, HttpBridgeConfig } from "./http-bridge.js";
+export type {
+	AgentStateSnapshot,
+	BridgeArtifactDetail,
+	BridgeArtifactSummary,
+	HttpBridgeConfig,
+	PendingApprovalSnapshot,
+	RepoDiffSnapshot,
+	RuntimeSummary,
+} from "./http-bridge.js";
 export { HttpBridgeServer } from "./http-bridge.js";
 export type { McpClientOptions } from "./mcp-client.js";
 export { McpClient } from "./mcp-client.js";

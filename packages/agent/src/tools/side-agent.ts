@@ -1,33 +1,23 @@
 /**
  * Side Agent Tool API — Phase 21.5
- *
- * Exposes 4 tools that let the main agent spawn, monitor, communicate with,
- * and await side agents running in isolated worktrees + tmux windows.
- *
- * Tools:
- * - takumi_agent_start  — spawn a new side agent
- * - takumi_agent_check  — check status + recent output
- * - takumi_agent_wait_any — wait for any agent to reach a target state
- * - takumi_agent_send   — send a message/prompt to a running agent
+ * Tool surface for spawning, monitoring, messaging, and querying side agents
+ * running in isolated worktrees + tmux windows.
  */
 
 import type { SideAgentInfo, SideAgentState, ToolDefinition } from "@takumi/core";
+import type { Orchestrator } from "../cluster/orchestrator-factory.js";
 import type { SideAgentRegistry } from "../cluster/side-agent-registry.js";
-import type { TmuxOrchestrator } from "../cluster/tmux-orchestrator.js";
 import type { WorktreePoolManager } from "../cluster/worktree-pool.js";
 import type { ToolHandler, ToolRegistry } from "./registry.js";
-
-// ── Dependency bundle ─────────────────────────────────────────────────────────
+import { resolveSideAgentRouting } from "./side-agent-routing.js";
 
 export interface SideAgentToolDeps {
 	pool: WorktreePoolManager;
-	tmux: TmuxOrchestrator;
+	tmux: Orchestrator;
 	agents: SideAgentRegistry;
 	repoRoot: string;
 	defaultModel?: string;
 }
-
-// ── Default wait targets ──────────────────────────────────────────────────────
 
 const DEFAULT_WAIT_STATES: SideAgentState[] = ["done", "failed", "crashed", "waiting_user"];
 const DEFAULT_CAPTURE_LINES = 50;
@@ -57,6 +47,20 @@ export const agentStartDefinition: ToolDefinition = {
 				type: "string",
 				description: "LLM model to use for the side agent (uses default if omitted).",
 			},
+			preferredModel: {
+				type: "string",
+				description:
+					"Optional preferred fallback model for the side agent. Topic-aware routing still takes precedence.",
+			},
+			topic: {
+				type: "string",
+				description:
+					"Optional task topic for topic-aware model routing (for example: code-review, debugging, testing).",
+			},
+			complexity: {
+				type: "string",
+				description: "Optional task complexity hint: TRIVIAL, SIMPLE, STANDARD, or CRITICAL.",
+			},
 		},
 		required: ["description"],
 	},
@@ -68,13 +72,20 @@ export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 	return async (input) => {
 		const description = input.description as string;
 		const initialPrompt = input.initialPrompt as string | undefined;
-		const model = (input.model as string | undefined) ?? deps.defaultModel ?? "claude-sonnet";
+		const routing = resolveSideAgentRouting({
+			description,
+			model: input.model,
+			topic: input.topic,
+			complexity: input.complexity,
+			preferredModel: input.preferredModel,
+			defaultModel: deps.defaultModel,
+		});
+		const model = routing.model;
 
 		if (!description) {
 			return { output: "Error: description is required", isError: true };
 		}
 
-		// Check pool capacity before allocating
 		if (!deps.pool.hasCapacity()) {
 			return {
 				output: "Error: worktree pool is at capacity. Wait for an existing agent to finish or release a slot.",
@@ -85,7 +96,6 @@ export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 		const id = deps.agents.nextId();
 		const now = Date.now();
 
-		// Allocate worktree
 		const slot = await deps.pool.allocate(id);
 
 		const agent: SideAgentInfo = {
@@ -104,8 +114,9 @@ export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 		deps.agents.register(agent);
 		deps.agents.transition(id, "spawning_tmux");
 
-		// Create tmux window
 		const win = await deps.tmux.createWindow(id, slot.path);
+		const tmuxWindow =
+			typeof win === "object" && win && "windowName" in win && typeof win.windowName === "string" ? win.windowName : id;
 		deps.agents.transition(id, "starting");
 
 		if (initialPrompt?.trim()) {
@@ -117,9 +128,12 @@ export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 		const result = {
 			id,
 			status: "running",
+			model,
+			topic: routing.topic ?? null,
+			routingSource: routing.source,
 			worktree: slot.path,
 			branch: slot.branch,
-			tmuxWindow: win.windowName,
+			tmuxWindow,
 		};
 
 		return { output: JSON.stringify(result, null, "\t"), isError: false };
@@ -229,7 +243,6 @@ export function createAgentWaitAnyHandler(deps: SideAgentToolDeps): ToolHandler 
 			}
 		}
 
-		// Wait via event listener
 		const watchSet = new Set(ids);
 
 		return new Promise<{ output: string; isError: boolean }>((resolve) => {
@@ -251,7 +264,6 @@ export function createAgentWaitAnyHandler(deps: SideAgentToolDeps): ToolHandler 
 				});
 			});
 
-			// Respect abort signal
 			signal?.addEventListener("abort", () => {
 				clearTimeout(timeout);
 				unsub();
@@ -311,11 +323,6 @@ export function createAgentSendHandler(deps: SideAgentToolDeps): ToolHandler {
 	};
 }
 
-// ── Registration ──────────────────────────────────────────────────────────────
-
-/**
- * Register all 4 side-agent tools in the given ToolRegistry.
- */
 export function registerSideAgentTools(registry: ToolRegistry, deps: SideAgentToolDeps): void {
 	registry.register(agentStartDefinition, createAgentStartHandler(deps));
 	registry.register(agentCheckDefinition, createAgentCheckHandler(deps));
@@ -371,14 +378,12 @@ export function createAgentQueryHandler(deps: SideAgentToolDeps): ToolHandler {
 			};
 		}
 
-		// Wrap query with structured response instruction
 		const wrappedQuery =
 			`[STRUCTURED_QUERY format=${format}]\n${query}\n` +
 			`[/STRUCTURED_QUERY]\nRespond with a JSON block wrapped in \`\`\`json ... \`\`\`.`;
 
 		await deps.tmux.sendKeys(id, wrappedQuery);
 
-		// Poll for response in tmux output
 		const pollInterval = 500;
 		const maxWait = 60_000;
 		const start = Date.now();
@@ -397,7 +402,6 @@ export function createAgentQueryHandler(deps: SideAgentToolDeps): ToolHandler {
 				continue;
 			}
 
-			// Try to extract JSON block from output
 			const jsonMatch = output.match(/```json\s*([\s\S]*?)```/);
 			if (jsonMatch?.[1]) {
 				try {

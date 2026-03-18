@@ -1,8 +1,17 @@
 import type { ObservationEvent } from "@takumi/bridge";
-import { createLogger } from "@takumi/core";
+import { type ArtifactKind, ArtifactStore, createHubArtifact, createLogger } from "@takumi/core";
 import type { AppState } from "./state.js";
 
 const log = createLogger("chitragupta-executor-runtime");
+const artifactStore = new ArtifactStore();
+
+function mapArtifactKind(kind: string): ArtifactKind {
+	if (kind === "exec-result") return "exec_result";
+	if (kind === "plan" || kind === "validation" || kind === "summary" || kind === "handoff" || kind === "postmortem") {
+		return kind;
+	}
+	return "summary";
+}
 
 export function getBoundSessionId(state: AppState): string {
 	return state.canonicalSessionId.value || state.sessionId.value || "transient";
@@ -35,6 +44,28 @@ export async function ensureCanonicalSessionBinding(state: AppState): Promise<st
 }
 
 export async function observeExecutorEvents(state: AppState, events: ObservationEvent[]): Promise<void> {
+	for (const event of events) {
+		if (event.type !== "executor_artifact") continue;
+		try {
+			await artifactStore.save(
+				createHubArtifact({
+					kind: mapArtifactKind(event.artifactType),
+					producer: "takumi.tui",
+					summary: event.summary,
+					path: event.path,
+					taskId: typeof event.metadata?.runId === "string" ? event.metadata.runId : undefined,
+					metadata: {
+						projectPath: event.projectPath,
+						...event.metadata,
+					},
+				}),
+				event.sessionId,
+			);
+		} catch (error) {
+			log.debug(`Failed to persist local artifact: ${(error as Error).message}`);
+		}
+	}
+
 	const observer = state.chitraguptaObserver.value;
 	if (!observer || events.length === 0) {
 		return;

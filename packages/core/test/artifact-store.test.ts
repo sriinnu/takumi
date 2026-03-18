@@ -98,4 +98,15 @@ describe("ArtifactStore", () => {
 		expect(entries[0].sessionId).toBe("sess-1");
 		expect(entries[0].kind).toBe("validation");
 	});
+
+	it("setPromoted updates promotion state", async () => {
+		const art = createHubArtifact({ kind: "summary", producer: "takumi.exec", summary: "Promote me" });
+		await store.save(art, "sess-1");
+
+		const ok = await store.setPromoted(art.artifactId, true);
+		expect(ok).toBe(true);
+
+		const loaded = await store.load(art.artifactId);
+		expect(loaded?.promoted).toBe(true);
+	});
 });

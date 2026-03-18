@@ -1,10 +1,27 @@
-import { type AgentStateSnapshot, HttpBridgeServer } from "@takumi/bridge";
-import type { FleetSummary, ObservabilitySessionSummary, OperatorAlert } from "@takumi/core";
-import { createLogger } from "@takumi/core";
+import {
+	type AgentStateSnapshot,
+	type BridgeArtifactDetail,
+	type BridgeArtifactSummary,
+	gitBranch,
+	gitDiff,
+	gitStatus,
+	HttpBridgeServer,
+	type PendingApprovalSnapshot,
+	type RepoDiffSnapshot,
+} from "@takumi/bridge";
+import {
+	ArtifactStore,
+	createLogger,
+	type FleetSummary,
+	type ObservabilitySessionSummary,
+	type OperatorAlert,
+} from "@takumi/core";
 import type { AgentRunner } from "./agent-runner.js";
+import { listLocalRuntimes, startLocalRuntime, stopLocalRuntime } from "./desktop-runtime-control.js";
 import type { AppState } from "./state.js";
 
 const log = createLogger("desktop-bridge-runtime");
+const artifactStore = new ArtifactStore();
 
 function detectRuntimeSource(): string {
 	if (process.env.TMUX) return "tmux";
@@ -70,6 +87,88 @@ function summarizeAnomaly(state: AppState): NonNullable<AgentStateSnapshot["anom
 
 function isAlertAcknowledged(state: AppState, alertId: string): boolean {
 	return state.acknowledgedAlerts.value.has(alertId);
+}
+
+function buildPendingApprovals(state: AppState): PendingApprovalSnapshot[] {
+	const pendingIds = new Set(
+		[state.pendingPermission.value?.approvalId].filter(
+			(value): value is string => typeof value === "string" && value.length > 0,
+		),
+	);
+	return state.approvalQueue.snapshot().pending.map((record) => ({
+		id: record.id,
+		tool: record.tool,
+		argsSummary: record.argsSummary,
+		createdAt: record.createdAt,
+		sessionId: record.sessionId,
+		lane: record.lane,
+		reason: record.reason,
+		active: pendingIds.has(record.id),
+	}));
+}
+
+async function buildArtifacts(state: AppState, kind?: string, limit = 20): Promise<BridgeArtifactSummary[]> {
+	const sessionId = state.canonicalSessionId.value || state.sessionId.value || undefined;
+	const manifest = await artifactStore.manifest({ sessionId, kind: kind as never, limit });
+	return manifest.map((entry) => ({
+		artifactId: entry.artifactId,
+		kind: entry.kind,
+		producer: entry.producer,
+		summary: entry.summary,
+		createdAt: entry.createdAt,
+		promoted: false,
+		taskId: entry.taskId,
+		sessionId: entry.sessionId,
+	}));
+}
+
+async function buildArtifactDetail(artifactId: string): Promise<BridgeArtifactDetail | null> {
+	const artifact = await artifactStore.load(artifactId);
+	if (!artifact) return null;
+	return {
+		artifactId: artifact.artifactId,
+		kind: artifact.kind,
+		producer: artifact.producer,
+		summary: artifact.summary,
+		createdAt: artifact.createdAt,
+		promoted: artifact.promoted,
+		taskId: artifact.taskId,
+		sessionId: artifact._sessionId,
+		body: artifact.body,
+		path: artifact.path,
+		confidence: artifact.confidence,
+		laneId: artifact.laneId,
+		metadata: artifact.metadata,
+	};
+}
+
+function buildRepoDiffSnapshot(): RepoDiffSnapshot {
+	const cwd = process.cwd();
+	const status = gitStatus(cwd);
+	return {
+		branch: gitBranch(cwd),
+		isClean: status?.isClean ?? true,
+		stagedFiles: status?.staged ?? [],
+		modifiedFiles: status?.modified ?? [],
+		untrackedFiles: status?.untracked ?? [],
+		stagedDiff: gitDiff(cwd, true) ?? "",
+		workingDiff: gitDiff(cwd, false) ?? "",
+	};
+}
+
+async function decidePendingApproval(
+	state: AppState,
+	approvalId: string,
+	decision: "approved" | "denied",
+): Promise<boolean> {
+	const pending = state.pendingPermission.value;
+	if (pending?.approvalId !== approvalId) {
+		return Boolean(await state.approvalQueue.decide(approvalId, decision, "operator"));
+	}
+	pending.resolve({ allowed: decision === "approved", reason: `Desktop operator ${decision}` });
+	state.pendingPermission.value = null;
+	if (state.topDialog === "permission") state.popDialog();
+	return true;
 }
 
 export function buildSessionSummary(state: AppState): ObservabilitySessionSummary {
@@ -217,7 +316,8 @@ export async function startDesktopBridge(
 	const port = Number.parseInt(rawPort, 10);
 	if (Number.isNaN(port) || port <= 0) return null;
 
-	const bridge = new HttpBridgeServer({
+	let bridge: HttpBridgeServer;
+	bridge = new HttpBridgeServer({
 		port,
 		host: "127.0.0.1",
 		bearerToken: process.env.TAKUMI_BRIDGE_TOKEN,
@@ -276,6 +376,31 @@ export async function startDesktopBridge(
 			state.acknowledgedAlerts.value = next;
 			return true;
 		},
+		getPendingApprovals: async () => buildPendingApprovals(state),
+		decideApproval: async (approvalId, decision) => decidePendingApproval(state, approvalId, decision),
+		getArtifacts: async (_sessionId, kind, limit) => buildArtifacts(state, kind, limit),
+		getArtifact: async (artifactId) => buildArtifactDetail(artifactId),
+		setArtifactPromoted: async (artifactId, promoted) => artifactStore.setPromoted(artifactId, promoted),
+		getRepoDiff: async () => buildRepoDiffSnapshot(),
+		onInterrupt: async (pid) => {
+			if (pid !== process.pid || !agentRunner) return false;
+			agentRunner.cancel();
+			return true;
+		},
+		onRefresh: async (pid) => {
+			if (pid !== process.pid) return false;
+			bridge.notifyStateChange();
+			return true;
+		},
+		onStartRuntime: async (options) =>
+			startLocalRuntime({
+				sessionId: options?.sessionId,
+				provider: options?.provider ?? (state.provider.value || undefined),
+				model: options?.model ?? (state.model.value || undefined),
+				workingDirectory: process.cwd(),
+			}),
+		listRuntimes: async () => listLocalRuntimes(),
+		stopRuntime: async (runtimeId) => stopLocalRuntime(runtimeId),
 	});
 
 	try {

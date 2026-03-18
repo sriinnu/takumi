@@ -10,23 +10,7 @@ import {
 } from "./app-command-macros.js";
 import { formatRoutingDecision } from "./control-plane-state.js";
 import { formatScarlettIntegrityReport } from "./scarlett-runtime.js";
-
-interface NativeSideAgentStartResult {
-	id: string;
-	status: string;
-	worktree: string;
-	branch: string;
-	tmuxWindow: string;
-}
-
-interface NativeSideAgentQueryResult {
-	id: string;
-	query: string;
-	format: string;
-	responseType: "structured" | "raw";
-	response: unknown;
-	warning?: string;
-}
+import { runNativeSideAgentLane, runNativeSideAgentQuestionLanes } from "./workflow-side-agent-lanes.js";
 
 interface NativeWorktreeCreateResult {
 	path: string;
@@ -69,39 +53,6 @@ function slugifyLaneLabel(input: string): string {
 		.replace(/^-+|-+$/g, "")
 		.slice(0, 24);
 	return slug || `lane-${Date.now().toString(36)}`;
-}
-
-async function runNativeSideAgentLane(
-	ctx: AppCommandContext,
-	commandName: string,
-	task: string,
-	query: string,
-): Promise<NativeSideAgentQueryResult | null> {
-	if (!hasNativeTool(ctx, "takumi_agent_start") || !hasNativeTool(ctx, "takumi_agent_query")) {
-		return null;
-	}
-
-	const startResult = await executeNativeTool(ctx, commandName, "takumi_agent_start", {
-		description: task,
-		initialPrompt: [
-			`Native workflow lane for ${commandName}.`,
-			"Stay scoped to the requested task and keep your work independent from the main lane.",
-			"Prefer structured reasoning and be explicit about assumptions.",
-		].join("\n"),
-	});
-	const started = parseJsonToolOutput<NativeSideAgentStartResult>(startResult);
-	if (!started?.id) {
-		return null;
-	}
-
-	ctx.addInfoMessage(`${commandName} spawned side lane ${started.id} on ${started.branch} (${started.worktree}).`);
-
-	const queryResult = await executeNativeTool(ctx, commandName, "takumi_agent_query", {
-		id: started.id,
-		query,
-		format: "json",
-	});
-	return parseJsonToolOutput<NativeSideAgentQueryResult>(queryResult);
 }
 
 export function registerWorkflowCommands(ctx: AppCommandContext): void {
@@ -195,6 +146,7 @@ export function registerWorkflowCommands(ctx: AppCommandContext): void {
 					"Return strict JSON with keys: summary, assumptions, steps, risks, tradeoffs, recommendation.",
 					"Do not write code or mutate files.",
 				].join("\n"),
+				{ topic: "architecture", complexity: "STANDARD" },
 			);
 			if (nativeReport) {
 				await runAnalysisMacro(
@@ -231,6 +183,89 @@ export function registerWorkflowCommands(ctx: AppCommandContext): void {
 		},
 	);
 
+	ctx.commands.register(
+		"/question-chain",
+		"Build a chain of investigative questions, delegating framing/risk/validation lanes when available",
+		async (args) => {
+			const task = args.trim() || "current task / recent session context";
+			const laneReports = await runNativeSideAgentQuestionLanes(ctx, "/question-chain", [
+				{
+					label: "framing",
+					task: `Framing lane for: ${task}`,
+					query: [
+						`Build the first question in a chain for: ${task}`,
+						"Return strict JSON with keys: primaryQuestion, whyItMatters, assumptionsToTest, evidenceNeeded, nextQuestion.",
+						"Focus on framing, scope, ambiguity, and architecture-level unknowns.",
+					].join("\n"),
+					topic: "architecture",
+					complexity: "STANDARD",
+				},
+				{
+					label: "risk",
+					task: `Risk lane for: ${task}`,
+					query: [
+						`Build the hardest risk question in a chain for: ${task}`,
+						"Return strict JSON with keys: primaryQuestion, whyItMatters, assumptionsToTest, evidenceNeeded, nextQuestion.",
+						"Focus on failure modes, hidden coupling, security, and operational risk.",
+					].join("\n"),
+					topic: "security-analysis",
+					complexity: "CRITICAL",
+				},
+				{
+					label: "validation",
+					task: `Validation lane for: ${task}`,
+					query: [
+						`Build the best validation question in a chain for: ${task}`,
+						"Return strict JSON with keys: primaryQuestion, whyItMatters, assumptionsToTest, evidenceNeeded, nextQuestion.",
+						"Focus on what evidence, tests, experiments, or checks would de-risk the task.",
+					].join("\n"),
+					topic: "testing",
+					complexity: "STANDARD",
+				},
+			]);
+
+			if (laneReports) {
+				await runAnalysisMacro(
+					ctx,
+					"/question-chain",
+					[
+						buildPlanningPrompt(
+							"/question-chain",
+							task,
+							ctx,
+							"Create an ordered chain of questions that can guide multi-agent investigation and execution.",
+						),
+						"Return Markdown with sections: primary question, ordered question chain, delegated lanes, evidence to gather, and recommended next move.",
+						...laneReports.map((lane) =>
+							[
+								`Delegated ${lane.label} lane output:`,
+								typeof lane.report.response === "string"
+									? lane.report.response
+									: JSON.stringify(lane.report.response, null, 2),
+							].join("\n"),
+						),
+					].join("\n\n"),
+				);
+				return;
+			}
+
+			await runAnalysisMacro(
+				ctx,
+				"/question-chain",
+				[
+					buildPlanningPrompt(
+						"/question-chain",
+						task,
+						ctx,
+						"Build a chain of questions from framing, risk, and validation perspectives. If side-agent tools are available, delegate those perspectives to multiple lanes.",
+					),
+					"Return Markdown with sections: primary question, ordered question chain, delegated lanes (or simulated lanes), evidence to gather, and recommended next move.",
+				].join("\n\n"),
+			);
+		},
+		["/q-chain", "/questions"],
+	);
+
 	ctx.commands.register("/co-validate", "Run adversarial validation or staff-engineer-style review", async (args) => {
 		const task = args.trim() || "current work";
 		const nativeReport = await runNativeSideAgentLane(
@@ -242,6 +277,7 @@ export function registerWorkflowCommands(ctx: AppCommandContext): void {
 				"Return strict JSON with keys: verdict, confidence, majorRisks, requiredBeforeMerge, canWait, suggestedTests.",
 				"Be skeptical, concrete, and concise.",
 			].join("\n"),
+			{ topic: "security-analysis", complexity: "CRITICAL" },
 		);
 		if (nativeReport) {
 			await runAnalysisMacro(

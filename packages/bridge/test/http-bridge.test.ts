@@ -314,6 +314,179 @@ describe("HttpBridgeServer", () => {
 		expect(res.statusCode).toBe(404);
 	});
 
+	// ── /approvals ───────────────────────────────────────────────────────
+
+	it("should return approvals from getPendingApprovals callback", async () => {
+		const getPendingApprovals = vi.fn().mockResolvedValue([
+			{
+				id: "apr-1",
+				tool: "write_file",
+				argsSummary: '{"filePath":"README.md"}',
+				createdAt: 123456,
+				active: true,
+			},
+		]);
+		bridge = new HttpBridgeServer({ port: 0, host: "127.0.0.1", getPendingApprovals });
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		const res = await app.inject({ method: "GET", url: "/approvals" });
+		expect(res.statusCode).toBe(200);
+		expect(res.json().approvals).toHaveLength(1);
+		expect(getPendingApprovals).toHaveBeenCalledOnce();
+	});
+
+	it("should submit approval decisions", async () => {
+		const decideApproval = vi.fn().mockResolvedValue(true);
+		bridge = new HttpBridgeServer({ port: 0, host: "127.0.0.1", decideApproval });
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		const res = await app.inject({ method: "POST", url: "/approvals/apr-1/approve" });
+		expect(res.statusCode).toBe(200);
+		expect(res.json()).toEqual({ success: true });
+		expect(decideApproval).toHaveBeenCalledWith("apr-1", "approved");
+	});
+
+	it("should reject invalid approval decisions", async () => {
+		const decideApproval = vi.fn().mockResolvedValue(true);
+		bridge = new HttpBridgeServer({ port: 0, host: "127.0.0.1", decideApproval });
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		const res = await app.inject({ method: "POST", url: "/approvals/apr-1/maybe" });
+		expect(res.statusCode).toBe(400);
+	});
+
+	// ── /artifacts ───────────────────────────────────────────────────────
+
+	it("should return artifacts from getArtifacts callback", async () => {
+		const getArtifacts = vi.fn().mockResolvedValue([
+			{
+				artifactId: "art-1",
+				kind: "summary",
+				producer: "takumi.tui",
+				summary: "Completed task",
+				createdAt: new Date(123456).toISOString(),
+				promoted: false,
+				sessionId: "sess-1",
+			},
+		]);
+		bridge = new HttpBridgeServer({ port: 0, host: "127.0.0.1", getArtifacts });
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		const res = await app.inject({ method: "GET", url: "/artifacts?sessionId=sess-1&limit=5" });
+		expect(res.statusCode).toBe(200);
+		expect(res.json().artifacts).toHaveLength(1);
+		expect(getArtifacts).toHaveBeenCalledWith("sess-1", undefined, 5);
+	});
+
+	it("should return artifact detail from getArtifact callback", async () => {
+		const getArtifact = vi.fn().mockResolvedValue({
+			artifactId: "art-1",
+			kind: "diff",
+			producer: "takumi.tui",
+			summary: "Patch preview",
+			createdAt: new Date(123456).toISOString(),
+			promoted: false,
+			body: "diff --git a/a.ts b/a.ts",
+		});
+		bridge = new HttpBridgeServer({ port: 0, host: "127.0.0.1", getArtifact });
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		const res = await app.inject({ method: "GET", url: "/artifacts/art-1" });
+		expect(res.statusCode).toBe(200);
+		expect(res.json().artifactId).toBe("art-1");
+		expect(getArtifact).toHaveBeenCalledWith("art-1");
+	});
+
+	it("should update artifact promotion state", async () => {
+		const setArtifactPromoted = vi.fn().mockResolvedValue(true);
+		bridge = new HttpBridgeServer({ port: 0, host: "127.0.0.1", setArtifactPromoted });
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		const res = await app.inject({
+			method: "POST",
+			url: "/artifacts/art-1/promote",
+			payload: { promoted: true },
+		});
+		expect(res.statusCode).toBe(200);
+		expect(res.json()).toEqual({ success: true, promoted: true });
+		expect(setArtifactPromoted).toHaveBeenCalledWith("art-1", true);
+	});
+
+	it("should return repo diff snapshot from getRepoDiff callback", async () => {
+		const getRepoDiff = vi.fn().mockResolvedValue({
+			branch: "main",
+			isClean: false,
+			stagedFiles: ["a.ts"],
+			modifiedFiles: ["b.ts"],
+			untrackedFiles: [],
+			stagedDiff: "diff --git a/a.ts b/a.ts",
+			workingDiff: "diff --git a/b.ts b/b.ts",
+		});
+		bridge = new HttpBridgeServer({ port: 0, host: "127.0.0.1", getRepoDiff });
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		const res = await app.inject({ method: "GET", url: "/repo/diff" });
+		expect(res.statusCode).toBe(200);
+		expect(res.json().branch).toBe("main");
+		expect(getRepoDiff).toHaveBeenCalledOnce();
+	});
+
+	it("should interrupt and refresh agents via callbacks", async () => {
+		const onInterrupt = vi.fn().mockResolvedValue(true);
+		const onRefresh = vi.fn().mockResolvedValue(true);
+		bridge = new HttpBridgeServer({ port: 0, host: "127.0.0.1", onInterrupt, onRefresh });
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		let res = await app.inject({ method: "POST", url: "/agent/1234/interrupt" });
+		expect(res.statusCode).toBe(200);
+		expect(onInterrupt).toHaveBeenCalledWith(1234);
+
+		res = await app.inject({ method: "POST", url: "/agent/1234/refresh" });
+		expect(res.statusCode).toBe(200);
+		expect(onRefresh).toHaveBeenCalledWith(1234);
+	});
+
+	it("should manage runtime lifecycle routes", async () => {
+		const runtime = {
+			runtimeId: "rt-1",
+			pid: 4321,
+			state: "running",
+			startedAt: 123456,
+			cwd: "/tmp/project",
+			logFile: "/tmp/project/runtime.log",
+		};
+		const listRuntimes = vi.fn().mockResolvedValue([runtime]);
+		const onStartRuntime = vi.fn().mockResolvedValue(runtime);
+		const stopRuntime = vi.fn().mockResolvedValue(true);
+		bridge = new HttpBridgeServer({ port: 0, host: "127.0.0.1", listRuntimes, onStartRuntime, stopRuntime });
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		let res = await app.inject({ method: "GET", url: "/runtime/list" });
+		expect(res.statusCode).toBe(200);
+		expect(res.json().runtimes).toHaveLength(1);
+
+		res = await app.inject({
+			method: "POST",
+			url: "/runtime/start",
+			payload: { sessionId: "sess-1", provider: "anthropic", model: "claude-sonnet" },
+		});
+		expect(res.statusCode).toBe(201);
+		expect(onStartRuntime).toHaveBeenCalledWith({ sessionId: "sess-1", provider: "anthropic", model: "claude-sonnet" });
+
+		res = await app.inject({ method: "POST", url: "/runtime/rt-1/stop" });
+		expect(res.statusCode).toBe(200);
+		expect(stopRuntime).toHaveBeenCalledWith("rt-1");
+	});
+
 	// ── /watch waiter cap (DoS protection) ────────────────────────────────
 
 	it("should return 503 when /watch waiter cap is exceeded", async () => {

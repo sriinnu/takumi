@@ -39,6 +39,59 @@ export interface AgentStateSnapshot {
 	updatedAt: number;
 }
 
+export interface PendingApprovalSnapshot {
+	id: string;
+	tool: string;
+	argsSummary: string;
+	createdAt: number;
+	sessionId?: string;
+	lane?: "session" | "project" | "global";
+	reason?: string;
+	active: boolean;
+}
+
+export interface BridgeArtifactSummary {
+	artifactId: string;
+	kind: string;
+	producer: string;
+	summary: string;
+	createdAt: string;
+	promoted: boolean;
+	taskId?: string;
+	sessionId?: string;
+}
+
+export interface BridgeArtifactDetail extends BridgeArtifactSummary {
+	body?: string;
+	path?: string;
+	confidence?: number;
+	laneId?: string;
+	metadata?: Record<string, unknown>;
+}
+
+export interface RepoDiffSnapshot {
+	branch: string | null;
+	isClean: boolean;
+	stagedFiles: string[];
+	modifiedFiles: string[];
+	untrackedFiles: string[];
+	stagedDiff: string;
+	workingDiff: string;
+}
+
+export interface RuntimeSummary {
+	runtimeId: string;
+	pid: number;
+	state: string;
+	startedAt: number;
+	cwd: string;
+	logFile: string;
+	command?: string;
+	args?: string[];
+	sessionId?: string;
+	runtimeSource?: string;
+}
+
 export interface HttpBridgeConfig {
 	port: number;
 	host: string;
@@ -62,6 +115,28 @@ export interface HttpBridgeConfig {
 	getAlerts?: () => Promise<unknown[]>;
 	/** Acknowledge an alert by ID. */
 	acknowledgeAlert?: (alertId: string) => Promise<boolean>;
+	/** Return pending approvals and recent audit records relevant to the operator. */
+	getPendingApprovals?: () => Promise<PendingApprovalSnapshot[]>;
+	/** Submit an operator decision for a pending approval. */
+	decideApproval?: (approvalId: string, decision: "approved" | "denied") => Promise<boolean>;
+	/** Return local/hub artifacts for an operator surface. */
+	getArtifacts?: (sessionId?: string, kind?: string, limit?: number) => Promise<BridgeArtifactSummary[]>;
+	/** Return a single artifact with full detail. */
+	getArtifact?: (artifactId: string) => Promise<BridgeArtifactDetail | null>;
+	/** Update artifact promotion state. */
+	setArtifactPromoted?: (artifactId: string, promoted: boolean) => Promise<boolean>;
+	/** Return current repo diff state for review surfaces. */
+	getRepoDiff?: () => Promise<RepoDiffSnapshot>;
+	/** Interrupt the active agent run for a PID. */
+	onInterrupt?: (pid: number) => Promise<boolean>;
+	/** Force a fresh state notification for watchers. */
+	onRefresh?: (pid: number) => Promise<boolean>;
+	/** Start a sibling runtime from the current local installation. */
+	onStartRuntime?: (options?: { sessionId?: string; provider?: string; model?: string }) => Promise<RuntimeSummary>;
+	/** List locally known runtimes. */
+	listRuntimes?: () => Promise<RuntimeSummary[]>;
+	/** Stop a runtime by ID. */
+	stopRuntime?: (runtimeId: string) => Promise<boolean>;
 }
 
 const MAX_WATCH_WAITERS = 100;
@@ -230,6 +305,123 @@ export class HttpBridgeServer {
 			}
 			const ok = await this.config.acknowledgeAlert(request.params.alertId);
 			if (!ok) return reply.code(404).send({ error: "Alert not found" });
+			return reply.send({ success: true });
+		});
+
+		this.server.get("/approvals", async (_request, reply) => {
+			if (!this.config.getPendingApprovals) {
+				return reply.code(501).send({ error: "Approval queue not configured" });
+			}
+			return reply.send({ approvals: await this.config.getPendingApprovals() });
+		});
+
+		this.server.post<{ Params: { approvalId: string; decision: string } }>(
+			"/approvals/:approvalId/:decision",
+			async (request, reply) => {
+				if (!this.config.decideApproval) {
+					return reply.code(501).send({ error: "Approval decisions not configured" });
+				}
+				if (request.params.decision !== "approve" && request.params.decision !== "deny") {
+					return reply.code(400).send({ error: "Bad Request: decision must be approve or deny" });
+				}
+				const ok = await this.config.decideApproval(
+					request.params.approvalId,
+					request.params.decision === "approve" ? "approved" : "denied",
+				);
+				if (!ok) return reply.code(404).send({ error: "Approval not found" });
+				return reply.send({ success: true });
+			},
+		);
+
+		this.server.get<{ Querystring: { sessionId?: string; kind?: string; limit?: string } }>(
+			"/artifacts",
+			async (request, reply) => {
+				if (!this.config.getArtifacts) {
+					return reply.code(501).send({ error: "Artifact listing not configured" });
+				}
+				const rawLimit = parseInt(request.query.limit || "20", 10);
+				const limit = Number.isNaN(rawLimit) ? 20 : Math.max(1, Math.min(100, rawLimit));
+				return reply.send({
+					artifacts: await this.config.getArtifacts(request.query.sessionId, request.query.kind, limit),
+				});
+			},
+		);
+
+		this.server.get<{ Params: { artifactId: string } }>("/artifacts/:artifactId", async (request, reply) => {
+			if (!this.config.getArtifact) {
+				return reply.code(501).send({ error: "Artifact detail not configured" });
+			}
+			const artifact = await this.config.getArtifact(request.params.artifactId);
+			if (!artifact) return reply.code(404).send({ error: "Artifact not found" });
+			return reply.send(artifact);
+		});
+
+		this.server.post<{ Params: { artifactId: string }; Body: { promoted?: boolean } }>(
+			"/artifacts/:artifactId/promote",
+			async (request, reply) => {
+				if (!this.config.setArtifactPromoted) {
+					return reply.code(501).send({ error: "Artifact promotion not configured" });
+				}
+				const promoted = request.body?.promoted ?? true;
+				const ok = await this.config.setArtifactPromoted(request.params.artifactId, promoted);
+				if (!ok) return reply.code(404).send({ error: "Artifact not found" });
+				return reply.send({ success: true, promoted });
+			},
+		);
+
+		this.server.get("/repo/diff", async (_request, reply) => {
+			if (!this.config.getRepoDiff) {
+				return reply.code(501).send({ error: "Repo diff not configured" });
+			}
+			return reply.send(await this.config.getRepoDiff());
+		});
+
+		this.server.post<{ Params: { pid: string } }>("/agent/:pid/interrupt", async (request, reply) => {
+			if (!this.config.onInterrupt) {
+				return reply.code(501).send({ error: "Interrupt not configured" });
+			}
+			const pid = parseInt(request.params.pid, 10);
+			if (Number.isNaN(pid)) return reply.code(400).send({ error: "Bad Request: Invalid PID" });
+			const ok = await this.config.onInterrupt(pid);
+			if (!ok) return reply.code(404).send({ error: "Agent not found" });
+			return reply.send({ success: true });
+		});
+
+		this.server.post<{ Params: { pid: string } }>("/agent/:pid/refresh", async (request, reply) => {
+			if (!this.config.onRefresh) {
+				return reply.code(501).send({ error: "Refresh not configured" });
+			}
+			const pid = parseInt(request.params.pid, 10);
+			if (Number.isNaN(pid)) return reply.code(400).send({ error: "Bad Request: Invalid PID" });
+			const ok = await this.config.onRefresh(pid);
+			if (!ok) return reply.code(404).send({ error: "Agent not found" });
+			return reply.send({ success: true });
+		});
+
+		this.server.get("/runtime/list", async (_request, reply) => {
+			if (!this.config.listRuntimes) {
+				return reply.code(501).send({ error: "Runtime listing not configured" });
+			}
+			return reply.send({ runtimes: await this.config.listRuntimes() });
+		});
+
+		this.server.post<{ Body: { sessionId?: string; provider?: string; model?: string } }>(
+			"/runtime/start",
+			async (request, reply) => {
+				if (!this.config.onStartRuntime) {
+					return reply.code(501).send({ error: "Runtime start not configured" });
+				}
+				const runtime = await this.config.onStartRuntime(request.body ?? {});
+				return reply.code(201).send(runtime);
+			},
+		);
+
+		this.server.post<{ Params: { runtimeId: string } }>("/runtime/:runtimeId/stop", async (request, reply) => {
+			if (!this.config.stopRuntime) {
+				return reply.code(501).send({ error: "Runtime stop not configured" });
+			}
+			const ok = await this.config.stopRuntime(request.params.runtimeId);
+			if (!ok) return reply.code(404).send({ error: "Runtime not found" });
 			return reply.send({ success: true });
 		});
 

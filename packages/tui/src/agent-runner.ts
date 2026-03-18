@@ -376,8 +376,29 @@ export class AgentRunner {
 	 */
 	private promptPermission(tool: string, args: Record<string, unknown>): Promise<PermissionDecision> {
 		return new Promise<PermissionDecision>((resolve) => {
-			this.state.pendingPermission.value = { tool, args, resolve };
-			this.state.pushDialog("permission");
+			void (async () => {
+				const argsSummary = JSON.stringify(args).slice(0, 500);
+				const approval = await this.state.approvalQueue.request(
+					tool,
+					argsSummary,
+					this.state.sessionId.value || undefined,
+				);
+				this.state.pendingPermission.value = {
+					approvalId: approval.id,
+					tool,
+					args,
+					resolve: (decision) => {
+						void this.state.approvalQueue.decide(
+							approval.id,
+							decision.allowed ? "approved" : "denied",
+							"user",
+							decision.reason,
+						);
+						resolve(decision);
+					},
+				};
+				this.state.pushDialog("permission");
+			})();
 		});
 	}
 
