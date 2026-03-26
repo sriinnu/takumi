@@ -19,14 +19,32 @@ describe("platform report", () => {
 					socketPath: "/tmp/chitragupta.sock",
 					pidPath: "/tmp/chitragupta.pid",
 					logDir: "/tmp/logs",
+					},
+					kosha: { totalProviders: 3, authenticatedProviders: 2, authenticatedIds: ["anthropic", "github"] },
+					telemetry: { activeInstances: 1, working: 1, waitingInput: 0, atLimit: 0, nearLimit: 0 },
+					detachedJobs: { total: 2, running: 1 },
+					sideAgents: {
+						bootstrap: { enabled: true, degraded: false, reason: "enabled", summary: "preflight ready" },
+						audit: {
+							registry: {
+								registryPath: "/repo/.takumi/side-agents/registry.json",
+								totalEntries: 2,
+								normalizedEntries: 0,
+								malformedEntries: 0,
+								records: [],
+								agents: [],
+							},
+							activeAgents: 1,
+							terminalAgents: 1,
+							orphanedWorktrees: ["/repo/.takumi/worktrees/wt-orphan"],
+							tmuxInspected: true,
+							issues: [{ code: "orphaned_worktree", severity: "warn", detail: "orphaned worktree" }],
+						},
+					},
+					overall: "warn",
+					warnings: ["Kosha is grumpy"],
+					fixes: ["Log in again"],
 				},
-				kosha: { totalProviders: 3, authenticatedProviders: 2, authenticatedIds: ["anthropic", "github"] },
-				telemetry: { activeInstances: 1, working: 1, waitingInput: 0, atLimit: 0, nearLimit: 0 },
-				detachedJobs: { total: 2, running: 1 },
-				overall: "warn",
-				warnings: ["Kosha is grumpy"],
-				fixes: ["Log in again"],
-			},
 			sessions: [
 				{
 					id: "session-1",
@@ -54,6 +72,9 @@ describe("platform report", () => {
 		expect(report.summary.runningDetachedJobs).toBe(1);
 		expect(report.summary.recentSessions).toBe(1);
 		expect(report.daemon.healthy).toBe(true);
+		expect(report.summary.activeSideAgents).toBe(1);
+		expect(report.summary.sideAgentIssues).toBe(1);
+		expect(report.summary.orphanedSideAgentWorktrees).toBe(1);
 	});
 
 	it("formats a readable platform summary", () => {
@@ -75,21 +96,26 @@ describe("platform report", () => {
 						pidPath: "/tmp/chitragupta.pid",
 						logDir: "/tmp/logs",
 					},
-					kosha: { totalProviders: 0, authenticatedProviders: 0, authenticatedIds: [] },
-					telemetry: { activeInstances: 0, working: 0, waitingInput: 0, atLimit: 0, nearLimit: 0 },
-					detachedJobs: { total: 0, running: 0 },
-					overall: "fail",
-					warnings: ["No auth"],
-					fixes: ["Set an API key"],
-				},
+						kosha: { totalProviders: 0, authenticatedProviders: 0, authenticatedIds: [] },
+						telemetry: { activeInstances: 0, working: 0, waitingInput: 0, atLimit: 0, nearLimit: 0 },
+						detachedJobs: { total: 0, running: 0 },
+						sideAgents: {
+							bootstrap: { enabled: false, degraded: true, reason: "tmux_unavailable", summary: "tmux is unavailable" },
+							audit: null,
+						},
+						overall: "fail",
+						warnings: ["No auth"],
+						fixes: ["Set an API key"],
+					},
 				sessions: [],
 				detachedJobs: [],
 			}),
 		);
 
 		expect(text).toContain("Takumi Platform — FAIL");
+		expect(text).toContain("Side agents:       0 active · 0 issue(s) · 0 orphaned");
 		expect(text).toContain("Doctor:");
 		expect(text).toContain("Recent sessions:");
 		expect(text).toContain("Detached jobs:");
-		});
+	});
 });

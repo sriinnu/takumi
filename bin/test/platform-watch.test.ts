@@ -36,14 +36,32 @@ function makeReport() {
 				socketPath: "/tmp/chitragupta.sock",
 				pidPath: "/tmp/chitragupta.pid",
 				logDir: "/tmp/logs",
+				},
+				kosha: { totalProviders: 3, authenticatedProviders: 1, authenticatedIds: ["anthropic"] },
+				telemetry: { activeInstances: 2, working: 1, waitingInput: 1, atLimit: 0, nearLimit: 0 },
+				detachedJobs: { total: 1, running: 1 },
+				sideAgents: {
+					bootstrap: { enabled: true, degraded: false, reason: "enabled", summary: "preflight ready" },
+					audit: {
+						registry: {
+							registryPath: "/repo/.takumi/side-agents/registry.json",
+							totalEntries: 1,
+							normalizedEntries: 0,
+							malformedEntries: 0,
+							records: [],
+							agents: [],
+						},
+						activeAgents: 1,
+						terminalAgents: 0,
+						orphanedWorktrees: [],
+						tmuxInspected: true,
+						issues: [],
+					},
+				},
+				overall: "warn",
+				warnings: ["Heads up"],
+				fixes: ["Do a fix"],
 			},
-			kosha: { totalProviders: 3, authenticatedProviders: 1, authenticatedIds: ["anthropic"] },
-			telemetry: { activeInstances: 2, working: 1, waitingInput: 1, atLimit: 0, nearLimit: 0 },
-			detachedJobs: { total: 1, running: 1 },
-			overall: "warn",
-			warnings: ["Heads up"],
-			fixes: ["Do a fix"],
-		},
 		sessions: [
 			{
 				id: "session-1",
@@ -93,6 +111,7 @@ describe("platform watch", () => {
 		expect(text).toContain("Takumi Platform Watch");
 		expect(text).toContain("q quit");
 		expect(text).toContain("focus doctor");
+		expect(text).toContain("side-agents");
 		expect(text).toContain("Doctor");
 		expect(text).toContain("Recent Sessions");
 		expect(text).toContain("Detached Jobs");

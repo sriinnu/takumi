@@ -268,6 +268,47 @@ describe("TmuxOrchestrator", () => {
 		});
 	});
 
+	describe("adoptWindow", () => {
+		it("reattaches a persisted agent to an existing tmux window", async () => {
+			succeedWith(""); // has-session
+			succeedWith("@4:agent-side-9:%2"); // list-windows
+
+			const adopted = await orch.adoptWindow("side-9", "agent-side-9");
+
+			expect(adopted).toMatchObject({
+				sessionName: "test-session",
+				windowId: "@4",
+				windowName: "agent-side-9",
+				paneId: "%2",
+			});
+			expect(orch.getWindows().get("side-9")).toMatchObject({ windowId: "@4" });
+		});
+
+		it("returns null when the persisted tmux session is gone", async () => {
+			failWith("no session");
+
+			await expect(orch.adoptWindow("side-9", "agent-side-9")).resolves.toBeNull();
+		});
+
+		it("can reattach by durable window coordinates", async () => {
+			succeedWith(""); // has-session
+			succeedWith("@4:agent-side-9:%2"); // list-windows
+
+			const adopted = await orch.adoptWindow("side-9", {
+				sessionName: "test-session",
+				windowId: "@4",
+				paneId: "%2",
+			});
+
+			expect(adopted).toMatchObject({
+				sessionName: "test-session",
+				windowId: "@4",
+				windowName: "agent-side-9",
+				paneId: "%2",
+			});
+		});
+	});
+
 	// ── getWindows ──────────────────────────────────────────────────────────
 
 	describe("getWindows", () => {

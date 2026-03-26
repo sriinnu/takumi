@@ -1,0 +1,13 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"baseUrl": ".",
+		"paths": {
+			"@takumi/core": ["packages/core/src/index.ts"],
+			"@takumi/render": ["packages/render/src/index.ts"],
+			"@takumi/bridge": ["packages/bridge/src/index.ts"],
+			"@takumi/agent": ["packages/agent/src/index.ts"],
+			"@takumi/tui": ["packages/tui/src/index.ts"]
+		}
+	}
+}

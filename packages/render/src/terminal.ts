@@ -29,6 +29,8 @@ export type TerminalName =
 export interface TerminalCapabilities {
 	/** Detected terminal emulator name. */
 	name: TerminalName;
+	/** Whether OSC 133 shell integration markers are supported. */
+	osc133: boolean;
 	/** Whether the terminal supports 24-bit RGB color. */
 	truecolor: boolean;
 	/** Whether OSC 52 clipboard sequences are supported. */
@@ -118,6 +120,7 @@ export function detectCapabilities(env: EnvSource = process.env): TerminalCapabi
 	// Start with conservative defaults
 	const caps: TerminalCapabilities = {
 		name,
+		osc133: false,
 		truecolor: hasTruecolorEnv,
 		osc52: false,
 		kittyImages: false,
@@ -146,6 +149,7 @@ type ProfileApplier = (caps: TerminalCapabilities) => void;
 
 const TERMINAL_PROFILES: Record<TerminalName, ProfileApplier | undefined> = {
 	ghostty: (c) => {
+		c.osc133 = true;
 		c.truecolor = true;
 		c.osc52 = true;
 		c.hyperlinks = true;
@@ -169,6 +173,7 @@ const TERMINAL_PROFILES: Record<TerminalName, ProfileApplier | undefined> = {
 	},
 
 	iterm2: (c) => {
+		c.osc133 = true;
 		c.truecolor = true;
 		c.osc52 = true;
 		c.iterm2Images = true;
@@ -179,6 +184,7 @@ const TERMINAL_PROFILES: Record<TerminalName, ProfileApplier | undefined> = {
 	},
 
 	wezterm: (c) => {
+		c.osc133 = true;
 		c.truecolor = true;
 		c.osc52 = true;
 		c.kittyImages = true;
@@ -234,6 +240,7 @@ const TERMINAL_PROFILES: Record<TerminalName, ProfileApplier | undefined> = {
 
 	tmux: (c) => {
 		// tmux passes through most capabilities of the outer terminal
+		c.osc133 = true;
 		c.truecolor = true;
 		c.osc52 = true; // if tmux has set-clipboard on
 		c.bracketedPaste = true;
@@ -271,6 +278,23 @@ export function supportsOsc52(env: EnvSource = process.env): boolean {
 }
 
 /**
+ * Return true if the terminal supports OSC 133 shell integration markers.
+ */
+export function supportsOsc133(env: EnvSource = process.env): boolean {
+	return detectCapabilities(env).osc133;
+}
+
+/** Emit OSC 133 command-start marker. */
+export function osc133CommandStart(): string {
+	return "\x1b]133;C\x07";
+}
+
+/** Emit OSC 133 command-finished marker with an exit status. */
+export function osc133CommandDone(exitCode = 0): string {
+	return `\x1b]133;D;${Math.max(0, Math.trunc(exitCode))}\x07`;
+}
+
+/**
  * Create the ANSI sequence to enable synchronized output (mode 2026).
  * Only useful if `caps.synchronizedOutput` is true.
  */
@@ -298,6 +322,7 @@ export function terminalSummary(caps: TerminalCapabilities): string {
 	if (caps.sixel) flags.push("sixel");
 	if (caps.hyperlinks) flags.push("link");
 	if (caps.kittyKeyboard) flags.push("kkbd");
+	if (caps.osc133) flags.push("osc133");
 	if (caps.synchronizedOutput) flags.push("sync");
 
 	return `${caps.name}${flags.length ? ` [${flags.join(",")}]` : ""}`;

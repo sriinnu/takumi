@@ -13,6 +13,7 @@ import { KEY_CODES } from "@takumi/core";
 import type { Screen } from "@takumi/render";
 import { Component, effect } from "@takumi/render";
 import type { SlashCommandRegistry } from "../commands.js";
+import type { ExtensionUiStore } from "../extension-ui-store.js";
 import type { KeyBindingRegistry } from "../keybinds.js";
 import { DialogOverlay } from "../panels/dialog-overlay.js";
 import { FilePreviewPanel } from "../panels/file-preview.js";
@@ -26,6 +27,7 @@ export interface RootViewProps {
 	config: TakumiConfig;
 	commands?: SlashCommandRegistry;
 	keybinds?: KeyBindingRegistry;
+	extensionUiStore?: ExtensionUiStore;
 	onFileSelect?: (filePath: string) => void;
 	onResumeSession?: (sessionId: string) => Promise<void> | void;
 	projectRoot?: string;
@@ -54,11 +56,12 @@ export class RootView extends Component {
 			commands: props.commands,
 			projectRoot: props.projectRoot,
 		});
-		this.sidebar = new SidebarPanel({ state: this.state });
+		this.sidebar = new SidebarPanel({ state: this.state, extensionUiStore: props.extensionUiStore });
 		this.dialogOverlay = new DialogOverlay({
 			state: this.state,
 			commands: props.commands,
 			keybinds: props.keybinds,
+			extensionUiStore: props.extensionUiStore,
 			onResumeSession: props.onResumeSession,
 		});
 		this.fileTree = new FileTreePanel({

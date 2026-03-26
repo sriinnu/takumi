@@ -1,17 +1,15 @@
 import { execSync } from "node:child_process";
 import type { Message, ToolResult } from "@takumi/core";
 import type { AppCommandContext } from "./app-command-context.js";
+import { ensureExclusiveCommandLease } from "./app-command-lease.js";
+import { formatSideLaneDigest } from "./side-lane-store.js";
 
 function canRunAgentMacro(ctx: AppCommandContext, commandName: string): boolean {
 	if (!ctx.agentRunner) {
 		ctx.addInfoMessage(`${commandName} requires an active agent runner.`);
 		return false;
 	}
-	if (ctx.agentRunner.isRunning) {
-		ctx.addInfoMessage(`${commandName} is unavailable while the agent is already running.`);
-		return false;
-	}
-	return true;
+	return ensureExclusiveCommandLease(ctx, commandName);
 }
 
 export async function runAnalysisMacro(ctx: AppCommandContext, commandName: string, prompt: string): Promise<void> {
@@ -54,8 +52,7 @@ export async function executeNativeTool(
 		ctx.addInfoMessage(`${commandName} requires an active agent runner.`);
 		return null;
 	}
-	if (ctx.agentRunner.isRunning) {
-		ctx.addInfoMessage(`${commandName} is unavailable while the agent is already running.`);
+	if (!ensureExclusiveCommandLease(ctx, commandName)) {
 		return null;
 	}
 
@@ -65,15 +62,7 @@ export async function executeNativeTool(
 		return null;
 	}
 
-	if (definition.requiresPermission) {
-		const allowed = await ctx.agentRunner.checkToolPermission(toolName, input);
-		if (!allowed) {
-			ctx.addInfoMessage(`${commandName} cancelled: permission denied for ${toolName}.`);
-			return null;
-		}
-	}
-
-	const result = await tools.execute(toolName, input);
+	const result = await ctx.agentRunner.executeCommandTool(toolName, input);
 	if (result.isError) {
 		ctx.addInfoMessage(`${commandName}: ${toolName} failed — ${result.output.slice(0, 240)}`);
 	}
@@ -128,6 +117,7 @@ export function buildSessionContext(ctx: AppCommandContext): string {
 		.slice(-3)
 		.map((decision) => decision.selected?.id ?? `${decision.request.capability}:fallback`)
 		.join(", ");
+	const liveSideLanes = ctx.state.sideLanes.list(3).map(formatSideLaneDigest).join(", ");
 	return [
 		`Session ID: ${ctx.state.sessionId.value || "(none)"}`,
 		`Canonical session: ${ctx.state.canonicalSessionId.value || "(unbound)"}`,
@@ -137,6 +127,7 @@ export function buildSessionContext(ctx: AppCommandContext): string {
 		`Turns: ${ctx.state.turnCount.value}`,
 		`Context pressure: ${ctx.state.contextPressure.value} (${ctx.state.contextPercent.value.toFixed(1)}%)`,
 		`Recent lanes: ${routing || "(none)"}`,
+		`Live side lanes: ${liveSideLanes || "(none)"}`,
 		"Recent conversation:",
 		getRecentConversationDigest(ctx.state.messages.value),
 	].join("\n");

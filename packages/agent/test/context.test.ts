@@ -183,11 +183,11 @@ describe("buildSystemPrompt", () => {
 		expect(result).toContain("Model: claude-sonnet-4-20250514");
 	});
 
-	it("includes platform and date in environment section", () => {
+	it("includes platform and omits volatile date lines in environment section", () => {
 		const result = buildSystemPrompt({ tools: [] });
 
 		expect(result).toContain(`Platform: ${process.platform}`);
-		expect(result).toContain("Date:");
+		expect(result).not.toContain("Date:");
 	});
 
 	it("includes working directory from project context in environment", () => {
@@ -234,6 +234,33 @@ describe("buildSystemPrompt", () => {
 		expect(result).toContain("## read_file");
 		expect(result).toContain("## write_file");
 		expect(result).toContain("## bash");
+	});
+
+	it("prefers tool promptSnippet over the default description when provided", () => {
+		const tools = [
+			{
+				...makeTool({ name: "smart_search", description: "A very long verbose description." }),
+				promptSnippet: "Use for semantic code search across the repo.",
+			},
+		];
+		const result = buildSystemPrompt({ tools });
+
+		expect(result).toContain("Use for semantic code search across the repo.");
+		expect(result).not.toContain("A very long verbose description.");
+	});
+
+	it("includes tool promptGuidelines when provided", () => {
+		const tools = [
+			{
+				...makeTool({ name: "apply_patch" }),
+				promptGuidelines: ["Keep patches minimal.", "Avoid unrelated reformatting."],
+			},
+		];
+		const result = buildSystemPrompt({ tools });
+
+		expect(result).toContain("Usage notes:");
+		expect(result).toContain("- Keep patches minimal.");
+		expect(result).toContain("- Avoid unrelated reformatting.");
 	});
 
 	it("combines all options together", () => {

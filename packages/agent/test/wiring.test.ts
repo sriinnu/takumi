@@ -208,6 +208,9 @@ describe("ConventionFiles type", () => {
 		expect(typeof mod.selectSkillsForPrompt).toBe("function");
 		expect(typeof mod.PrincipleMemory).toBe("function");
 		expect(typeof mod.selectToolDefinitions).toBe("function");
+		expect(typeof mod.agentStopDefinition).toBe("object");
+		expect(typeof mod.createAgentStopHandler).toBe("function");
+		expect(typeof mod.reconcilePersistedSideAgents).toBe("function");
 	});
 });
 

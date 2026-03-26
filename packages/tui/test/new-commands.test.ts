@@ -8,13 +8,13 @@ import { AppState } from "../src/state.js";
 
 vi.mock("node:fs/promises", () => ({
 	writeFile: vi.fn().mockResolvedValue(undefined),
-	readFile: vi.fn(),
+	readFile: vi.fn().mockResolvedValue(""),
 	readdir: vi.fn(),
 	mkdir: vi.fn(),
 	unlink: vi.fn(),
 }));
 
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -135,7 +135,7 @@ function createTestSetup() {
 			return;
 		}
 
-		let format: "md" | "json" = "md";
+		let format: "md" | "json" | "jsonl" = "md";
 		let outputPath = "";
 
 		if (args) {
@@ -143,6 +143,8 @@ function createTestSetup() {
 			for (const part of parts) {
 				if (part === "json") {
 					format = "json";
+				} else if (part === "jsonl") {
+					format = "jsonl";
 				} else if (part === "md" || part === "markdown") {
 					format = "md";
 				} else {
@@ -153,13 +155,29 @@ function createTestSetup() {
 
 		if (!outputPath) {
 			const date = new Date().toISOString().slice(0, 10);
-			outputPath = `./takumi-export-${date}.${format === "json" ? "json" : "md"}`;
+			outputPath = `./takumi-export-${date}.${format}`;
 		}
 
 		try {
 			let content: string;
 			if (format === "json") {
-				content = JSON.stringify(messages, null, 2);
+				content = JSON.stringify({ id: state.sessionId.value, messages, model: state.model.value }, null, 2);
+			} else if (format === "jsonl") {
+				content = [
+					JSON.stringify({
+						type: "session_meta",
+						version: 1,
+						session: {
+							id: state.sessionId.value,
+							title: "Imported session",
+							createdAt: 0,
+							updatedAt: 0,
+							model: state.model.value,
+							tokenUsage: { inputTokens: 0, outputTokens: 0, totalCost: 0 },
+						},
+					}),
+					...messages.map((message) => JSON.stringify({ type: "message", message })),
+				].join("\n");
 			} else {
 				content = formatMessagesAsMarkdown(messages, state.sessionId.value, state.model.value);
 			}
@@ -168,6 +186,37 @@ function createTestSetup() {
 			addInfoMessage(`Session exported to ${outputPath}`);
 		} catch (err) {
 			addInfoMessage(`Export failed: ${(err as Error).message}`);
+		}
+	});
+
+	commands.register("/import", "Import Takumi session", async (args) => {
+		const inputPath = args.trim();
+		if (!inputPath) {
+			addInfoMessage("Usage: /import <path-to-session.json|jsonl>");
+			return;
+		}
+
+		try {
+			const raw = String(await (readFile as unknown as (...args: unknown[]) => Promise<string>)(inputPath, "utf-8"));
+			let imported: { id: string; messages: Message[]; model: string };
+			if (inputPath.endsWith(".jsonl")) {
+				const lines = raw.split("\n").filter(Boolean);
+				const meta = JSON.parse(lines[0]);
+				imported = {
+					id: meta.session.id,
+					model: meta.session.model,
+					messages: lines.slice(1).map((line) => JSON.parse(line).message),
+				};
+			} else {
+				imported = JSON.parse(raw) as { id: string; messages: Message[]; model: string };
+			}
+
+			state.sessionId.value = imported.id;
+			state.model.value = imported.model;
+			state.messages.value = imported.messages;
+			addInfoMessage(`Imported session ${imported.id} from ${inputPath}`);
+		} catch (err) {
+			addInfoMessage(`Import failed: ${(err as Error).message}`);
 		}
 	});
 
@@ -400,8 +449,22 @@ describe("/export command", () => {
 		const [path, content] = vi.mocked(writeFile).mock.calls[0];
 		expect(path).toMatch(/\.json$/);
 		const parsed = JSON.parse(content as string);
-		expect(Array.isArray(parsed)).toBe(true);
-		expect(parsed.length).toBeGreaterThan(0);
+		expect(parsed).toHaveProperty("messages");
+		expect(Array.isArray(parsed.messages)).toBe(true);
+		expect(parsed.messages.length).toBeGreaterThan(0);
+	});
+
+	it("exports as JSONL when specified", async () => {
+		const { state, commands } = setup;
+		state.addMessage(makeUserMessage("hello"));
+
+		await commands.execute("/export jsonl");
+
+		const [path, content] = vi.mocked(writeFile).mock.calls[0];
+		expect(path).toMatch(/\.jsonl$/);
+		const lines = String(content).split("\n");
+		expect(JSON.parse(lines[0]).type).toBe("session_meta");
+		expect(JSON.parse(lines[1]).type).toBe("message");
 	});
 
 	it("exports as markdown when 'md' specified explicitly", async () => {
@@ -454,7 +517,7 @@ describe("/export command", () => {
 		await commands.execute("/export json");
 
 		const [, content] = vi.mocked(writeFile).mock.calls[0];
-		const parsed = JSON.parse(content as string);
+		const parsed = JSON.parse(content as string).messages;
 		// Second message should have tool_use, tool_result, and text blocks
 		const assistantMsg = parsed.find((m: Message) => m.role === "assistant");
 		expect(assistantMsg).toBeDefined();
@@ -507,7 +570,41 @@ describe("/export command", () => {
 		const [path, content] = vi.mocked(writeFile).mock.calls[0];
 		expect(path).toBe("/tmp/conv.json");
 		const parsed = JSON.parse(content as string);
-		expect(Array.isArray(parsed)).toBe(true);
+		expect(Array.isArray(parsed.messages)).toBe(true);
+	});
+
+	it("imports a JSONL session into state", async () => {
+		const { commands, state, infoMessages } = setup;
+		vi.mocked(readFile).mockResolvedValueOnce(
+			[
+				JSON.stringify({
+					type: "session_meta",
+					version: 1,
+					session: {
+						id: "session-imported",
+						title: "Imported",
+						createdAt: 0,
+						updatedAt: 0,
+						model: "claude-sonnet-4",
+						tokenUsage: { inputTokens: 0, outputTokens: 0, totalCost: 0 },
+					},
+				}),
+				JSON.stringify({ type: "message", message: makeUserMessage("restored") }),
+			].join("\n"),
+		);
+
+		await commands.execute("/import /tmp/session.jsonl");
+
+		expect(state.sessionId.value).toBe("session-imported");
+		expect(state.model.value).toBe("claude-sonnet-4");
+		expect(state.messages.value.some((msg) => msg.role === "user")).toBe(true);
+		expect(infoMessages.at(-1)).toContain("Imported session session-imported");
+	});
+
+	it("shows usage when /import has no path", async () => {
+		const { commands, infoMessages } = setup;
+		await commands.execute("/import");
+		expect(infoMessages.at(-1)).toContain("Usage: /import");
 	});
 });
 

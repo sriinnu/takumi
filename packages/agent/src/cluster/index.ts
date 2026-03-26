@@ -46,11 +46,24 @@ export { getProfileBiasedModel, inferRoutingCaps, lucyBiasTopology } from "./orc
 // ── Process Orchestrator (tmux fallback) ──────────────────────────────────────
 export type { ProcessWindow } from "./process-orchestrator.js";
 export { ProcessOrchestrator } from "./process-orchestrator.js";
+export type {
+	SideAgentAuditCode,
+	SideAgentAuditIssue,
+	SideAgentAuditSeverity,
+	SideAgentRuntimeAudit,
+} from "./side-agent-audit.js";
+export { auditSideAgentRuntime } from "./side-agent-audit.js";
+export type { SideAgentRecoverySummary } from "./side-agent-recovery.js";
+export { reconcilePersistedSideAgents } from "./side-agent-recovery.js";
 // ── Side Agent Registry ───────────────────────────────────────────────────────
 export type { SideAgentListener } from "./side-agent-registry.js";
 export { SideAgentRegistry } from "./side-agent-registry.js";
+export type { SideAgentRegistrySnapshot } from "./side-agent-registry-io.js";
+export { inspectPersistedSideAgentRegistry } from "./side-agent-registry-io.js";
+export type { SideAgentRegistryRepairMode, SideAgentRegistryRepairResult } from "./side-agent-registry-repair.js";
+export { repairPersistedSideAgentRegistry } from "./side-agent-registry-repair.js";
 // ── Tmux Orchestrator ─────────────────────────────────────────────────────────
-export type { TmuxWindow } from "./tmux-orchestrator.js";
+export type { TmuxWindow, TmuxWindowLocator } from "./tmux-orchestrator.js";
 export { TmuxOrchestrator } from "./tmux-orchestrator.js";
 // ── Tree-of-Thoughts ─────────────────────────────────────────────────────────
 export type { ThoughtNode, ToTConfig, ToTResult } from "./tot-planner.js";

@@ -24,6 +24,7 @@ Subcommands:
   takumi doctor              Show CLI/platform readiness diagnostics
   takumi platform [watch]    Show or live-monitor the local platform surface
   takumi package <action>    Manage Takumi workflow packages (list|inspect|doctor|scaffold)
+  takumi side-agents <action> Inspect or repair the persisted side-agent registry
 
 Options:
   -h, --help                Show this help message
@@ -87,6 +88,8 @@ Examples:
   pnpm takumi platform                          # Roll up doctor, jobs, daemon, and sessions
   pnpm takumi platform --json                   # Platform summary as structured JSON
   pnpm takumi platform watch                    # Live dashboard with single-keystroke controls
+  pnpm takumi side-agents inspect              # Inspect persisted side-agent registry health
+  pnpm takumi side-agents repair               # Explicitly rewrite malformed registry state
   pnpm takumi package list                      # Show discovered Takumi packages
   pnpm takumi package inspect review-kit        # Inspect one package in detail
   pnpm takumi package doctor                    # Validate package inventory and warnings

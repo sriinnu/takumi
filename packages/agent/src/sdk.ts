@@ -61,19 +61,32 @@ function buildSendMessage(opts: SessionOptions) {
 		thinkingBudget: opts.thinkingBudget ?? 10000,
 	};
 
-	if (opts.provider === "anthropic") {
-		const p = new DirectProvider(base as unknown as TakumiConfig);
-		return p.sendMessage.bind(p);
-	}
-	if (opts.provider === "openai") {
-		const p = new OpenAIProvider(base);
-		return p.sendMessage.bind(p);
-	}
-	if (opts.provider === "google") {
-		const p = new GeminiProvider(base);
-		return p.sendMessage.bind(p);
-	}
-	throw new Error(`Unsupported provider: ${opts.provider}`);
+	let cachedProvider: DirectProvider | OpenAIProvider | GeminiProvider | null = null;
+
+	const getProvider = () => {
+		if (cachedProvider) return cachedProvider;
+		if (opts.provider === "anthropic") {
+			cachedProvider = new DirectProvider(base as unknown as TakumiConfig);
+			return cachedProvider;
+		}
+		if (opts.provider === "openai") {
+			cachedProvider = new OpenAIProvider(base);
+			return cachedProvider;
+		}
+		if (opts.provider === "google") {
+			cachedProvider = new GeminiProvider(base);
+			return cachedProvider;
+		}
+		throw new Error(`Unsupported provider: ${opts.provider}`);
+	};
+
+	return (
+		messages: MessagePayload[],
+		system: string,
+		tools?: ToolDefinition[],
+		signal?: AbortSignal,
+		options?: { model?: string },
+	) => getProvider().sendMessage(messages, system, tools, signal, options);
 }
 
 /**

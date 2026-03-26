@@ -22,6 +22,12 @@ function createSendMessageFn() {
 	);
 }
 
+function createErrorStream(message: string): AsyncIterable<AgentEvent> {
+	return (async function* () {
+		yield { type: "error", error: new Error(message) } as AgentEvent;
+	})();
+}
+
 describe("AgentRunner", () => {
 	let state: AppState;
 
@@ -183,5 +189,23 @@ describe("AgentRunner", () => {
 			role: "user",
 			content: [{ type: "text", text: "continue from there" }],
 		});
+	});
+
+	it("surfaces runtime errors as assistant messages instead of logging only", async () => {
+		const sendMessageFn = vi.fn(() => createErrorStream("sidecar crashed"));
+		const tools = new ToolRegistry();
+		const runner = new AgentRunner(
+			state,
+			{ maxTurns: 4, systemPrompt: "You are Takumi." } as never,
+			sendMessageFn,
+			tools,
+		);
+
+		await runner.submit("trigger failure");
+
+		const assistantText = state.messages.value
+			.flatMap((message) => message.content)
+			.find((block) => block.type === "text" && block.text.includes("Run failed."));
+		expect(assistantText).toMatchObject({ type: "text" });
 	});
 });

@@ -1,4 +1,4 @@
-import type { Message, ToolDefinition } from "@takumi/core";
+import type { Message, ToolDefinition, ToolResult } from "@takumi/core";
 import type { ExperienceMemory } from "./context/experience-memory.js";
 import type { MemoryHooks } from "./context/memory-hooks.js";
 import type { PrincipleMemory } from "./context/principles.js";
@@ -159,4 +159,40 @@ function blockToCore(block: unknown): Message["content"][number] {
 /** Convert core Message[] back to MessagePayload[]. */
 export function coreToPayload(msg: Message): MessagePayload {
 	return { role: msg.role, content: msg.content as MessagePayload["content"] };
+}
+
+/**
+ * Record end-of-turn memory observations: memoryHooks success signal and
+ * principleMemory turn recording. Extracted here so loop.ts stays under the
+ * 450-line production file limit.
+ *
+ * Not called on preempted turns — aborted tool results are not meaningful
+ * learning signals.
+ */
+export function recordTurnObservations(
+	memoryHooks: MemoryHooks | undefined,
+	principleMemory: PrincipleMemory | undefined,
+	userText: string,
+	toolResults: Array<{ name: string; result: ToolResult }>,
+	tools: ToolRegistry,
+	finalResponse: string,
+): void {
+	if (memoryHooks && toolResults.every((e) => !e.result.isError)) {
+		memoryHooks.observeSuccess(
+			userText,
+			toolResults.map((e) => e.name),
+		);
+	}
+	if (principleMemory) {
+		const toolCategories = toolResults
+			.map((e) => tools.getDefinition(e.name)?.category)
+			.filter((cat): cat is NonNullable<ToolDefinition["category"]> => cat !== undefined);
+		principleMemory.observeTurn({
+			request: userText,
+			toolNames: toolResults.map((e) => e.name),
+			toolCategories,
+			hadError: toolResults.some((e) => e.result.isError),
+			finalResponse,
+		});
+	}
 }

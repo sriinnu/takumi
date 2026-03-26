@@ -289,9 +289,10 @@ async function installPackage(source: string): Promise<string> {
 
 async function removePackage(name: string, config: TakumiConfig): Promise<boolean> {
 	const slug = slugifyPackageName(name) ?? name;
+	const projectRoot = config.workingDirectory || process.cwd();
 	const candidates = [
 		join(globalPackagesDir(), slug),
-		join(config.projectRoot ?? process.cwd(), ".takumi", "packages", slug),
+		join(projectRoot, ".takumi", "packages", slug),
 	];
 	for (const dir of candidates) {
 		if (existsSync(dir)) {

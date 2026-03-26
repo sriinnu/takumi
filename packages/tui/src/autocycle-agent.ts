@@ -5,14 +5,19 @@ import { Autocycle, type AutocycleRunSummary, type CycleResult, DEFAULT_MAX_ITER
 import { batch } from "@takumi/render";
 import type { AgentRunner } from "./agent-runner.js";
 import type { AppCommandContext } from "./app-command-context.js";
+import { reportAutocycleIterationToChitragupta } from "./autocycle-chitragupta.js";
+import { writeAutocycleManifest } from "./autocycle-manifest.js";
 
 export interface AutocycleAgentOptions {
 	targetFile: string;
 	evalCommand: string;
 	evalBudgetMs: number;
 	metricRegex?: string;
+	metricColumn?: string;
 	maximizeMetric?: boolean;
 	maxIterations?: number;
+	manifestFile?: string;
+	resumeLedgerFile?: string;
 }
 
 export class AutocycleAgent {
@@ -67,30 +72,67 @@ export class AutocycleAgent {
 			evalCommand: this.options.evalCommand,
 			evalBudgetMs: this.options.evalBudgetMs,
 			metricRegex,
+			metricColumn: this.options.metricColumn,
 			optimizeDirection: this.options.maximizeMetric ? "maximize" : "minimize",
+			ledgerFile: this.options.resumeLedgerFile,
+			resumeFromLedger: Boolean(this.options.resumeLedgerFile),
 		});
 
-		// Validate target file is accessible before starting the loop
-		await autocycle.validateTargetFile();
+		const initialSummary = await autocycle.initializeRunState();
 
 		const maxIter = this.options.maxIterations ?? DEFAULT_MAX_ITERATIONS;
-		let lastResult: CycleResult | null = null;
+		const manifestFilePath = await writeAutocycleManifest({
+			objective,
+			targetFile: this.options.targetFile,
+			evalCommand: this.options.evalCommand,
+			evalBudgetMs: this.options.evalBudgetMs,
+			maxIterations: maxIter,
+			optimizeDirection: this.options.maximizeMetric ? "maximize" : "minimize",
+			metricRegex: this.options.metricRegex,
+			metricColumn: this.options.metricColumn,
+			manifestFile: this.options.manifestFile,
+		});
+		let lastResult: CycleResult | null =
+			initialSummary.latestMetric == null
+				? null
+				: {
+						iteration: initialSummary.completedEvaluations,
+						success: initialSummary.counts.keep > 0,
+						status: initialSummary.completedEvaluations > 0 ? "keep" : "aborted",
+						metric: initialSummary.latestMetric,
+						stdout: "",
+						durationMs: 0,
+					};
+		const completedEvaluations = initialSummary.completedEvaluations;
 
 		batch(() => {
 			state.autocyclePhase.value = "running";
 			state.autocycleMaxIterations.value = maxIter;
-			state.autocycleIteration.value = 0;
-			state.autocycleMetric.value = null;
+			state.autocycleIteration.value = completedEvaluations;
+			state.autocycleMetric.value = initialSummary.latestMetric;
 		});
 
-		this.ctx.addInfoMessage(`Starting Autocycle for: ${objective}`);
+		if (completedEvaluations > 0) {
+			this.ctx.addInfoMessage(
+				`Resuming Autocycle for: ${objective} (${completedEvaluations}/${maxIter} evaluations already completed)`,
+			);
+		} else {
+			this.ctx.addInfoMessage(`Starting Autocycle for: ${objective}`);
+		}
+		this.ctx.addInfoMessage(`Autocycle manifest: ${manifestFilePath}`);
 		this.ctx.addInfoMessage(`Autocycle ledger: ${autocycle.getLedgerFilePath()}`);
 
 		try {
 			const signal = this.abortController.signal;
 			const targetFullPath = path.resolve(process.cwd(), this.options.targetFile);
 
-			for (let i = 0; i < maxIter; i++) {
+			if (completedEvaluations >= maxIter) {
+				this.ctx.addInfoMessage(`Autocycle already reached ${completedEvaluations}/${maxIter} evaluations.`);
+				this.ctx.addInfoMessage(formatAutocycleRunSummary(autocycle.getRunSummary()));
+				return;
+			}
+
+			for (let i = completedEvaluations; i < maxIter; i++) {
 				if (signal.aborted) {
 					this.ctx.addInfoMessage(`Autocycle cancelled at iteration ${i + 1}/${maxIter}.`);
 					break;
@@ -102,7 +144,13 @@ export class AutocycleAgent {
 				// Clear history between iterations to prevent unbounded growth
 				if (i > 0) this.runner.clearHistory();
 
-				const prompt = buildAutocyclePrompt(objective, this.options.targetFile, this.options.evalCommand, lastResult);
+				const prompt = buildAutocyclePrompt(
+					objective,
+					this.options.targetFile,
+					this.options.evalCommand,
+					lastResult,
+					autocycle.getRunSummary().bestMetric,
+				);
 
 				this.ctx.addInfoMessage(`Autocycle ${i + 1}/${maxIter} — generating...`);
 
@@ -153,6 +201,16 @@ export class AutocycleAgent {
 				if (lastResult.metric != null) {
 					state.autocycleMetric.value = lastResult.metric;
 				}
+
+				await reportAutocycleIterationToChitragupta({
+					state,
+					objective,
+					targetFile: this.options.targetFile,
+					evalCommand: this.options.evalCommand,
+					manifestFilePath,
+					result: lastResult,
+					summary: autocycle.getRunSummary(),
+				});
 
 				if (lastResult.success) {
 					this.ctx.addInfoMessage(
@@ -222,13 +280,16 @@ function buildAutocyclePrompt(
 	targetFile: string,
 	evalCommand: string,
 	lastResult: CycleResult | null,
+	currentBestMetric: number | null,
 ): string {
 	let prompt = "We are running an Autocycle optimization loop.\n\n";
 	prompt += `Objective: ${objective}\n`;
 	prompt += `Target File: ${targetFile}\n`;
 	prompt += `Eval Command: ${evalCommand}\n`;
+	if (currentBestMetric != null) {
+		prompt += `Current Best Metric: ${currentBestMetric}\n`;
+	}
 	if (lastResult?.metric != null) {
-		prompt += `Current Best Metric: ${lastResult.metric}\n`;
 		prompt += `Last iteration ${lastResult.success ? "improved" : "did not improve"} the metric.\n\n`;
 	}
 	prompt += "Your task: Edit the target file to improve the metric. ";

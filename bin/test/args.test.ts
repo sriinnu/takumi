@@ -66,4 +66,11 @@ describe("parseArgs", () => {
 		expect(args.subcommandArg).toBe("inspect");
 		expect(args.prompt).toEqual(["review-kit"]);
 	});
+
+	it("parses side-agents repair as an operational subcommand", () => {
+		const args = parseArgs(["node", "takumi", "side-agents", "repair", "--json"]);
+		expect(args.subcommand).toBe("side-agents");
+		expect(args.subcommandArg).toBe("repair");
+		expect(args.json).toBe(true);
+	});
 });

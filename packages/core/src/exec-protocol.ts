@@ -59,6 +59,14 @@ export interface SerializedError {
 	stack?: string;
 }
 
+export interface ExecSideAgentBootstrapSnapshot {
+	enabled: boolean;
+	degraded: boolean;
+	reason: string;
+	summary: string;
+	detail?: string;
+}
+
 export interface ExecBootstrapSnapshot {
 	connected: boolean;
 	degraded: boolean;
@@ -67,6 +75,7 @@ export interface ExecBootstrapSnapshot {
 	vasanaCount: number;
 	hasHealth: boolean;
 	summary: string;
+	sideAgents?: ExecSideAgentBootstrapSnapshot;
 	error?: SerializedError;
 }
 

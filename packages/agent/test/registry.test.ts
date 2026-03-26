@@ -360,6 +360,74 @@ describe("ToolRegistry", () => {
 
 			expect(result).toBe(expected);
 		});
+
+		it("serializes same-file write tools while allowing completion of both", async () => {
+			const reg = new ToolRegistry();
+			const order: string[] = [];
+			let releaseFirst!: () => void;
+			const firstStarted = new Promise<void>((resolve) => {
+				releaseFirst = resolve;
+			});
+
+			let firstActive = false;
+			const handler: ToolHandler = async (_input) => {
+				order.push("start");
+				if (!firstActive) {
+					firstActive = true;
+					await firstStarted;
+				}
+				order.push("finish");
+				return { output: "ok", isError: false };
+			};
+
+			reg.register(makeDef("write", { category: "write", requiresPermission: true }), handler);
+
+			const first = reg.execute("write", { file_path: "/tmp/test.ts", content: "a" }, undefined, {
+				permissionChecked: true,
+			});
+			await Promise.resolve();
+			const second = reg.execute("write", { file_path: "/tmp/test.ts", content: "b" }, undefined, {
+				permissionChecked: true,
+			});
+
+			await Promise.resolve();
+			expect(order).toEqual(["start"]);
+
+			releaseFirst();
+			await Promise.all([first, second]);
+			expect(order).toEqual(["start", "finish", "start", "finish"]);
+		});
+
+		it("does not serialize writes to different files", async () => {
+			const reg = new ToolRegistry();
+			const active = new Set<string>();
+			let overlapDetected = false;
+			let release!: () => void;
+			const gate = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+
+			const handler: ToolHandler = async (input) => {
+				const path = String(input.file_path);
+				active.add(path);
+				if (active.size > 1) overlapDetected = true;
+				await gate;
+				active.delete(path);
+				return { output: path, isError: false };
+			};
+
+			reg.register(makeDef("edit", { category: "write", requiresPermission: true }), handler);
+
+			const first = reg.execute("edit", { file_path: "/tmp/a.ts" }, undefined, { permissionChecked: true });
+			const second = reg.execute("edit", { file_path: "/tmp/b.ts" }, undefined, { permissionChecked: true });
+
+			await Promise.resolve();
+			await Promise.resolve();
+			release();
+			await Promise.all([first, second]);
+
+			expect(overlapDetected).toBe(true);
+		});
 	});
 
 	/* ---- size ------------------------------------------------------------ */

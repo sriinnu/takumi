@@ -105,4 +105,39 @@ describe("TakumiApp lifecycle cleanup", () => {
 		expect(app.activeAutocycle).toBeNull();
 		expect(app.running).toBe(false);
 	});
+
+	it("emits OSC 133 lifecycle markers for supported terminals", async () => {
+		const write = vi.fn();
+		const originalTermProgram = process.env.TERM_PROGRAM;
+		process.env.TERM_PROGRAM = "ghostty";
+
+		const app = new TakumiApp({
+			config: {
+				provider: "anthropic",
+				model: "claude-sonnet-4-20250514",
+				thinking: false,
+				thinkingBudget: 10000,
+				theme: "default",
+			} as never,
+			stdin: { on: vi.fn(), resume: vi.fn(), setRawMode: vi.fn() } as never,
+			stdout: { write } as never,
+		}) as any;
+
+		app.write("hello");
+		app.terminalCapabilities = { ...app.terminalCapabilities, osc133: true };
+		app.running = true;
+
+		const originalExit = process.exit;
+		(process as any).exit = vi.fn();
+		try {
+			app.write("\x1b]133;C\x07");
+			await app.quit();
+		} finally {
+			(process as any).exit = originalExit;
+			process.env.TERM_PROGRAM = originalTermProgram;
+		}
+
+		expect(write).toHaveBeenCalledWith("\x1b]133;C\x07");
+		expect(write).toHaveBeenCalledWith("\x1b]133;D;0\x07");
+	});
 });

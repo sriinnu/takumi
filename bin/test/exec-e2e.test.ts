@@ -141,12 +141,16 @@ describe("takumi exec e2e", () => {
 			expect(result.events.some((event) => event.kind === "agent_event")).toBe(true);
 			expect(result.events.at(-1)).toMatchObject({ kind: "run_completed", exitCode: EXEC_EXIT_CODES.OK });
 
-			const bootstrapEvent = result.events.find((event) => event.kind === "bootstrap_status");
-			expect(bootstrapEvent).toBeDefined();
-			if (bootstrapEvent?.kind === "bootstrap_status") {
-				expect(bootstrapEvent.bootstrap.connected).toBe(false);
-				expect(bootstrapEvent.bootstrap.degraded).toBe(true);
-			}
+		const bootstrapEvent = result.events.find((event) => event.kind === "bootstrap_status");
+		expect(bootstrapEvent).toBeDefined();
+		if (bootstrapEvent?.kind === "bootstrap_status") {
+			expect(bootstrapEvent.bootstrap.connected).toBe(false);
+			expect(bootstrapEvent.bootstrap.degraded).toBe(true);
+			expect(bootstrapEvent.bootstrap.sideAgents).toMatchObject({
+				degraded: true,
+				reason: "tmux_unavailable",
+			});
+		}
 
 			const completedEvent = result.events.at(-1);
 			if (completedEvent?.kind === "run_completed") {

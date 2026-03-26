@@ -17,11 +17,13 @@ import { formatRagContext, queryIndex } from "./context/rag.js";
 import type { BudgetGuard } from "./cost.js";
 import { BudgetExceededError } from "./cost.js";
 import type { ExtensionRunner } from "./extensions/extension-runner.js";
+import { injectNextSteeringDirective, setupPreemptWatcher } from "./loop-steering.js";
 import {
 	buildEnrichedSystemPrompt,
 	coreToPayload,
 	mergeExtensionTools,
 	payloadToCore,
+	recordTurnObservations,
 	selectTurnTools,
 } from "./loop-support.js";
 import { buildToolResult, buildUserMessage } from "./message.js";
@@ -313,11 +315,17 @@ export async function* agentLoop(
 
 		// If no tool calls, we're done
 		if (pendingToolCalls.length === 0) {
+			if (injectNextSteeringDirective(messages, options.steeringQueue)) {
+				continue;
+			}
 			return;
 		}
 
 		// Execute tool calls (may be parallel)
 		const toolResults: Array<{ id: string; name: string; result: ToolResult }> = [];
+
+		// Phase 50 — abort tools immediately when an INTERRUPT is enqueued mid-run.
+		const watcher = setupPreemptWatcher(options.steeringQueue, signal);
 
 		const executions = pendingToolCalls.map(async (tc) => {
 			const definition = tools.getDefinition(tc.name);
@@ -349,7 +357,7 @@ export async function* agentLoop(
 			}
 
 			const t0 = Date.now();
-			let result = await tools.execute(tc.name, tc.input, signal, { permissionChecked: true });
+			let result = await tools.execute(tc.name, tc.input, watcher.signal, { permissionChecked: true });
 			const elapsed = Date.now() - t0;
 
 			// Phase 45 — emit tool_result (can modify result)
@@ -373,20 +381,31 @@ export async function* agentLoop(
 			return { id: tc.id, name: tc.name, result };
 		});
 
-		const results = await Promise.all(executions);
+		let results: Array<{ id: string; name: string; result: ToolResult }> = [];
+		try {
+			results = await Promise.all(executions);
+		} finally {
+			watcher.dispose();
+		}
 
 		for (const { id, name, result } of results) {
-			toolResults.push({ id, name, result });
+			// Phase 50 — replace isError results of aborted tools with a clean
+			// preemption message so the LLM understands what happened.
+			const effectiveResult: ToolResult =
+				watcher.fired && result.isError
+					? { output: "[Preempted — tool stopped for interrupt directive]", isError: false }
+					: result;
+			toolResults.push({ id, name, result: effectiveResult });
 			yield {
 				type: "tool_result",
 				id,
 				name,
-				output: result.output,
-				isError: result.isError,
+				output: effectiveResult.output,
+				isError: effectiveResult.isError,
 			};
 
 			// Phase 33 — Extract lessons from tool error→success patterns
-			if (options.memoryHooks && result.isError) {
+			if (!watcher.fired && options.memoryHooks && result.isError) {
 				options.memoryHooks.extract({
 					type: "tool_error_then_success",
 					details: `tool "${name}" failed: ${typeof result.output === "string" ? result.output.slice(0, 120) : "error"}`,
@@ -394,52 +413,30 @@ export async function* agentLoop(
 			}
 		}
 
-		if (options.memoryHooks && toolResults.every((entry) => !entry.result.isError)) {
-			options.memoryHooks.observeSuccess(
-				userText,
-				toolResults.map((entry) => entry.name),
-			);
-		}
-		if (options.principleMemory) {
-			const toolCategories = toolResults
-				.map((entry) => tools.getDefinition(entry.name)?.category)
-				.filter((value): value is NonNullable<ToolDefinition["category"]> => value !== undefined);
-			options.principleMemory.observeTurn({
-				request: userText,
-				toolNames: toolResults.map((entry) => entry.name),
-				toolCategories,
-				hadError: toolResults.some((entry) => entry.result.isError),
-				finalResponse: fullText,
-			});
-		}
-
 		// Add tool results to message history
 		const toolResultContent = toolResults.map((tr) => buildToolResult(tr.id, tr.result));
 		messages.push({ role: "user", content: toolResultContent });
+
+		// Phase 50 — if preempted, inject the interrupt that triggered it and
+		// restart. Skip turn_end telemetry — the turn was aborted mid-flight.
+		if (watcher.fired) {
+			injectNextSteeringDirective(messages, options.steeringQueue);
+			continue;
+		}
+
+		// Phase 49 — record memory observations (skipped on preempted turns).
+		recordTurnObservations(options.memoryHooks, options.principleMemory, userText, toolResults, tools, fullText);
 
 		// Phase 45 — emit turn_end with usage
 		if (ext && _usage) {
 			void ext.emit({ type: "turn_end", turnIndex: turn, usage: _usage });
 		}
 
-		// Phase 48 — Drain steering queue between turns.
-		// INTERRUPT items abort the current continuation; HIGH/NORMAL are injected as user messages.
-		if (options.steeringQueue && !options.steeringQueue.isEmpty) {
-			if (options.steeringQueue.hasInterrupt()) {
-				const interrupts = options.steeringQueue.drain();
-				const combined = interrupts.map((i) => i.text).join("\n\n");
-				log.info(`Steering: ${interrupts.length} interrupt(s), aborting continuation`);
-				messages.push({ role: "user", content: buildUserMessage(combined) });
-				// Don't return — let the loop continue with the interrupt message
-				continue;
-			}
-			const items = options.steeringQueue.drain();
-			if (items.length > 0) {
-				const combined = items.map((i) => `[Steering directive] ${i.text}`).join("\n\n");
-				log.info(`Steering: injecting ${items.length} directive(s) between turns`);
-				messages.push({ role: "user", content: buildUserMessage(combined) });
-				continue;
-			}
+		// Phase 48 — process exactly one queued directive between turns.
+		// This preserves queued work, lets interrupt items jump ahead, and keeps
+		// remaining directives cancellable until they become the active turn.
+		if (injectNextSteeringDirective(messages, options.steeringQueue)) {
+			continue;
 		}
 
 		// If the stop reason was not tool_use, we're done

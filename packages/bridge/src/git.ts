@@ -3,7 +3,7 @@
  * All functions run git commands synchronously and parse the output.
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -23,6 +23,11 @@ export interface GitLogEntry {
 	author: string;
 	date: string;
 	message: string;
+}
+
+export interface GitWorktreeAddOptions {
+	/** Create and check out a fresh branch in the new worktree. */
+	newBranch?: string;
 }
 
 /** Check if a directory is inside a git repository. */
@@ -131,14 +136,26 @@ export function gitRoot(cwd: string): string | null {
 
 /**
  * Create a linked git worktree at `path` checked out to `commitish` (default: HEAD).
+ * When `options.newBranch` is set, Git creates and checks out that branch in the worktree.
  * Returns the resolved worktree path on success, or `null` on failure.
  *
  * @param repoRoot - Absolute path to the repository root.
  * @param path     - Destination directory for the new worktree.
  * @param commitish - Git ref to check out (default: `"HEAD"`).
+ * @param options  - Optional worktree creation options.
  */
-export function gitWorktreeAdd(repoRoot: string, path: string, commitish = "HEAD"): string | null {
-	const result = gitExec(`worktree add "${path}" ${commitish}`, repoRoot);
+export function gitWorktreeAdd(
+	repoRoot: string,
+	path: string,
+	commitish = "HEAD",
+	options: GitWorktreeAddOptions = {},
+): string | null {
+	const args = ["worktree", "add"];
+	if (options.newBranch?.trim()) {
+		args.push("-b", options.newBranch.trim());
+	}
+	args.push(path, commitish);
+	const result = gitExecArgs(args, repoRoot);
 	return result !== null ? path : null;
 }
 
@@ -150,7 +167,7 @@ export function gitWorktreeAdd(repoRoot: string, path: string, commitish = "HEAD
  * @param path     - Path of the worktree to remove.
  */
 export function gitWorktreeRemove(repoRoot: string, path: string): boolean {
-	return gitExec(`worktree remove --force "${path}"`, repoRoot) !== null;
+	return gitExecArgs(["worktree", "remove", "--force", path], repoRoot) !== null;
 }
 
 /**
@@ -159,7 +176,7 @@ export function gitWorktreeRemove(repoRoot: string, path: string): boolean {
  * @param repoRoot - Absolute path to the repository root.
  */
 export function gitWorktreeList(repoRoot: string): string[] {
-	const out = gitExec("worktree list --porcelain", repoRoot);
+	const out = gitExecArgs(["worktree", "list", "--porcelain"], repoRoot);
 	if (!out) return [];
 	return out
 		.split("\n")
@@ -172,6 +189,20 @@ export function gitWorktreeList(repoRoot: string): string[] {
 function gitExec(args: string, cwd: string): string | null {
 	try {
 		const result = execSync(`git ${args}`, {
+			cwd,
+			encoding: "utf-8",
+			timeout: 10_000,
+			stdio: ["pipe", "pipe", "pipe"],
+		});
+		return result.trim();
+	} catch {
+		return null;
+	}
+}
+
+function gitExecArgs(args: string[], cwd: string): string | null {
+	try {
+		const result = execFileSync("git", args, {
 			cwd,
 			encoding: "utf-8",
 			timeout: 10_000,

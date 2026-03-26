@@ -18,6 +18,8 @@ import {
 } from "@takumi/core";
 import type { AgentRunner } from "./agent-runner.js";
 import { listLocalRuntimes, startLocalRuntime, stopLocalRuntime } from "./desktop-runtime-control.js";
+import type { ExtensionUiStore } from "./extension-ui-store.js";
+import { buildExtensionUiSnapshot, resolveExtensionPromptResponse } from "./http-bridge-extension-ui.js";
 import type { AppState } from "./state.js";
 
 const log = createLogger("desktop-bridge-runtime");
@@ -288,7 +290,10 @@ export function buildFleetSummary(state: AppState): FleetSummary {
 	};
 }
 
-export function buildAgentStateSnapshot(state: AppState): AgentStateSnapshot {
+export function buildAgentStateSnapshot(
+	state: AppState,
+	extensionUiStore?: ExtensionUiStore | null,
+): AgentStateSnapshot {
 	return {
 		pid: process.pid,
 		activity: state.isStreaming.value ? "working" : state.pendingPermission.value ? "waiting_input" : "idle",
@@ -304,6 +309,7 @@ export function buildAgentStateSnapshot(state: AppState): AgentStateSnapshot {
 		routing: summarizeRouting(state),
 		approval: summarizeApproval(state),
 		anomaly: summarizeAnomaly(state),
+		extensionUi: buildExtensionUiSnapshot(extensionUiStore),
 		updatedAt: Date.now(),
 	};
 }
@@ -311,6 +317,7 @@ export function buildAgentStateSnapshot(state: AppState): AgentStateSnapshot {
 export async function startDesktopBridge(
 	state: AppState,
 	agentRunner: AgentRunner | null,
+	extensionUiStore?: ExtensionUiStore | null,
 ): Promise<HttpBridgeServer | null> {
 	const rawPort = process.env.TAKUMI_BRIDGE_PORT || "3100";
 	const port = Number.parseInt(rawPort, 10);
@@ -333,7 +340,7 @@ export async function startDesktopBridge(
 			runtimeSource: detectRuntimeSource(),
 			chitraguptaConnected: state.chitraguptaConnected.value,
 		}),
-		getAgentState: async () => buildAgentStateSnapshot(state),
+		getAgentState: async () => buildAgentStateSnapshot(state, extensionUiStore),
 		listAgents: async () => [process.pid],
 		getSessionList: async (limit) => {
 			const chitragupta = state.chitraguptaBridge.value;
@@ -401,6 +408,19 @@ export async function startDesktopBridge(
 			}),
 		listRuntimes: async () => listLocalRuntimes(),
 		stopRuntime: async (runtimeId) => stopLocalRuntime(runtimeId),
+		respondExtensionPrompt: async (response) => {
+			const normalizedResponse =
+				response.action === "pick" && typeof response.index === "number"
+					? { action: "pick" as const, index: response.index }
+					: response.action === "confirm"
+						? { action: "confirm" as const }
+						: { action: "cancel" as const };
+			const result = resolveExtensionPromptResponse(extensionUiStore, normalizedResponse);
+			if (result.success) {
+				bridge.notifyStateChange();
+			}
+			return result;
+		},
 	});
 
 	try {

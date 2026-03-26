@@ -144,6 +144,19 @@ describe("Autocycle", () => {
 		expect(result.metric).toBe(0.95);
 	});
 
+	it("should extract metric from a TSV column before regex fallback", async () => {
+		__setMockExit({
+			code: 0,
+			stdout: "commit\tval_bpb\tmemory_gb\nabc123\t0.912345\t4.2\n",
+		});
+		const ac = new Autocycle(makeOptions({ metricColumn: "val_bpb", metricRegex: /val_bpb:\s+([\d.]+)/ }));
+		const result = await ac.runCycleEvaluation();
+
+		expect(result.success).toBe(true);
+		expect(result.status).toBe("keep");
+		expect(result.metric).toBe(0.912345);
+	});
+
 	it("should detect improvement across iterations", async () => {
 		__setMockExit({ code: 0, stdout: "score: 10" });
 		const ac = new Autocycle(makeOptions({ metricRegex: /score:\s+([\d.]+)/, optimizeDirection: "maximize" }));
@@ -229,6 +242,109 @@ describe("Autocycle", () => {
 	it("validateTargetFile should throw when file is missing", async () => {
 		const ac = new Autocycle(makeOptions({ targetFile: "does-not-exist.txt" }));
 		await expect(ac.validateTargetFile()).rejects.toThrow();
+	});
+
+	it("initializeRunState seeds backup so first failed iteration reverts the target", async () => {
+		const ac = new Autocycle(makeOptions());
+		await ac.initializeRunState();
+
+		await fs.writeFile(path.join(TMP_DIR, TARGET_FILE), "mutated content", "utf-8");
+		__setMockExit({ code: 1, stderr: "fail" });
+
+		const result = await ac.runCycleEvaluation();
+		expect(result.success).toBe(false);
+
+		const content = await fs.readFile(path.join(TMP_DIR, TARGET_FILE), "utf-8");
+		expect(content).toBe("original content");
+	});
+
+	it("initializeRunState resumes from an existing ledger and continues iteration numbering", async () => {
+		const ledgerPath = path.join(TMP_DIR, "resume.jsonl");
+		await fs.writeFile(
+			ledgerPath,
+			`${[
+				JSON.stringify({
+					runId: "run-resume",
+					iteration: 1,
+					status: "keep",
+					success: true,
+					metric: 10,
+					bestMetric: 10,
+					durationMs: 11,
+					evalCommand: "echo test",
+					targetFile: TARGET_FILE,
+					optimizeDirection: "maximize",
+					timestamp: new Date().toISOString(),
+				}),
+				JSON.stringify({
+					runId: "run-resume",
+					iteration: 2,
+					status: "keep",
+					success: true,
+					metric: 15,
+					bestMetric: 15,
+					durationMs: 12,
+					evalCommand: "echo test",
+					targetFile: TARGET_FILE,
+					optimizeDirection: "maximize",
+					timestamp: new Date().toISOString(),
+				}),
+			].join("\n")}\n`,
+			"utf-8",
+		);
+
+		const ac = new Autocycle(
+			makeOptions({
+				ledgerFile: "resume.jsonl",
+				resumeFromLedger: true,
+				metricRegex: /score:\s+([\d.]+)/,
+				optimizeDirection: "maximize",
+			}),
+		);
+
+		const initialSummary = await ac.initializeRunState();
+		expect(initialSummary.completedEvaluations).toBe(2);
+		expect(initialSummary.bestMetric).toBe(15);
+		expect(initialSummary.baselineMetric).toBe(10);
+
+		__setMockExit({ code: 0, stdout: "score: 20" });
+		const result = await ac.runCycleEvaluation();
+		expect(result.iteration).toBe(3);
+		expect(result.metric).toBe(20);
+
+		const summary = ac.getRunSummary();
+		expect(summary.completedEvaluations).toBe(3);
+		expect(summary.bestMetric).toBe(20);
+	});
+
+	it("initializeRunState rejects mismatched resume ledgers", async () => {
+		await fs.writeFile(
+			path.join(TMP_DIR, "resume.jsonl"),
+			`${JSON.stringify({
+				runId: "run-resume",
+				iteration: 1,
+				status: "keep",
+				success: true,
+				metric: 10,
+				bestMetric: 10,
+				durationMs: 11,
+				evalCommand: "different command",
+				targetFile: TARGET_FILE,
+				optimizeDirection: "maximize",
+				timestamp: new Date().toISOString(),
+			})}\n`,
+			"utf-8",
+		);
+
+		const ac = new Autocycle(
+			makeOptions({
+				ledgerFile: "resume.jsonl",
+				resumeFromLedger: true,
+				optimizeDirection: "maximize",
+			}),
+		);
+
+		await expect(ac.initializeRunState()).rejects.toThrow("eval command mismatch");
 	});
 
 	it("should throw when revert fails due to missing target path", async () => {

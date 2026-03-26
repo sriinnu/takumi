@@ -1,6 +1,6 @@
 import type { CliArgs } from "./types.js";
 
-const SUBCOMMANDS = ["exec", "list", "status", "logs", "export", "delete", "jobs", "watch", "attach", "stop", "daemon", "doctor", "platform", "package"];
+const SUBCOMMANDS = ["exec", "list", "status", "logs", "export", "delete", "jobs", "watch", "attach", "stop", "daemon", "doctor", "platform", "package", "side-agents"];
 
 function parseStreamFormat(value: string | undefined): CliArgs["stream"] {
 	if (value === "ndjson" || value === "text") {

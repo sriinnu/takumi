@@ -6,6 +6,8 @@
 
 Takumi packages are the app-side packaging layer for reusable workflow customizations.
 
+They exist so I can extend **how Takumi works** without confusing that with **what Chitragupta governs**.
+
 They belong on the **Takumi** side of the architecture:
 
 - workflow extensions
@@ -14,6 +16,20 @@ They belong on the **Takumi** side of the architecture:
 - tool rule bundles
 
 They do **not** replace Chitragupta authority over durable integrations, capability routing, or auth.
+
+## What a package is
+
+The easiest way to keep the boundary honest is to separate package terms from engine terms:
+
+| Surface | Purpose | Lives where |
+|---|---|---|
+| **package** | a reusable Takumi workflow bundle | Takumi app side |
+| **extension** | executable code loaded by Takumi at runtime | inside a package or direct config path |
+| **skill / prompt asset** | packaged behavior or prompt material that shapes local execution | inside a package |
+| **plugin** | older direct-extension path kept for compatibility | Takumi config surface |
+| **provider / CLI capability registry** | durable runtime inventory, routing, and auth references | Chitragupta control plane |
+
+If a thing needs to own provider choice, credential references, health authority, or cross-app routing policy, it is not a Takumi package concern.
 
 ## Package layout
 
@@ -51,6 +67,16 @@ Each package is a directory with a `package.json` manifest:
 
 `plugins` stays backward-compatible for direct extension entry points. `packages` is the new higher-level distribution surface.
 
+## Discoverability model
+
+Takumi keeps discovery simple on purpose:
+
+- project-local packages are for repo-specific workflow behavior
+- global packages are for operator-wide defaults across projects
+- configured package roots are for vendor bundles, experiments, or checked-in package sets
+
+The runtime merges all three. `takumi package list` is the quickest way to confirm what the app can currently see.
+
 ## CLI lifecycle
 
 Takumi now ships a package-oriented operational surface:
@@ -87,6 +113,12 @@ What is still directional rather than fully shipped:
 - quarantine / promote flows
 - registry-backed publishing pipeline
 - formal evaluation execution for packages
+
+### Current product stance
+
+Packages are already a real extension and packaging surface.
+
+They are **not** yet a full remote marketplace with trust-gated publishing, automatic enablement flows, or policy-enforced governance. The docs should be read with that line in mind.
 
 ## Current lifecycle caveats
 

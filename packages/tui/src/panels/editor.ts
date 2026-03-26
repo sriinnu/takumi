@@ -9,7 +9,7 @@ import type { Screen } from "@takumi/render";
 import { Component, Input as InputComponent } from "@takumi/render";
 import type { SlashCommandRegistry } from "../commands.js";
 import type { CompletionItem, ProviderModelCatalog } from "../completion.js";
-import { CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "../completion.js";
+import { applyCompletionEdit, CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "../completion.js";
 import type { EditorOp } from "../vim.js";
 import { VimMode } from "../vim.js";
 
@@ -21,6 +21,8 @@ export interface EditorPanelProps {
 	getProviderCatalog?: () => ProviderModelCatalog;
 	getCurrentProvider?: () => string | undefined;
 }
+
+const VIM_MODAL_INPUT_ENABLED = false;
 
 export class EditorPanel extends Component {
 	private onSubmit: (text: string) => void;
@@ -113,11 +115,13 @@ export class EditorPanel extends Component {
 			return true;
 		}
 
-		// Vi modal input — intercepts in NORMAL mode, and Escape in INSERT mode
-		const op = this.vimMode.process(event.raw, this.input.getValue());
-		if (op.op !== "passthrough") {
-			this.markDirty();
-			return this.applyEditorOp(op);
+		if (VIM_MODAL_INPUT_ENABLED) {
+			// Vi modal input — intercepts in NORMAL mode, and Escape in INSERT mode
+			const op = this.vimMode.process(event.raw, this.input.getValue());
+			if (op.op !== "passthrough") {
+				this.markDirty();
+				return this.applyEditorOp(op);
+			}
 		}
 
 		// INSERT mode passthrough
@@ -162,8 +166,7 @@ export class EditorPanel extends Component {
 	/** Trigger completion based on current input. */
 	private triggerCompletion(): void {
 		const value = this.input.getValue();
-		// Cursor is always at the end for single-line input
-		const cursorCol = value.length;
+		const cursorCol = this.input.getCursorPos();
 
 		this.engine
 			.getCompletions(value, cursorCol)
@@ -183,8 +186,9 @@ export class EditorPanel extends Component {
 
 	/** Called when input text changes — auto-trigger completions for @ and / . */
 	private onInputChange(value: string): void {
+		const cursorCol = this.input.getCursorPos();
 		// Synchronous path: slash commands, /model, /provider — no I/O, instant response
-		const syncItems = this.engine.getCompletionsSync(value, value.length);
+		const syncItems = this.engine.getCompletionsSync(value, cursorCol);
 		if (syncItems !== null) {
 			// Cancel any pending async (file) completion
 			if (this.completionDebounceTimer !== null) {
@@ -208,7 +212,6 @@ export class EditorPanel extends Component {
 			}
 			this.completionDebounceTimer = setTimeout(() => {
 				this.completionDebounceTimer = null;
-				const cursorCol = value.length;
 				this.engine
 					.getCompletions(value, cursorCol)
 					.then((items) => {
@@ -236,17 +239,21 @@ export class EditorPanel extends Component {
 
 	/** Apply a confirmed completion item by replacing the input text. */
 	private applyCompletion(item: CompletionItem): void {
-		this.input.setValue(item.insertText);
+		const next = applyCompletionEdit(this.input.getValue(), item);
+		this.input.setValue(next.text, next.cursorCol);
 		this.completion.hide();
 		this.markDirty();
 	}
 
 	render(screen: Screen, rect: Rect): void {
 		// Draw separator line with vim mode indicator (e.g. " [N] ───")
-		const label = this.vimMode.label;
+		const label = VIM_MODAL_INPUT_ENABLED ? this.vimMode.label : " [T] ";
 		const bar = label + "\u2500".repeat(Math.max(0, rect.width - label.length));
-		const labelColor = this.vimMode.mode === "NORMAL" ? 11 : 8; // yellow for NORMAL
-		screen.writeText(rect.y, rect.x, label, { fg: labelColor, bold: this.vimMode.mode === "NORMAL" });
+		const labelColor = VIM_MODAL_INPUT_ENABLED && this.vimMode.mode === "NORMAL" ? 11 : 8;
+		screen.writeText(rect.y, rect.x, label, {
+			fg: labelColor,
+			bold: VIM_MODAL_INPUT_ENABLED && this.vimMode.mode === "NORMAL",
+		});
 		screen.writeText(rect.y, rect.x + label.length, bar.slice(label.length), { fg: 8, dim: true });
 
 		// Draw input on the line(s) below

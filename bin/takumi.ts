@@ -16,7 +16,8 @@ import { cmdDelete, cmdExport, cmdList, cmdLogs, cmdStatus } from "./cli/session
 import { cmdDaemon } from "./cli/daemon.js";
 import { printSplash } from "./cli/splash.js";
 import { cmdPackage } from "./cli/packages.js";
-import { registerOptionalSideAgentTools } from "./cli/side-agent-tools.js";
+import { collectRuntimeBootstrap } from "./cli/runtime-bootstrap.js";
+import { cmdSideAgents } from "./cli/side-agents.js";
 
 const VERSION = "0.1.0";
 
@@ -212,35 +213,32 @@ async function runInteractiveApp(
 	} = await import("@takumi/agent");
 
 	let availableProviderModels = { ...PROVIDER_MODELS };
-	try {
-		const discoveredProviderModels = await koshaProviderModels();
-		availableProviderModels = { ...PROVIDER_MODELS, ...discoveredProviderModels };
-		syncModelTiersFromKosha(discoveredProviderModels);
-	} catch {
-		// best effort only
-	}
-
 	const cwd = process.cwd();
-	const provider = await createProvider(config, args.fallback);
 	const tools = new ToolRegistry();
 	registerBuiltinTools(tools);
-	await registerOptionalSideAgentTools(tools, config, cwd);
 
 	// Phase 45 — Discover and load extensions
-	let localModels: string[] = [];
-	try {
-		const providers = await koshaProviders();
-		const ollama = providers.find((provider) => mapKoshaToTakumi(provider.id) === "ollama");
-		localModels = (ollama?.models ?? [])
-			.filter((model) => model.mode === "chat")
-			.map((model) => model.id)
-			.slice(0, 4);
-	} catch {
-		// best effort only
-	}
 	const configuredPaths = config.plugins?.map((p) => p.name) ?? [];
 	const configuredPackagePaths = config.packages?.map((pkg) => pkg.name) ?? [];
-	const extResult = await discoverAndLoadExtensions(configuredPaths, cwd, configuredPackagePaths);
+	const [provider, runtimeBootstrap, providerModelCatalog, localModels, extResult] = await Promise.all([
+		createProvider(config, args.fallback),
+		collectRuntimeBootstrap(config, { cwd, tools }),
+		koshaProviderModels().catch(() => null),
+		koshaProviders()
+			.then((providers) => {
+				const ollama = providers.find((provider) => mapKoshaToTakumi(provider.id) === "ollama");
+				return (ollama?.models ?? [])
+					.filter((model) => model.mode === "chat")
+					.map((model) => model.id)
+					.slice(0, 4);
+			})
+			.catch(() => []),
+		discoverAndLoadExtensions(configuredPaths, cwd, configuredPackagePaths),
+	]);
+	if (providerModelCatalog) {
+		availableProviderModels = { ...PROVIDER_MODELS, ...providerModelCatalog };
+		syncModelTiersFromKosha(providerModelCatalog);
+	}
 	const extensionRunner = extResult.extensions.length > 0 ? new ExtensionRunner(extResult.extensions) : undefined;
 	if (extResult.extensions.length > 0) {
 		process.stderr.write(`\x1b[2m⚡ Loaded ${extResult.extensions.length} extension(s)\x1b[0m\n`);
@@ -257,13 +255,14 @@ async function runInteractiveApp(
 
 	const app = new TakumiApp({
 		config,
-		startupSummary: {
-			provider: config.provider,
-			model: config.model,
-			authSource: startupAuthSource,
-			localModels,
-			availableProviderModels,
-		},
+			startupSummary: {
+				provider: config.provider,
+				model: config.model,
+				authSource: startupAuthSource,
+				sideAgents: runtimeBootstrap.warningLines[0] ?? undefined,
+				localModels,
+				availableProviderModels,
+			},
 		sendMessage: (messages: any, system: any, toolDefs: any, signal: any, options: any) =>
 			provider.sendMessage(messages, system, toolDefs, signal, options),
 		tools,
@@ -388,11 +387,19 @@ async function main(): Promise<void> {
 			case "platform":
 					await cmdPlatform(config, VERSION, args.json, args.fix, args.subcommandArg);
 				return;
-			case "package":
-					await cmdPackage(config, args.subcommandArg ?? "list", args.prompt, args.json);
-				return;
+				case "package":
+						await cmdPackage(config, args.subcommandArg ?? "list", args.prompt, args.json);
+					return;
+				case "side-agents":
+					try {
+						await cmdSideAgents(config, args.subcommandArg ?? "inspect", args.json);
+					} catch (error) {
+						console.error(error instanceof Error ? error.message : String(error));
+						process.exit(1);
+					}
+					return;
+			}
 		}
-	}
 	const prompt = args.prompt.join(" ");
 	const isNonTTY = !process.stdin.isTTY;
 	const isOneShot = isExecMode || prompt.length > 0 || args.print || args.headless || isNonTTY;

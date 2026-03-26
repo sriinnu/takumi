@@ -81,6 +81,15 @@ describe("resolveRoutingOverrides", () => {
 			currentModel: "claude-sonnet-4-20250514",
 		});
 
+		expect((observer.routeResolve as ReturnType<typeof vi.fn>).mock.calls[0][0].constraints).toMatchObject({
+			preferLocal: true,
+			requireStreaming: true,
+			preferredCapabilityIds: ["cli.codex"],
+		});
+		expect((observer.routeResolve as ReturnType<typeof vi.fn>).mock.calls[1][0].constraints).toMatchObject({
+			requireStreaming: true,
+			preferredCapabilityIds: ["cli.codex"],
+		});
 		expect(result.overrides[AgentRole.WORKER]).toBe("claude-sonnet-4-5");
 		expect(result.overrides[AgentRole.PLANNER]).toBe("claude-haiku-4-20250514");
 		expect(result.overrides[AgentRole.VALIDATOR_CODE]).toBe("claude-haiku-4-20250514");

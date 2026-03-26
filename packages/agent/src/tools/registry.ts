@@ -6,6 +6,7 @@
 import type { PermissionDecision, ToolDefinition, ToolResult } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import type { ExperienceMemory } from "../context/experience-memory.js";
+import { PathLockManager } from "./path-lock.js";
 import { type RankedTool, rankToolDefinitions, selectToolDefinitions, type ToolSelectionOptions } from "./selection.js";
 
 const log = createLogger("tool-registry");
@@ -25,6 +26,7 @@ interface RegisteredTool {
 export class ToolRegistry {
 	private tools = new Map<string, RegisteredTool>();
 	private permissionChecker: ToolPermissionChecker | null = null;
+	private readonly pathLockManager = new PathLockManager();
 
 	/** Register a tool with its definition and handler. */
 	register(definition: ToolDefinition, handler: ToolHandler): void {
@@ -111,6 +113,8 @@ export class ToolRegistry {
 			}
 		}
 
+		const releasePaths = await this.pathLockManager.acquire(extractWritablePaths(name, input));
+
 		try {
 			const result = await tool.handler(input, signal);
 			log.info(`Tool ${name} completed`, {
@@ -125,6 +129,8 @@ export class ToolRegistry {
 				output: `Tool execution error: ${message}`,
 				isError: true,
 			};
+		} finally {
+			releasePaths();
 		}
 	}
 
@@ -132,6 +138,14 @@ export class ToolRegistry {
 	get size(): number {
 		return this.tools.size;
 	}
+}
+
+const WRITE_LOCK_TOOLS = new Set(["write", "edit", "ast_patch"]);
+
+function extractWritablePaths(name: string, input: Record<string, unknown>): string[] {
+	if (!WRITE_LOCK_TOOLS.has(name)) return [];
+	const filePath = input.file_path;
+	return typeof filePath === "string" && filePath.trim().length > 0 ? [filePath] : [];
 }
 
 /** Summarize tool input for logging (avoid logging file contents). */

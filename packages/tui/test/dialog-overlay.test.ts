@@ -2,6 +2,7 @@ import { KEY_CODES } from "@takumi/core";
 import { Screen } from "@takumi/render";
 import { describe, expect, it, vi } from "vitest";
 import { SlashCommandRegistry } from "../src/commands.js";
+import { ExtensionUiStore } from "../src/extension-ui-store.js";
 import { KeyBindingRegistry } from "../src/keybinds.js";
 import { DialogOverlay } from "../src/panels/dialog-overlay.js";
 import { AppState } from "../src/state.js";
@@ -89,5 +90,53 @@ describe("DialogOverlay", () => {
 		expect(consumed).toBe(true);
 		expect(handler).toHaveBeenCalledOnce();
 		expect(state.topDialog).toBeNull();
+	});
+
+	it("renders extension confirm prompts ahead of normal dialogs", () => {
+		const state = new AppState();
+		const extensionUiStore = new ExtensionUiStore();
+		state.pushDialog("model-picker");
+		void extensionUiStore.requestConfirm("Proceed with extension?");
+
+		const overlay = new DialogOverlay({ state, extensionUiStore });
+		const screen = new Screen(80, 24);
+		overlay.render(screen, { x: 0, y: 0, width: 80, height: 24 });
+
+		const rows = Array.from({ length: 24 }, (_, row) => readRow(screen, row)).join("\n");
+		expect(rows).toContain("Proceed with extension?");
+		expect(rows).not.toContain("Model Picker");
+	});
+
+	it("resolves extension pick prompts from keyboard navigation", async () => {
+		const state = new AppState();
+		const extensionUiStore = new ExtensionUiStore();
+		const result = extensionUiStore.requestPick(
+			[
+				{ label: "Alpha", value: "a" },
+				{ label: "Beta", value: "b" },
+			],
+			"Select item",
+		);
+		const overlay = new DialogOverlay({ state, extensionUiStore });
+
+		overlay.handleKey({
+			key: "down",
+			ctrl: false,
+			alt: false,
+			shift: false,
+			meta: false,
+			raw: KEY_CODES.DOWN,
+		});
+		overlay.handleKey({
+			key: "enter",
+			ctrl: false,
+			alt: false,
+			shift: false,
+			meta: false,
+			raw: KEY_CODES.ENTER,
+		});
+
+		await expect(result).resolves.toBe("b");
+		expect(extensionUiStore.activePrompt.value).toBeNull();
 	});
 });

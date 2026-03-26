@@ -44,11 +44,18 @@ describe("exec protocol", () => {
 				vasanaCount: 0,
 				hasHealth: false,
 				summary: "offline",
+				sideAgents: {
+					enabled: false,
+					degraded: true,
+					reason: "tmux_unavailable",
+					summary: "tmux is unavailable",
+				},
 				error: new Error("socket missing"),
 			},
 		});
 
 		expect(envelope.bootstrap.error).toMatchObject({ message: "socket missing" });
+		expect(envelope.bootstrap.sideAgents).toMatchObject({ reason: "tmux_unavailable" });
 	});
 
 	it("creates a stable completion envelope", () => {

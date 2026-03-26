@@ -1,5 +1,6 @@
 import { DEFAULT_EVAL_BUDGET_MS, DEFAULT_MAX_ITERATIONS } from "@takumi/agent";
 import type { AppCommandContext } from "./app-command-context.js";
+import { ensureExclusiveCommandLease } from "./app-command-lease.js";
 import { AutocycleAgent } from "./autocycle-agent.js";
 
 /** Valid range for --budget flag (seconds). */
@@ -37,18 +38,15 @@ export function registerAutocycleCommands(ctx: AppCommandContext): void {
 		"/autocycle",
 		"Run an evaluation-driven autonomous loop (like autoresearch)",
 		async (args) => {
-			// Guard: prevent double invocation
 			const existing = ctx.getActiveAutocycle();
-			if (existing) {
-				ctx.addInfoMessage("Autocycle already running. Cancel with Ctrl+C first.");
-				return;
-			}
+			if (!ensureExclusiveCommandLease(ctx, "/autocycle")) return;
+			if (existing?.isActive) return;
 
 			const { parsed, objective } = parseBasicArgs(args || "");
 
 			if (!objective?.trim()) {
 				ctx.addInfoMessage(
-					'Usage: /autocycle <objective> --target <file> --command "<eval-cmd>" [--metric <regex>] [--maximize true] [--iterations 7] [--budget 300]',
+					'Usage: /autocycle <objective> --target <file> --command "<eval-cmd>" [--metric <regex>] [--metricColumn <name>] [--manifest <path>] [--resume <ledger.jsonl>] [--maximize true] [--iterations 7] [--budget 300]',
 				);
 				return;
 			}
@@ -87,8 +85,11 @@ export function registerAutocycleCommands(ctx: AppCommandContext): void {
 				evalCommand: parsed.command,
 				evalBudgetMs: budgetSec * 1000,
 				metricRegex: parsed.metric,
+				metricColumn: parsed.metricColumn,
 				maximizeMetric: parsed.maximize === "true",
 				maxIterations: iterations,
+				manifestFile: parsed.manifest,
+				resumeLedgerFile: parsed.resume,
 			});
 
 			// Set active BEFORE start() to prevent double-invocation race

@@ -103,7 +103,7 @@ export class PromptCache {
 	 * Normalizes whitespace before hashing for near-duplicate detection.
 	 */
 	computeKey(model: string, systemPrompt: string, messages: string[]): string {
-		const normalized = [model, normalizeWhitespace(systemPrompt), ...messages.map(normalizeWhitespace)].join(
+		const normalized = [model, normalizePrompt(systemPrompt), ...messages.map(normalizePrompt)].join(
 			"\n---SEPARATOR---\n",
 		);
 
@@ -268,6 +268,17 @@ export class PromptCache {
 			this.stats.evictions++;
 		}
 	}
+}
+
+function normalizePrompt(value: string): string {
+	return normalizeWhitespace(stripVolatilePromptLines(value));
+}
+
+function stripVolatilePromptLines(value: string): string {
+	return value
+		.split("\n")
+		.filter((line) => !/^date:\s+\d{4}-\d{2}-\d{2}$/i.test(line.trim()))
+		.join("\n");
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

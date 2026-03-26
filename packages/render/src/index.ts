@@ -100,7 +100,10 @@ export {
 	detectCapabilities,
 	detectTerminal,
 	endSyncUpdate,
+	osc133CommandDone,
+	osc133CommandStart,
 	supportsOsc52,
+	supportsOsc133,
 	supportsTruecolor,
 	terminalSummary,
 } from "./terminal.js";

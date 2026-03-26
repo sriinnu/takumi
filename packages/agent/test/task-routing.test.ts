@@ -141,7 +141,17 @@ describe("resolveRoutingOverrides", () => {
 		expect(routeResolve.mock.calls[1][0].capability).toBe("coding.deep-reasoning");
 		expect(routeResolve.mock.calls[2][0].capability).toBe("coding.review.strict");
 		expect(routeResolve.mock.calls[3][0].capability).toBe("coding.validation-high-trust");
-		expect(routeResolve.mock.calls[2][0].constraints).toMatchObject({ requireStreaming: true, maxCostClass: "medium" });
+		expect(routeResolve.mock.calls[0][0].constraints).toMatchObject({
+			preferLocal: true,
+			requireStreaming: true,
+			maxCostClass: "low",
+			preferredCapabilityIds: ["cli.codex"],
+		});
+		expect(routeResolve.mock.calls[2][0].constraints).toMatchObject({
+			requireStreaming: true,
+			maxCostClass: "medium",
+			preferredCapabilityIds: ["cli.codex"],
+		});
 		expect(routeResolve.mock.calls[3][0].constraints).toMatchObject({
 			requireStreaming: true,
 			maxCostClass: "medium",

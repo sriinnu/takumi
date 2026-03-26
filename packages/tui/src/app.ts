@@ -2,16 +2,34 @@ import type { ConventionFiles, ExtensionRunner, MessagePayload, ToolRegistry } f
 import { type HttpBridgeServer, reconstructFromDaemon } from "@takumi/bridge";
 import type { AgentEvent, AutoSaver, Message, SessionData, TakumiConfig, ToolDefinition } from "@takumi/core";
 import { ANSI, createAutoSaver, createLogger, generateSessionId, LIMITS, loadSession } from "@takumi/core";
-import { batch, effect, initYoga, RenderScheduler } from "@takumi/render";
+import {
+	batch,
+	detectCapabilities,
+	effect,
+	initYoga,
+	osc133CommandDone,
+	osc133CommandStart,
+	RenderScheduler,
+} from "@takumi/render";
 import { AgentRunner } from "./agent-runner.js";
 import { connectChitragupta, disconnectChitragupta } from "./app-chitragupta.js";
 import type { AppCommandContext, ProviderFactory } from "./app-command-context.js";
 import { registerAppCommands } from "./app-commands.js";
 import { formatMessagesAsMarkdown } from "./app-export.js";
+import { formatExtensionHostReport, registerExtensionHostSurfaces } from "./app-extension-host.js";
+import {
+	buildSessionTitle,
+	createExtensionSessionActions,
+	createExtensionUiActions,
+	emitExtensionSessionStart,
+	normalizeSessionTitle,
+} from "./app-extension-runtime.js";
 import { parseKeyEvent, parseMouseEvent } from "./app-input.js";
+import { bindAppRenderSignals } from "./app-render-signals.js";
 import type { AutocycleAgent } from "./autocycle-agent.js";
 import type { CodingAgent } from "./coding-agent.js";
 import { SlashCommandRegistry } from "./commands.js";
+import { ExtensionUiStore } from "./extension-ui-store.js";
 import { startDesktopBridge } from "./http-bridge-runtime.js";
 import { KeyBindingRegistry } from "./keybinds.js";
 import { handleReplayKey } from "./replay-keybinds.js";
@@ -28,6 +46,7 @@ export interface TakumiAppOptions {
 		provider: string;
 		model: string;
 		authSource: string;
+		sideAgents?: string;
 		localModels?: string[];
 		availableProviderModels?: Record<string, string[]>;
 	};
@@ -77,6 +96,10 @@ export class TakumiApp {
 	private conventionFiles: ConventionFiles | null = null;
 	private startupSummary?: TakumiAppOptions["startupSummary"];
 	private httpBridge: HttpBridgeServer | null = null;
+	private terminalCapabilities = detectCapabilities();
+	private extensionHostMessage: string | null = null;
+	private sessionTitleOverride: string | null = null;
+	private readonly extensionUiStore = new ExtensionUiStore();
 
 	constructor(options: TakumiAppOptions) {
 		this.config = options.config;
@@ -103,6 +126,7 @@ export class TakumiApp {
 			config: this.config,
 			commands: this.commands,
 			keybinds: this.keybinds,
+			extensionUiStore: this.extensionUiStore,
 			onResumeSession: (sessionId) => this.resumeSession(sessionId),
 		});
 		if (options.sendMessage && options.tools) {
@@ -121,6 +145,19 @@ export class TakumiApp {
 		}
 		this.registerDefaultKeybinds();
 		this.registerDefaultCommands();
+		if (this.extensionRunner) {
+			this.extensionHostMessage = formatExtensionHostReport(
+				registerExtensionHostSurfaces({
+					extensionRunner: this.extensionRunner,
+					commands: this.commands,
+					keybinds: this.keybinds,
+					state: this.state,
+					addInfoMessage: (text) => this.addInfoMessage(text),
+					activateSession: (session, notice, reason) => this.activateSession(session, notice, reason),
+					resumeSession: (sessionId) => this.resumeSession(sessionId),
+				}),
+			);
+		}
 	}
 
 	async start(): Promise<void> {
@@ -149,6 +186,9 @@ export class TakumiApp {
 		this.scheduler = new RenderScheduler(columns, rows, {
 			write: (data) => (this.stdout as any).write(data),
 		});
+		if (this.terminalCapabilities.osc133) {
+			this.write(osc133CommandStart());
+		}
 		this.write(ANSI.ALT_SCREEN_ON);
 		this.write(ANSI.CURSOR_HIDE);
 		this.write(ANSI.MOUSE_ON);
@@ -178,10 +218,14 @@ export class TakumiApp {
 					`Provider: ${this.startupSummary.provider}`,
 					`Model: ${this.startupSummary.model}`,
 					`Auth: ${this.startupSummary.authSource}`,
+					...(this.startupSummary.sideAgents ? [this.startupSummary.sideAgents] : []),
 					localHint,
 					`Hints: Enter submits • /provider <name> • /model <name> • /help`,
 				].join("\n"),
 			);
+		}
+		if (this.extensionHostMessage) {
+			this.addInfoMessage(this.extensionHostMessage);
 		}
 
 		// Phase 45 — bind extension runner actions
@@ -223,24 +267,25 @@ export class TakumiApp {
 						}
 					},
 				},
+				createExtensionUiActions({
+					addInfoMessage: (text) => this.addInfoMessage(text),
+					uiStore: this.extensionUiStore,
+				}),
+				createExtensionSessionActions({
+					getMessages: () => this.state.messages.value,
+					getSessionId: () => this.state.sessionId.value,
+					getSessionTitle: () => this.sessionTitleOverride,
+					setSessionTitle: (title) => {
+						this.sessionTitleOverride = title;
+					},
+				}),
 			);
+			await emitExtensionSessionStart(this.extensionRunner, this.state.sessionId.value);
 			log.info("Extension runner actions bound");
 		}
 
-		const scheduler = this.scheduler;
-		effect(() => {
-			void this.state.messages.value;
-			void this.state.streamingText.value;
-			void this.state.thinkingText.value;
-			void this.state.isStreaming.value;
-			void this.state.codingPhase.value;
-			void this.state.autocyclePhase.value;
-			void this.state.activeTool.value;
-			void this.state.toolOutput.value;
-			void this.state.dialogStack.value;
-			scheduler?.scheduleRender();
-			return undefined;
-		});
+		const scheduler = this.scheduler!;
+		bindAppRenderSignals(this.state, scheduler);
 
 		connectChitragupta(
 			this.state,
@@ -251,7 +296,7 @@ export class TakumiApp {
 			this.config.chitraguptaDaemon?.socketPath,
 		);
 
-		this.httpBridge = await startDesktopBridge(this.state, this.agentRunner);
+		this.httpBridge = await startDesktopBridge(this.state, this.agentRunner, this.extensionUiStore);
 
 		effect(() => {
 			void this.state.messages.value;
@@ -289,11 +334,15 @@ export class TakumiApp {
 		await disconnectChitragupta(this.state);
 		await this.httpBridge?.stop();
 		this.httpBridge = null;
+		this.extensionUiStore.resetSessionUi();
 		this.scheduler?.stop();
 		this.write(ANSI.BRACKETED_PASTE_OFF);
 		this.write(ANSI.MOUSE_OFF);
 		this.write(ANSI.CURSOR_SHOW);
 		this.write(ANSI.ALT_SCREEN_OFF);
+		if (this.terminalCapabilities.osc133) {
+			this.write(osc133CommandDone(0));
+		}
 		if ((this.stdin as any).setRawMode) (this.stdin as any).setRawMode(false);
 		process.exit(0);
 	}
@@ -364,6 +413,8 @@ export class TakumiApp {
 	}
 
 	private applySessionState(session: SessionData): void {
+		this.sessionTitleOverride = normalizeSessionTitle(session.title);
+		this.extensionUiStore.resetSessionUi();
 		batch(() => {
 			this.state.clearDialogs();
 			this.state.pendingPermission.value = null;
@@ -494,18 +545,9 @@ export class TakumiApp {
 
 	private buildSessionData(): SessionData {
 		const messages = this.state.messages.value;
-		let title = "Untitled session";
-		for (const m of messages) {
-			if (m.role !== "user" || m.content.length === 0) continue;
-			const first = m.content[0];
-			if (first.type === "text") {
-				title = first.text.slice(0, 80).replace(/\n/g, " ");
-				break;
-			}
-		}
 		return {
 			id: this.state.sessionId.value,
-			title,
+			title: buildSessionTitle(messages, this.sessionTitleOverride),
 			createdAt: messages.length > 0 ? messages[0].timestamp : Date.now(),
 			updatedAt: Date.now(),
 			messages,
@@ -533,47 +575,96 @@ export class TakumiApp {
 	}
 
 	private registerDefaultKeybinds(): void {
-		this.keybinds.register("ctrl+q", "Quit", () => this.quit());
-		this.keybinds.register("ctrl+l", "Clear screen", () => {
-			this.scheduler?.getScreen().invalidate();
-			this.scheduler?.scheduleRender();
-		});
+		this.keybinds.register("ctrl+q", "Quit", () => this.quit(), { id: "app.quit" });
+		this.keybinds.register(
+			"ctrl+l",
+			"Clear screen",
+			() => {
+				this.scheduler?.getScreen().invalidate();
+				this.scheduler?.scheduleRender();
+			},
+			{ id: "app.screen.clear" },
+		);
 		const toggleCommandPalette = () => {
 			if (this.state.topDialog === "command-palette") this.state.popDialog();
 			else this.state.pushDialog("command-palette");
 		};
-		this.keybinds.register("ctrl+p", "Command palette", toggleCommandPalette);
-		this.keybinds.register("ctrl+k", "Command palette", toggleCommandPalette);
-		this.keybinds.register("alt+m", "Model picker", () => {
-			if (this.state.topDialog === "model-picker") this.state.popDialog();
-			else this.state.pushDialog("model-picker");
+		this.keybinds.register("ctrl+k", "Command palette", toggleCommandPalette, {
+			id: "app.command-palette.toggle",
+			aliases: ["ctrl+p"],
 		});
-		this.keybinds.register("ctrl+b", "Toggle sidebar", () => {
-			this.state.sidebarVisible.value = !this.state.sidebarVisible.value;
+		this.keybinds.register(
+			"alt+m",
+			"Model picker",
+			() => {
+				if (this.state.topDialog === "model-picker") this.state.popDialog();
+				else this.state.pushDialog("model-picker");
+			},
+			{ id: "app.model-picker.toggle" },
+		);
+		this.keybinds.register(
+			"ctrl+b",
+			"Toggle sidebar",
+			() => {
+				this.state.sidebarVisible.value = !this.state.sidebarVisible.value;
+			},
+			{ id: "app.sidebar.toggle" },
+		);
+		this.keybinds.register(
+			"ctrl+shift+c",
+			"Toggle cluster status",
+			() => {
+				this.rootView.sidebar.clusterPanel.toggle();
+			},
+			{ id: "app.cluster-status.toggle" },
+		);
+		this.keybinds.register("ctrl+o", "Session list", () => this.state.pushDialog("session-list"), {
+			id: "app.sessions.list",
 		});
-		this.keybinds.register("ctrl+shift+c", "Toggle cluster status", () => {
-			this.rootView.sidebar.clusterPanel.toggle();
-		});
-		this.keybinds.register("ctrl+o", "Session list", () => this.state.pushDialog("session-list"));
-		this.keybinds.register("ctrl+t", "Session tree", () => {
-			void this.commands.execute("/session-tree");
-		});
-		this.keybinds.register("ctrl+d", "Exit", () => {
-			if (!this.chatView.getEditorValue()) void this.quit();
-		});
-		this.keybinds.register("shift+tab", "Toggle thinking", () => {
-			const level = cycleThinkingLevel(this.state, 1);
-			this.addInfoMessage(`Thinking level: ${describeThinkingLevel(level)}`);
-		});
-		this.keybinds.register("ctrl+shift+m", "Cycle model", () => {
-			const selected = cycleProviderModel(this.state, 1);
-			if (selected) {
-				this.addInfoMessage(`Model cycled to: ${selected} (${this.state.provider.value})`);
-			}
-		});
-		this.keybinds.register("ctrl+g", "External editor", () => {
-			void this.commands.execute("/editor");
-		});
+		this.keybinds.register(
+			"ctrl+t",
+			"Session tree",
+			() => {
+				void this.commands.execute("/session-tree");
+			},
+			{ id: "app.sessions.tree" },
+		);
+		this.keybinds.register(
+			"ctrl+d",
+			"Exit",
+			() => {
+				if (!this.chatView.getEditorValue()) void this.quit();
+			},
+			{ id: "app.exit-if-editor-empty" },
+		);
+		this.keybinds.register(
+			"shift+tab",
+			"Toggle thinking",
+			() => {
+				const level = cycleThinkingLevel(this.state, 1);
+				this.addInfoMessage(`Thinking level: ${describeThinkingLevel(level)}`);
+			},
+			{ id: "app.thinking.cycle" },
+		);
+		this.keybinds.register(
+			"ctrl+shift+m",
+			"Cycle model",
+			() => {
+				const selected = cycleProviderModel(this.state, 1);
+				if (selected) {
+					this.addInfoMessage(`Model cycled to: ${selected} (${this.state.provider.value})`);
+				}
+			},
+			{ id: "app.model.cycle" },
+		);
+		this.keybinds.register(
+			"ctrl+g",
+			"External editor",
+			() => {
+				void this.commands.execute("/editor");
+			},
+			{ id: "app.editor.external" },
+		);
 	}
 
 	private registerDefaultCommands(): void {

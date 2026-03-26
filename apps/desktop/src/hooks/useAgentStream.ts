@@ -32,6 +32,27 @@ export interface AgentState {
 		details: string;
 		suggestion: string | null;
 	} | null;
+	extensionUi?: {
+		prompt:
+			| {
+					kind: "confirm";
+					title?: string;
+					message: string;
+			  }
+				| {
+						kind: "pick";
+						title?: string;
+						message: string;
+						optionCount: number;
+						options: Array<{ index: number; label: string; description?: string }>;
+				  }
+			| null;
+		widgets: Array<{
+			key: string;
+			previewLines: string[];
+			truncated: boolean;
+		}>;
+	} | null;
 	updatedAt: number;
 }
 
@@ -159,6 +180,7 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 	const fingerprintRef = useRef(0);
 	const abortRef = useRef<AbortController | null>(null);
 	const isMountedRef = useRef(true);
+	const sessionIdRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		return () => {
@@ -171,7 +193,10 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 			const res = await fetch(`${baseUrl}/latest/${pid}`, { signal });
 			if (!res.ok || !isMountedRef.current) return;
 			const data = (await res.json()) as AgentState;
-			if (isMountedRef.current) setState(data);
+			if (isMountedRef.current) {
+				sessionIdRef.current = data.sessionId;
+				setState(data);
+			}
 		},
 		[baseUrl],
 	);
@@ -308,7 +333,7 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 
 				if (pids.length > 0) {
 					await fetchState(pids[0], controller.signal);
-					await fetchArtifacts(controller.signal, state?.sessionId ?? null);
+					await fetchArtifacts(controller.signal, sessionIdRef.current);
 				}
 
 				// Inner long-poll loop
@@ -340,7 +365,7 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 						await fetchRuntimes(controller.signal);
 						await fetchRepoDiff(controller.signal);
 						await fetchState(pids[0], controller.signal);
-						await fetchArtifacts(controller.signal, state?.sessionId ?? null);
+						await fetchArtifacts(controller.signal, sessionIdRef.current);
 					}
 				}
 			} catch (err) {
@@ -372,7 +397,6 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 		fetchRuntimes,
 		fetchState,
 		fetchSessions,
-		state?.sessionId,
 	]);
 
 	useEffect(() => {
@@ -470,6 +494,29 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 		[baseUrl],
 	);
 
+	const respondExtensionPrompt = useCallback(
+		async (response: { action: "confirm" | "cancel" } | { action: "pick"; index: number }) => {
+			const res = await fetch(`${baseUrl}/extension-ui/respond`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(response),
+			});
+			if (!res.ok) return false;
+			setState((current) => {
+				if (!current?.extensionUi) return current;
+				return {
+					...current,
+					extensionUi: {
+						...current.extensionUi,
+						prompt: null,
+					},
+				};
+			});
+			return true;
+		},
+		[baseUrl],
+	);
+
 	return {
 		agents,
 		alerts,
@@ -494,5 +541,6 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 		startRuntime,
 		state,
 		stopRuntime,
+		respondExtensionPrompt,
 	};
 }

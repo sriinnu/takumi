@@ -1,5 +1,7 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import { exportSessionAsJsonl, importSessionFromJsonl, type SessionData, saveSession } from "@takumi/core";
 import type { AppCommandContext } from "./app-command-context.js";
+import { ensureExclusiveCommandLease } from "./app-command-lease.js";
 import { formatMessagesAsMarkdown } from "./app-export.js";
 
 export function registerCodingCommands(ctx: AppCommandContext): void {
@@ -59,11 +61,8 @@ export function registerCodingCommands(ctx: AppCommandContext): void {
 	ctx.commands.register("/code", "Start coding agent", async (args) => {
 		if (!args) return ctx.addInfoMessage("Usage: /code <task description>");
 		if (!ctx.agentRunner) return ctx.addInfoMessage("No agent runner configured");
+		if (!ensureExclusiveCommandLease(ctx, "/code")) return;
 		const current = ctx.getActiveCoder();
-		if (current?.isActive) {
-			ctx.addInfoMessage("A coding task is already running. Cancel with Ctrl+C or wait for it to finish.");
-			return;
-		}
 		if (current) await current.shutdown();
 		const { CodingAgent } = await import("./coding-agent.js");
 		const orchCfg = ctx.config.orchestration;
@@ -78,37 +77,67 @@ export function registerCodingCommands(ctx: AppCommandContext): void {
 		await coder.start(args);
 	});
 	ctx.commands.register("/export", "Export conversation to file", async (args) => {
-		const messages = ctx.state.messages.value;
-		if (messages.length === 0) return ctx.addInfoMessage("No messages to export");
-		let format: "md" | "json" = "md";
+		const session = ctx.buildSessionData();
+		if (session.messages.length === 0) return ctx.addInfoMessage("No messages to export");
+		let format: "md" | "json" | "jsonl" = "md";
 		let outputPath = "";
 		if (args) {
 			for (const part of args.trim().split(/\s+/)) {
 				if (part === "json") format = "json";
+				else if (part === "jsonl") format = "jsonl";
 				else if (part === "md" || part === "markdown") format = "md";
 				else outputPath = part;
 			}
 		}
 		if (!outputPath) {
 			const date = new Date().toISOString().slice(0, 10);
-			outputPath = `./takumi-export-${date}.${format === "json" ? "json" : "md"}`;
+			outputPath = `./takumi-export-${date}.${format}`;
 		}
 		try {
 			const content =
 				format === "json"
-					? JSON.stringify(messages, null, 2)
-					: formatMessagesAsMarkdown(messages, ctx.state.sessionId.value, ctx.state.model.value);
+					? JSON.stringify(session, null, 2)
+					: format === "jsonl"
+						? exportSessionAsJsonl(session)
+						: formatMessagesAsMarkdown(session.messages, ctx.state.sessionId.value, ctx.state.model.value);
 			await writeFile(outputPath, content, "utf-8");
 			ctx.addInfoMessage(`Session exported to ${outputPath}`);
 		} catch (err) {
 			ctx.addInfoMessage(`Export failed: ${(err as Error).message}`);
 		}
 	});
+	ctx.commands.register("/import", "Import a Takumi session from JSON or JSONL", async (args) => {
+		const inputPath = args.trim();
+		if (!inputPath) {
+			ctx.addInfoMessage("Usage: /import <path-to-session.json|jsonl>");
+			return;
+		}
+
+		try {
+			const raw = await readFile(inputPath, "utf-8");
+			const imported = inputPath.endsWith(".jsonl") ? importSessionFromJsonl(raw) : (JSON.parse(raw) as SessionData);
+
+			await saveSession(imported);
+
+			if (ctx.activateSession) {
+				await ctx.activateSession(imported, `Imported session from ${inputPath}`, "resume");
+			} else {
+				ctx.state.sessionId.value = imported.id;
+				ctx.state.model.value = imported.model;
+				ctx.state.messages.value = imported.messages;
+			}
+
+			ctx.startAutoSaver();
+			ctx.addInfoMessage(`Imported session ${imported.id} from ${inputPath}`);
+		} catch (err) {
+			ctx.addInfoMessage(`Import failed: ${(err as Error).message}`);
+		}
+	});
 	ctx.commands.register("/retry", "Retry last response", async (args) => {
 		const messages = ctx.state.messages.value;
 		if (messages.length === 0) return ctx.addInfoMessage("No messages to retry");
 		if (!ctx.agentRunner) return ctx.addInfoMessage("No agent runner configured");
-		if (ctx.agentRunner.isRunning) return ctx.addInfoMessage("Cannot retry while agent is running");
+		if (!ensureExclusiveCommandLease(ctx, "/retry")) return;
 		const turnIndex = args ? parseInt(args.trim(), 10) : undefined;
 		if (turnIndex !== undefined && (Number.isNaN(turnIndex) || turnIndex < 0)) {
 			ctx.addInfoMessage(`Invalid turn number: "${args?.trim()}"`);

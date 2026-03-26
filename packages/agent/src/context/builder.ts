@@ -14,6 +14,11 @@ import { detectProject, type ProjectContext } from "./project.js";
 import type { SmartContextWindow } from "./smart-context.js";
 import { formatSoulPrompt, loadSoul, type SoulData } from "./soul.js";
 
+type PromptAwareTool = ToolDefinition & {
+	promptSnippet?: string;
+	promptGuidelines?: string[];
+};
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface ContextOptions {
@@ -116,11 +121,19 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
 		sections.push("# Available Tools\n");
 
 		for (const tool of tools) {
+			const promptAwareTool = tool as PromptAwareTool;
+			const toolDescription = promptAwareTool.promptSnippet?.trim() || tool.description;
 			sections.push(`## ${tool.name}`);
-			sections.push(tool.description);
+			sections.push(toolDescription);
 			sections.push(`Category: ${tool.category}`);
 			if (tool.requiresPermission) {
 				sections.push("Requires user permission before execution.");
+			}
+			if (promptAwareTool.promptGuidelines && promptAwareTool.promptGuidelines.length > 0) {
+				sections.push("Usage notes:");
+				for (const guideline of promptAwareTool.promptGuidelines) {
+					sections.push(`- ${guideline}`);
+				}
 			}
 			sections.push("");
 		}
@@ -216,7 +229,6 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
 		envLines.push(`Working directory: ${projectContext.path}`);
 	}
 	envLines.push(`Platform: ${process.platform}`);
-	envLines.push(`Date: ${new Date().toISOString().slice(0, 10)}`);
 	if (model) {
 		envLines.push(`Model: ${model}`);
 	}
@@ -289,7 +301,6 @@ export async function buildContext(options: ContextOptions): Promise<string> {
 	parts.push(`Working directory: ${cwd}`);
 	parts.push(`Platform: ${process.platform}`);
 	parts.push(`Node: ${process.version}`);
-	parts.push(`Date: ${new Date().toISOString().slice(0, 10)}`);
 
 	return parts.join("\n");
 }

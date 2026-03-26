@@ -6,8 +6,10 @@ import type { SessionData } from "@takumi/core";
 import {
 	createAutoSaver,
 	deleteSession,
+	exportSessionAsJsonl,
 	forkSession,
 	generateSessionId,
+	importSessionFromJsonl,
 	listSessions,
 	loadSession,
 	saveSession,
@@ -152,6 +154,46 @@ describe("saveSession / loadSession", () => {
 		const sanitizedId = "../../../etc/passwd".replace(/[^a-zA-Z0-9_-]/g, "");
 		const loaded = await loadSession(sanitizedId, tmpDir);
 		expect(loaded).not.toBeNull();
+	});
+});
+
+describe("JSONL session portability", () => {
+	it("exports a session as metadata plus message records", () => {
+		const session = makeSession({ id: "session-jsonl", title: "Portable" });
+		const jsonl = exportSessionAsJsonl(session);
+		const lines = jsonl.split("\n");
+
+		expect(lines).toHaveLength(session.messages.length + 1);
+		const meta = JSON.parse(lines[0]) as { type: string; session: { id: string; title: string } };
+		expect(meta.type).toBe("session_meta");
+		expect(meta.session.id).toBe("session-jsonl");
+		expect(meta.session.title).toBe("Portable");
+
+		const message = JSON.parse(lines[1]) as { type: string; message: { role: string } };
+		expect(message.type).toBe("message");
+		expect(message.message.role).toBe("user");
+	});
+
+	it("imports a JSONL export back into a SessionData object", () => {
+		const session = makeSession({ id: "session-jsonl", title: "Portable" });
+		const imported = importSessionFromJsonl(exportSessionAsJsonl(session));
+
+		expect(imported.id).toBe(session.id);
+		expect(imported.title).toBe(session.title);
+		expect(imported.model).toBe(session.model);
+		expect(imported.messages).toEqual(session.messages);
+	});
+
+	it("can override the imported session id", () => {
+		const session = makeSession({ id: "session-jsonl" });
+		const imported = importSessionFromJsonl(exportSessionAsJsonl(session), "session-imported");
+		expect(imported.id).toBe("session-imported");
+	});
+
+	it("rejects JSONL missing the metadata record", () => {
+		expect(() =>
+			importSessionFromJsonl('{"type":"message","message":{"id":"x","role":"user","content":[],"timestamp":0}}'),
+		).toThrow("session_meta");
 	});
 });
 

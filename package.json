@@ -3,7 +3,7 @@
 	"type": "module",
 	"version": "0.1.0",
 	"license": "MIT",
-	"description": "Terminal UI for AI coding agents — reactive rendering, double-buffered output, and agent orchestration",
+	"description": "Terminal-first AI coding runtime with a custom renderer, side-agent orchestration, and Chitragupta-backed control-plane hooks",
 	"keywords": [
 		"ai",
 		"tui",
@@ -56,8 +56,9 @@
 		"dev": "pnpm -r --parallel run dev",
 		"check:loc": "node scripts/guard-loc.mjs",
 		"check": "pnpm run check:loc && biome check --write --error-on-warnings .",
-		"takumi": "tsx bin/takumi.ts",
-		"eval": "tsx scripts/eval.ts",
+		"takumi": "tsx --tsconfig tsconfig.dev.json bin/takumi.ts",
+		"autosearch:overnight": "tsx --tsconfig tsconfig.dev.json scripts/overnight-autosearch.ts",
+		"eval": "tsx --tsconfig tsconfig.dev.json scripts/eval.ts",
 		"prepare": "husky"
 	},
 	"dependencies": {

@@ -63,6 +63,24 @@ When a doc is aspirational, it should be read as design direction, not as a clai
 | extensibility | packages, slash commands, prompt/config surfaces |
 | docs stance | tries to separate shipped behavior from target direction |
 
+## What Takumi stands for
+
+Takumi is opinionated about a few things that should stay true as the repo grows:
+
+- **terminal-first execution** so the real coding runtime stays close to the filesystem, shell, and worktree state
+- **honest authority boundaries** so Chitragupta owns durable routing, auth references, provider and CLI inventory, and Takumi owns coding execution plus operator-facing controls
+- **observable long-running work** so side agents, headless runs, tmux-hosted sessions, and recovery flows are treated as first-class runtime concerns
+- **app-side extensibility** so packages customize workflows, prompts, tools, and guardrails without pretending to own engine sovereignty
+
+### Product stance
+
+| Layer | What it is for | What it is not for |
+|---|---|---|
+| **Takumi terminal runtime** | privileged local executor for coding, tools, sessions, side lanes, and operator control | a thin web shell over somebody else’s runtime |
+| **Takumi Build Window** | companion operator surface for visibility, approvals, artifacts, and steering | the only runtime or the place where code execution authority should live |
+| **Takumi packages** | reusable workflow bundles, prompt assets, extensions, tool rules, and package-scoped skills | a backdoor provider registry or an auth/router replacement |
+| **Chitragupta** | control-plane authority for memory, routing, health, capability inventory, and credential references | a place to hide consumer-local UI behavior that belongs in Takumi |
+
 ## Why Takumi
 
 Choose Takumi if you want a coding agent that is:
@@ -502,6 +520,18 @@ The repo is organized as a small monorepo with clear package boundaries:
 | `packages/tui` | the application shell, panels, dialogs, and slash commands |
 | `docs/` | user docs, architecture docs, and design notes |
 | `examples/packages` | example Takumi packages |
+
+### Package responsibilities
+
+The dependency order is intentional, but the runtime contract should stay crisp:
+
+| Package | Owns | Should stay out of |
+|---|---|---|
+| `@takumi/core` | config, shared types, session metadata, logger, protocol primitives | UI rendering, provider adapters, orchestration policy |
+| `@takumi/render` | terminal layout, signals, ANSI diffing, double-buffered screen output | model logic, session policy, bridge decisions |
+| `@takumi/bridge` | daemon, MCP, git, telemetry, and control-plane adapters | product UI state or provider sovereignty |
+| `@takumi/agent` | coding loop, tools, side-agent orchestration, runtime execution contracts | durable auth, global routing authority, or desktop presentation |
+| `@takumi/tui` | operator shell, panels, keybindings, slash commands, and lane visibility | raw provider integration logic or bridge ownership |
 
 ## Packages
 

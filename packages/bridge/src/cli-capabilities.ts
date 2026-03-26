@@ -138,8 +138,9 @@ export const CLAUDE_CLI_CAPABILITY = buildCliCapability({
 	id: "cli.claude",
 	label: "Claude CLI Executor",
 	providerFamily: "anthropic",
-	capabilities: ["coding.patch-cheap", "coding.review.strict", "agent.delegate.cli-claude"],
+	capabilities: ["coding.fast-local", "coding.patch-cheap", "coding.review.strict", "agent.delegate.cli-claude"],
 	costClass: "low",
+	priority: 10,
 	contract: CLAUDE_CLI_CONTRACT,
 	tags: ["cli", "coding", "anthropic", "local"],
 });
@@ -148,8 +149,11 @@ export const CODEX_CLI_CAPABILITY = buildCliCapability({
 	id: "cli.codex",
 	label: "Codex CLI Executor",
 	providerFamily: "openai",
-	capabilities: ["coding.patch-cheap", "coding.review.strict", "agent.delegate.cli-codex"],
+	capabilities: ["coding.fast-local", "coding.patch-cheap", "coding.review.strict", "agent.delegate.cli-codex"],
 	costClass: "low",
+	// I give Codex the highest default local CLI priority so engine routing and local
+	// fallback presets converge on the same executor preference.
+	priority: 20,
 	contract: CODEX_CLI_CONTRACT,
 	tags: ["cli", "coding", "openai", "local"],
 });
@@ -158,15 +162,15 @@ export const AIDER_CLI_CAPABILITY = buildCliCapability({
 	id: "cli.aider",
 	label: "Aider CLI Executor",
 	providerFamily: "aider",
-	capabilities: ["coding.patch-cheap", "agent.delegate.cli-aider"],
+	capabilities: ["coding.fast-local", "coding.patch-cheap", "agent.delegate.cli-aider"],
 	costClass: "low",
 	contract: AIDER_CLI_CONTRACT,
 	tags: ["cli", "coding", "aider", "local"],
 });
 
 export const DEFAULT_CLI_CAPABILITIES: CapabilityDescriptor[] = [
-	CLAUDE_CLI_CAPABILITY,
 	CODEX_CLI_CAPABILITY,
+	CLAUDE_CLI_CAPABILITY,
 	AIDER_CLI_CAPABILITY,
 ];
 
