@@ -1,6 +1,13 @@
-import { type FormEvent, useCallback, useMemo, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityPane, OperatorSidebar, SessionRail, cardStyle } from "./components/build-window-panels";
 import { useAgentStream } from "./hooks/useAgentStream";
+
+const SIDEBAR_MIN_WIDTH = 280;
+const SIDEBAR_MAX_WIDTH = 460;
+
+function clampSidebarWidth(width: number): number {
+	return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));
+}
 
 export function App() {
 	const {
@@ -17,9 +24,10 @@ export function App() {
 		fetchArtifactDetail,
 		promoteArtifact,
 		repoDiff,
-		refreshAgent,
-		runtimes,
-		sendMessage,
+			refreshAgent,
+			respondExtensionPrompt,
+			runtimes,
+			sendMessage,
 		startRuntime,
 		stopRuntime,
 		interruptAgent,
@@ -32,6 +40,8 @@ export function App() {
 	const [attachNotice, setAttachNotice] = useState<string | null>(null);
 	const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
 	const [selectedArtifactDetail, setSelectedArtifactDetail] = useState<Awaited<ReturnType<typeof fetchArtifactDetail>>>(null);
+	const [sidebarWidth, setSidebarWidth] = useState(320);
+	const [isResizingSidebar, setIsResizingSidebar] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const selectedSession = selectedSessionId ?? state?.sessionId ?? sessions[0]?.id ?? null;
 	const healthItems = useMemo(
@@ -66,6 +76,30 @@ export function App() {
 	);
 	const canContinue = approvals.length > 0;
 
+	useEffect(() => {
+		if (!isResizingSidebar) return;
+
+		const handlePointerMove = (event: PointerEvent) => {
+			const nextWidth = window.innerWidth - event.clientX - 32;
+			setSidebarWidth(clampSidebarWidth(nextWidth));
+		};
+
+		const handlePointerUp = () => {
+			setIsResizingSidebar(false);
+			document.body.classList.remove("app-sidebar-resizing");
+		};
+
+		document.body.classList.add("app-sidebar-resizing");
+		window.addEventListener("pointermove", handlePointerMove);
+		window.addEventListener("pointerup", handlePointerUp);
+
+		return () => {
+			window.removeEventListener("pointermove", handlePointerMove);
+			window.removeEventListener("pointerup", handlePointerUp);
+			document.body.classList.remove("app-sidebar-resizing");
+		};
+	}, [isResizingSidebar]);
+
 	const handleSelectSession = useCallback(
 		(sessionId: string) => {
 			setSelectedSessionId(sessionId);
@@ -91,16 +125,20 @@ export function App() {
 		[attachSession, loadSessionDetail],
 	);
 
+	const doSubmit = useCallback(() => {
+		const text = input.trim();
+		if (!text || !connected) return;
+		void sendMessage(text);
+		setInput("");
+		inputRef.current?.focus();
+	}, [connected, input, sendMessage]);
+
 	const handleSubmit = useCallback(
 		(e: FormEvent) => {
 			e.preventDefault();
-			const text = input.trim();
-			if (!text) return;
-			sendMessage(text);
-			setInput("");
-			inputRef.current?.focus();
+			doSubmit();
 		},
-		[input, sendMessage],
+		[doSubmit],
 	);
 
 	const handleSelectArtifact = useCallback(
@@ -142,6 +180,28 @@ export function App() {
 		const ok = await decideApproval(approval.id, "approve");
 		setAttachNotice(ok ? `Approved ${approval.tool} and resumed flow.` : `Could not continue approval ${approval.id}.`);
 	}, [approvals, decideApproval]);
+
+	const handleExtensionConfirm = useCallback(async () => {
+		const ok = await respondExtensionPrompt({ action: "confirm" });
+		setAttachNotice(ok ? "Confirmed extension prompt." : "Could not confirm extension prompt.");
+	}, [respondExtensionPrompt]);
+
+	const handleExtensionCancel = useCallback(async () => {
+		const ok = await respondExtensionPrompt({ action: "cancel" });
+		setAttachNotice(ok ? "Cancelled extension prompt." : "Could not cancel extension prompt.");
+	}, [respondExtensionPrompt]);
+
+	const handleExtensionPick = useCallback(
+		async (index: number) => {
+			const label =
+				state?.extensionUi?.prompt?.kind === "pick"
+					? state.extensionUi.prompt.options.find((option) => option.index === index)?.label
+					: null;
+			const ok = await respondExtensionPrompt({ action: "pick", index });
+			setAttachNotice(ok ? `Selected extension option${label ? `: ${label}` : ""}.` : "Could not answer extension prompt.");
+		},
+		[respondExtensionPrompt, state],
+	);
 
 	const handleExportArtifact = useCallback(() => {
 		if (!selectedArtifactDetail) {
@@ -192,11 +252,11 @@ export function App() {
 	}, []);
 
 	return (
-		<div style={{ fontFamily: "system-ui, sans-serif", maxWidth: 1320, margin: "0 auto", padding: 24, color: "#111827" }}>
+		<div style={{ fontFamily: "system-ui, sans-serif", maxWidth: 1320, margin: "0 auto", padding: 24, color: "var(--c-text)", background: "var(--c-bg-page)", minHeight: "100vh" }}>
 			<header style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
 				<div>
 					<h1 style={{ margin: 0, fontSize: 24 }}>Takumi Build Window</h1>
-					<div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+					<div style={{ fontSize: 12, color: "var(--c-text-muted)", marginTop: 2 }}>
 						Attachable operator shell for terminal-first and daemon-backed Takumi sessions
 					</div>
 				</div>
@@ -204,12 +264,12 @@ export function App() {
 					{connected ? "Connected" : "Disconnected"}
 				</span>
 				{fleet && (
-					<span style={{ fontSize: 12, color: "#6b7280" }}>
+					<span style={{ fontSize: 12, color: "var(--c-text-muted)" }}>
 						{fleet.workingAgents}/{fleet.totalAgents} active · ${fleet.totalCostUsd.toFixed(4)}
 					</span>
 				)}
 				{state?.runtimeSource && (
-					<span style={{ marginLeft: "auto", fontSize: 12, color: "#6b7280" }}>Source: {state.runtimeSource}</span>
+					<span style={{ marginLeft: "auto", fontSize: 12, color: "var(--c-text-muted)" }}>Source: {state.runtimeSource}</span>
 				)}
 			</header>
 
@@ -225,10 +285,10 @@ export function App() {
 				</div>
 			)}
 
-			<div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12, marginBottom: 16 }}>
+			<div className="app-health-grid">
 				{healthItems.map((item) => (
 					<div key={item.label} style={cardStyle}>
-						<div style={{ fontSize: 11, letterSpacing: 0.4, textTransform: "uppercase", color: "#6b7280", marginBottom: 6 }}>
+						<div style={{ fontSize: 11, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--c-text-muted)", marginBottom: 6 }}>
 							{item.label}
 						</div>
 						<div style={{ color: item.accent, fontWeight: 700, fontSize: 14 }}>{item.value}</div>
@@ -236,7 +296,7 @@ export function App() {
 				))}
 			</div>
 
-			<div style={{ display: "grid", gridTemplateColumns: "300px minmax(0, 1fr) 320px", gap: 16, marginBottom: 16 }}>
+			<div className="app-layout-grid" style={{ gridTemplateColumns: `280px minmax(0, 1fr) ${sidebarWidth}px` }}>
 				<SessionRail
 					sessions={sessions}
 					selectedSessionId={selectedSession}
@@ -259,32 +319,47 @@ export function App() {
 					}}
 					onExportArtifact={handleExportArtifact}
 					onPromoteArtifact={() => void handlePromoteArtifact()}
-					onInterrupt={() => void handleInterrupt()}
-					onRefresh={() => void handleRefresh()}
-					onContinue={() => void handleContinue()}
-					canContinue={canContinue}
-				/>
+						onInterrupt={() => void handleInterrupt()}
+						onRefresh={() => void handleRefresh()}
+						onContinue={() => void handleContinue()}
+						onExtensionConfirm={() => void handleExtensionConfirm()}
+						onExtensionCancel={() => void handleExtensionCancel()}
+						onExtensionPick={(index) => void handleExtensionPick(index)}
+						canContinue={canContinue}
+					/>
 
-				<OperatorSidebar
-					connected={connected}
-					selectedSessionId={selectedSession}
-					state={state}
-					approvals={approvals}
-					artifacts={artifacts}
-					alerts={alerts}
-					runtimes={runtimes}
-					sessionDetail={sessionDetail}
-					onStartFresh={() => void handleStartRuntime(false)}
-					onStartResumed={() => void handleStartRuntime(true)}
-					onStopRuntime={(runtimeId) => void stopRuntime(runtimeId)}
-					onCopyRuntimeCommand={(runtime) => void handleCopyText("runtime command", runtime.command ? [runtime.command, ...(runtime.args ?? [])].join(" ") : null)}
-					onCopyRuntimeLog={(runtime) => void handleCopyText("runtime log path", runtime.logFile)}
-					onCopyRuntimeCwd={(runtime) => void handleCopyText("runtime working directory", runtime.cwd)}
-					onApprove={(approvalId) => void decideApproval(approvalId, "approve")}
-					onDeny={(approvalId) => void decideApproval(approvalId, "deny")}
-					onSelectArtifact={(artifactId) => void handleSelectArtifact(artifactId)}
-					onAckAlert={(alertId) => void acknowledgeAlert(alertId)}
-				/>
+				<div className="app-sidebar-shell" style={{ minWidth: SIDEBAR_MIN_WIDTH, maxWidth: SIDEBAR_MAX_WIDTH, width: sidebarWidth }}>
+					<div
+						className="app-sidebar-resize-handle"
+						role="separator"
+						aria-label="Resize operator sidebar"
+						aria-orientation="vertical"
+						onPointerDown={(event) => {
+							event.preventDefault();
+							setIsResizingSidebar(true);
+						}}
+					/>
+					<OperatorSidebar
+						connected={connected}
+						selectedSessionId={selectedSession}
+						state={state}
+						approvals={approvals}
+						artifacts={artifacts}
+						alerts={alerts}
+						runtimes={runtimes}
+						sessionDetail={sessionDetail}
+						onStartFresh={() => void handleStartRuntime(false)}
+						onStartResumed={() => void handleStartRuntime(true)}
+						onStopRuntime={(runtimeId) => void stopRuntime(runtimeId)}
+						onCopyRuntimeCommand={(runtime) => void handleCopyText("runtime command", runtime.command ? [runtime.command, ...(runtime.args ?? [])].join(" ") : null)}
+						onCopyRuntimeLog={(runtime) => void handleCopyText("runtime log path", runtime.logFile)}
+						onCopyRuntimeCwd={(runtime) => void handleCopyText("runtime working directory", runtime.cwd)}
+						onApprove={(approvalId) => void decideApproval(approvalId, "approve")}
+						onDeny={(approvalId) => void decideApproval(approvalId, "deny")}
+						onSelectArtifact={(artifactId) => void handleSelectArtifact(artifactId)}
+						onAckAlert={(alertId) => void acknowledgeAlert(alertId)}
+					/>
+				</div>
 			</div>
 
 			<form onSubmit={handleSubmit} style={{ display: "flex", gap: 8 }}>
@@ -292,20 +367,22 @@ export function App() {
 					ref={inputRef}
 					value={input}
 					onChange={(e) => setInput(e.target.value)}
-					placeholder="Send a message to the agent…"
-					disabled={!connected || state?.activity === "working"}
-					style={{
-						flex: 1,
-						padding: "8px 12px",
-						borderRadius: 6,
-						border: "1px solid #d1d5db",
-						fontSize: 14,
-						outline: "none",
+					onKeyDown={(e) => {
+						if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+							e.preventDefault();
+							doSubmit();
+						} else if (e.key === "Escape") {
+							setAttachNotice(null);
+						}
 					}}
+					placeholder={state?.activity === "working" ? "Working… send a steering directive (⌘↵)" : "Send a message to the agent… (⌘↵)"}
+					disabled={!connected}
+					className="app-message-input"
+					style={{ flex: 1 }}
 				/>
 				<button
 					type="submit"
-					disabled={!connected || !input.trim() || state?.activity === "working"}
+					disabled={!connected || !input.trim()}
 					style={{
 						padding: "8px 16px",
 						borderRadius: 6,

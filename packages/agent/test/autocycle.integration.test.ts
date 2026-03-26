@@ -76,6 +76,20 @@ describe("Autocycle (integration)", () => {
 		expect(result.metric).toBe(0.95);
 	});
 
+	it("should extract a metric from TSV-style subprocess output", async () => {
+		const ac = new Autocycle(
+			makeOptions({
+				evalCommand: 'printf "commit\tval_bpb\tmemory_gb\nabc123\t0.901234\t4.2\n"',
+				metricColumn: "val_bpb",
+			}),
+		);
+		const result = await ac.runCycleEvaluation();
+
+		expect(result.success).toBe(true);
+		expect(result.status).toBe("keep");
+		expect(result.metric).toBe(0.901234);
+	});
+
 	it("should extract metric from stderr when stdout has no match", async () => {
 		const ac = new Autocycle(
 			makeOptions({
@@ -227,6 +241,63 @@ echo "score: 5"; exit 0`,
 		// File should be reverted to "original content" (the backup from iter 1)
 		const content = await fs.readFile(targetPath, "utf-8");
 		expect(content).toBe("original content");
+	});
+
+	it("should resume from an existing ledger and revert failed resumed iterations to the current kept file", async () => {
+		const targetPath = path.join(TMP_DIR, TARGET_FILE);
+		const ledgerPath = path.join(TMP_DIR, "resume.jsonl");
+		const counterPath = path.join(TMP_DIR, "counter");
+		const scriptPath = path.join(TMP_DIR, "resume-eval.sh");
+
+		await fs.writeFile(counterPath, "1", "utf-8");
+		await fs.writeFile(
+			scriptPath,
+			`#!/bin/sh
+iter=$(cat "${counterPath}")
+if [ "$iter" = "1" ]; then echo "score: 10"; exit 0; fi
+echo "score: 5"; exit 0`,
+			{ mode: 0o755 },
+		);
+
+		const ac1 = new Autocycle(
+			makeOptions({
+				ledgerFile: "resume.jsonl",
+				evalCommand: `sh "${scriptPath}"`,
+				metricRegex: /score:\s+([\d.]+)/,
+				optimizeDirection: "maximize",
+			}),
+		);
+		await ac1.initializeRunState();
+		const first = await ac1.runCycleEvaluation();
+		expect(first.success).toBe(true);
+
+		await fs.writeFile(targetPath, "kept version", "utf-8");
+
+		const ac2 = new Autocycle(
+			makeOptions({
+				ledgerFile: "resume.jsonl",
+				resumeFromLedger: true,
+				evalCommand: `sh "${scriptPath}"`,
+				metricRegex: /score:\s+([\d.]+)/,
+				optimizeDirection: "maximize",
+			}),
+		);
+		const resumedSummary = await ac2.initializeRunState();
+		expect(resumedSummary.completedEvaluations).toBe(1);
+
+		await fs.writeFile(targetPath, "bad mutation", "utf-8");
+		await fs.writeFile(counterPath, "2", "utf-8");
+
+		const second = await ac2.runCycleEvaluation();
+		expect(second.iteration).toBe(2);
+		expect(second.success).toBe(false);
+		expect(second.status).toBe("discard");
+
+		const content = await fs.readFile(targetPath, "utf-8");
+		expect(content).toBe("kept version");
+
+		const ledgerText = await fs.readFile(ledgerPath, "utf-8");
+		expect(ledgerText.trim().split("\n")).toHaveLength(2);
 	});
 
 	// ── Target file validation ──

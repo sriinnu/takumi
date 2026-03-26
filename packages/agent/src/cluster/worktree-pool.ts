@@ -10,7 +10,7 @@
  * helpers for allocation, release, and cleanup.
  */
 
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { gitBranch, gitWorktreeAdd, gitWorktreeList, gitWorktreeRemove } from "@takumi/bridge";
 import { createLogger } from "@takumi/core";
 
@@ -85,7 +85,7 @@ export class WorktreePoolManager {
 		const worktreePath = join(this.repoRoot, this.baseDir, slotId);
 
 		const base = baseBranch ?? gitBranch(this.repoRoot) ?? "HEAD";
-		const result = gitWorktreeAdd(this.repoRoot, worktreePath, base);
+		const result = gitWorktreeAdd(this.repoRoot, worktreePath, base, { newBranch: branch });
 
 		if (result === null) {
 			throw new Error(`Failed to create worktree at "${worktreePath}" for agent "${agentId}".`);
@@ -118,7 +118,10 @@ export class WorktreePoolManager {
 			return;
 		}
 
-		gitWorktreeRemove(this.repoRoot, slot.path);
+		const removed = gitWorktreeRemove(this.repoRoot, slot.path);
+		if (!removed) {
+			throw new Error(`Failed to remove worktree slot ${slotId} at ${slot.path}`);
+		}
 		this.slots.delete(slotId);
 		log.info(`Released worktree slot ${slotId} (agent: ${slot.agentId ?? "none"})`);
 	}
@@ -126,6 +129,26 @@ export class WorktreePoolManager {
 	/** Get info about a specific slot. */
 	getSlot(slotId: string): WorktreeSlot | undefined {
 		return this.slots.get(slotId);
+	}
+
+	/**
+	 * Re-adopt a persisted slot after process restart.
+	 * I keep this explicit so restart recovery can rebuild in-memory capacity
+	 * accounting without touching git again.
+	 */
+	adopt(slot: WorktreeSlot): WorktreeSlot {
+		const existing = this.slots.get(slot.id);
+		if (
+			existing &&
+			(existing.path !== slot.path || existing.agentId !== slot.agentId || existing.branch !== slot.branch)
+		) {
+			throw new Error(`Worktree slot ${slot.id} is already tracked for a different side agent.`);
+		}
+		const nextSlot: WorktreeSlot = { ...slot, inUse: true };
+		this.slots.set(nextSlot.id, nextSlot);
+		this.syncSlotCounter(nextSlot.id);
+		log.info(`Adopted worktree slot ${nextSlot.id} for agent "${nextSlot.agentId ?? "unknown"}" at ${nextSlot.path}`);
+		return nextSlot;
 	}
 
 	/** Get all active (in-use) slots. */
@@ -168,17 +191,9 @@ export class WorktreePoolManager {
 	 * @returns The number of orphaned worktrees that were cleaned up.
 	 */
 	async cleanOrphans(): Promise<number> {
-		const allWorktrees = gitWorktreeList(this.repoRoot);
-		const trackedPaths = new Set([...this.slots.values()].map((s) => s.path));
-		const absoluteBase = join(this.repoRoot, this.baseDir);
-
+		const orphans = this.findOrphans();
 		let cleaned = 0;
-		for (const wt of allWorktrees) {
-			// Only consider worktrees under our managed base directory
-			if (!wt.startsWith(absoluteBase)) continue;
-			// Skip worktrees we are actively tracking
-			if (trackedPaths.has(wt)) continue;
-
+		for (const wt of orphans) {
 			log.info(`Removing orphaned worktree: ${wt}`);
 			const removed = gitWorktreeRemove(this.repoRoot, wt);
 			if (removed) cleaned++;
@@ -190,6 +205,25 @@ export class WorktreePoolManager {
 		return cleaned;
 	}
 
+	/**
+	 * I return worktrees under the managed base directory that are not tracked by
+	 * the current slot map or by the optional tracked path set. I let callers
+	 * provide a preloaded worktree list so audits do not pay for the same git
+	 * query twice in one pass.
+	 */
+	findOrphans(trackedPaths?: Iterable<string>, allWorktrees?: Iterable<string>): string[] {
+		const discoveredWorktrees = allWorktrees ? [...allWorktrees] : gitWorktreeList(this.repoRoot);
+		const knownPaths = new Set<string>([...this.slots.values()].map((slot) => resolve(slot.path)));
+		for (const path of trackedPaths ?? []) {
+			knownPaths.add(resolve(path));
+		}
+		const absoluteBase = resolve(this.repoRoot, this.baseDir);
+		return discoveredWorktrees.filter(
+			(worktreePath) =>
+				isManagedWorktreePath(resolve(worktreePath), absoluteBase) && !knownPaths.has(resolve(worktreePath)),
+		);
+	}
+
 	// ── Internals ───────────────────────────────────────────────────────────
 
 	/** Generate a monotonically-increasing slot ID. */
@@ -197,4 +231,16 @@ export class WorktreePoolManager {
 		this.slotCounter++;
 		return `wt-${this.slotCounter.toString().padStart(4, "0")}`;
 	}
+
+	private syncSlotCounter(slotId: string): void {
+		const match = /^wt-(\d+)$/.exec(slotId);
+		const value = match ? Number.parseInt(match[1], 10) : Number.NaN;
+		if (!Number.isNaN(value) && value > this.slotCounter) {
+			this.slotCounter = value;
+		}
+	}
+}
+
+function isManagedWorktreePath(worktreePath: string, absoluteBase: string): boolean {
+	return worktreePath === absoluteBase || worktreePath.startsWith(`${absoluteBase}${sep}`);
 }

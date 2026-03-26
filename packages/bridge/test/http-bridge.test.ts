@@ -221,6 +221,14 @@ describe("HttpBridgeServer", () => {
 			lastAssistantText: "Editing file...",
 			toolsInFlight: ["write_file"],
 			contextPercent: 42,
+			extensionUi: {
+				prompt: {
+					kind: "confirm",
+					title: "Confirm",
+					message: "Proceed?",
+				},
+				widgets: [{ key: "status", previewLines: ["ready"], truncated: false }],
+			},
 			updatedAt: Date.now(),
 		};
 		const getAgentState = vi.fn().mockResolvedValue(state);
@@ -231,7 +239,25 @@ describe("HttpBridgeServer", () => {
 		const res = await app.inject({ method: "GET", url: "/latest/1234" });
 		expect(res.statusCode).toBe(200);
 		expect(res.json().activity).toBe("working");
+		expect(res.json().extensionUi.prompt.message).toBe("Proceed?");
 		expect(getAgentState).toHaveBeenCalledWith(1234);
+	});
+
+	it("should resolve extension prompts through the bridge", async () => {
+		const respondExtensionPrompt = vi.fn().mockResolvedValue({ success: true });
+		bridge = new HttpBridgeServer({ port: 0, host: "127.0.0.1", respondExtensionPrompt });
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		const res = await app.inject({
+			method: "POST",
+			url: "/extension-ui/respond",
+			payload: { action: "pick", index: 1 },
+		});
+
+		expect(res.statusCode).toBe(200);
+		expect(res.json()).toEqual({ success: true });
+		expect(respondExtensionPrompt).toHaveBeenCalledWith({ action: "pick", index: 1 });
 	});
 
 	it("should return 404 when agent not found", async () => {

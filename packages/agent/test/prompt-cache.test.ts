@@ -43,6 +43,13 @@ describe("PromptCache", () => {
 		expect(key1).toBe(key2);
 	});
 
+	it("ignores volatile date lines in prompt content", () => {
+		const cache = makeCache();
+		const key1 = cache.computeKey("gpt-4o", "You are helpful.\nDate: 2026-03-20\nTool: read", ["Hello"]);
+		const key2 = cache.computeKey("gpt-4o", "You are helpful.\nDate: 2026-03-21\nTool: read", ["Hello"]);
+		expect(key1).toBe(key2);
+	});
+
 	it("evicts oldest entry when at capacity", () => {
 		const cache = makeCache({ maxMemoryEntries: 2 });
 		const k1 = cache.computeKey("m", "s", ["a"]);

@@ -10,6 +10,15 @@ import type { SideAgentRegistry } from "../cluster/side-agent-registry.js";
 import type { WorktreePoolManager } from "../cluster/worktree-pool.js";
 import type { ToolHandler, ToolRegistry } from "./registry.js";
 import { resolveSideAgentRouting } from "./side-agent-routing.js";
+import {
+	buildStructuredQueryPrompt,
+	extractStructuredQueryResponse,
+	reconcileMissingWindow,
+	rollbackFailedStart,
+} from "./side-agent-runtime.js";
+import { agentStopDefinition, createAgentStopHandler } from "./side-agent-stop.js";
+
+export { agentStopDefinition, createAgentStopHandler } from "./side-agent-stop.js";
 
 export interface SideAgentToolDeps {
 	pool: WorktreePoolManager;
@@ -19,7 +28,7 @@ export interface SideAgentToolDeps {
 	defaultModel?: string;
 }
 
-const DEFAULT_WAIT_STATES: SideAgentState[] = ["done", "failed", "crashed", "waiting_user"];
+const DEFAULT_WAIT_STATES: SideAgentState[] = ["stopped", "done", "failed", "crashed", "waiting_user"];
 const DEFAULT_CAPTURE_LINES = 50;
 const _WAIT_POLL_MS = 250;
 const WAIT_TIMEOUT_MS = 300_000; // 5 minutes
@@ -96,47 +105,81 @@ export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 		const id = deps.agents.nextId();
 		const now = Date.now();
 
-		const slot = await deps.pool.allocate(id);
+		let slotId: string | null = null;
+		try {
+			const slot = await deps.pool.allocate(id);
+			slotId = slot.id;
 
-		const agent: SideAgentInfo = {
-			id,
-			description,
-			state: "allocating_worktree",
-			model,
-			worktreePath: slot.path,
-			tmuxWindow: null,
-			branch: slot.branch,
-			pid: null,
-			startedAt: now,
-			updatedAt: now,
-		};
+			const agent: SideAgentInfo = {
+				id,
+				description,
+				state: "allocating_worktree",
+				model,
+				slotId: slot.id,
+				worktreePath: slot.path,
+				tmuxWindow: null,
+				tmuxSessionName: null,
+				tmuxWindowId: null,
+				tmuxPaneId: null,
+				branch: slot.branch,
+				pid: null,
+				startedAt: now,
+				updatedAt: now,
+			};
 
-		deps.agents.register(agent);
-		deps.agents.transition(id, "spawning_tmux");
+			deps.agents.register(agent);
+			deps.agents.transition(id, "spawning_tmux");
 
-		const win = await deps.tmux.createWindow(id, slot.path);
-		const tmuxWindow =
-			typeof win === "object" && win && "windowName" in win && typeof win.windowName === "string" ? win.windowName : id;
-		deps.agents.transition(id, "starting");
+			const win = await deps.tmux.createWindow(id, slot.path);
+			const tmuxWindow =
+				typeof win === "object" && win && "windowName" in win && typeof win.windowName === "string"
+					? win.windowName
+					: id;
+			const tmuxSessionName =
+				typeof win === "object" && win && "sessionName" in win && typeof win.sessionName === "string"
+					? win.sessionName
+					: null;
+			const tmuxWindowId =
+				typeof win === "object" && win && "windowId" in win && typeof win.windowId === "string" ? win.windowId : null;
+			const tmuxPaneId =
+				typeof win === "object" && win && "paneId" in win && typeof win.paneId === "string" ? win.paneId : null;
+			deps.agents.update(id, { tmuxWindow, tmuxSessionName, tmuxWindowId, tmuxPaneId });
+			deps.agents.transition(id, "starting");
 
-		if (initialPrompt?.trim()) {
-			await deps.tmux.sendKeys(id, initialPrompt.trim());
+			if (initialPrompt?.trim()) {
+				await deps.tmux.sendKeys(id, initialPrompt.trim());
+			}
+
+			deps.agents.transition(id, "running");
+			return {
+				output: JSON.stringify(
+					{
+						id,
+						status: "running",
+						model,
+						topic: routing.topic ?? null,
+						routingSource: routing.source,
+						worktree: slot.path,
+						branch: slot.branch,
+						tmuxWindow,
+					},
+					null,
+					"\t",
+				),
+				isError: false,
+			};
+		} catch (error) {
+			let cleanupDetail = "";
+			try {
+				await rollbackFailedStart({ id, slotId, agents: deps.agents, pool: deps.pool, tmux: deps.tmux });
+			} catch (cleanupError) {
+				cleanupDetail = ` Cleanup also failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
+			}
+			return {
+				output: `Error: Failed to start side agent "${id}": ${error instanceof Error ? error.message : String(error)}${cleanupDetail}`,
+				isError: true,
+			};
 		}
-
-		deps.agents.transition(id, "running");
-
-		const result = {
-			id,
-			status: "running",
-			model,
-			topic: routing.topic ?? null,
-			routingSource: routing.source,
-			worktree: slot.path,
-			branch: slot.branch,
-			tmuxWindow,
-		};
-
-		return { output: JSON.stringify(result, null, "\t"), isError: false };
 	};
 }
 
@@ -171,20 +214,27 @@ export function createAgentCheckHandler(deps: SideAgentToolDeps): ToolHandler {
 			return { output: `Error: unknown agent "${id}"`, isError: true };
 		}
 
+		let current = agent;
 		let recentOutput = "";
-		try {
-			recentOutput = await deps.tmux.captureOutput(id, DEFAULT_CAPTURE_LINES);
-		} catch {
-			recentOutput = "<no output available>";
+		if (await deps.tmux.isWindowAlive(id)) {
+			try {
+				recentOutput = await deps.tmux.captureOutput(id, DEFAULT_CAPTURE_LINES);
+			} catch {
+				recentOutput = "<no output available>";
+			}
+		} else {
+			reconcileMissingWindow({ id, agents: deps.agents });
+			current = deps.agents.get(id) ?? { ...agent, state: "crashed", error: "tmux window missing" };
+			recentOutput = "<tmux window missing>";
 		}
 
 		const result = {
-			id: agent.id,
-			state: agent.state,
-			description: agent.description,
-			model: agent.model,
-			branch: agent.branch,
-			error: agent.error ?? null,
+			id: current.id,
+			state: current.state,
+			description: current.description,
+			model: current.model,
+			branch: current.branch,
+			error: current.error ?? null,
 			recentOutput,
 		};
 
@@ -198,7 +248,7 @@ export const agentWaitAnyDefinition: ToolDefinition = {
 	name: "takumi_agent_wait_any",
 	description:
 		"Wait for any of the specified side agents to reach one of the target states. " +
-		'Default target states: ["done", "failed", "crashed", "waiting_user"]. ' +
+		'Default target states: ["stopped", "done", "failed", "crashed", "waiting_user"]. ' +
 		"Returns which agent changed and its new state.",
 	inputSchema: {
 		type: "object",
@@ -328,6 +378,7 @@ export function registerSideAgentTools(registry: ToolRegistry, deps: SideAgentTo
 	registry.register(agentCheckDefinition, createAgentCheckHandler(deps));
 	registry.register(agentWaitAnyDefinition, createAgentWaitAnyHandler(deps));
 	registry.register(agentSendDefinition, createAgentSendHandler(deps));
+	registry.register(agentStopDefinition, createAgentStopHandler(deps));
 	registry.register(agentQueryDefinition, createAgentQueryHandler(deps));
 }
 
@@ -378,9 +429,8 @@ export function createAgentQueryHandler(deps: SideAgentToolDeps): ToolHandler {
 			};
 		}
 
-		const wrappedQuery =
-			`[STRUCTURED_QUERY format=${format}]\n${query}\n` +
-			`[/STRUCTURED_QUERY]\nRespond with a JSON block wrapped in \`\`\`json ... \`\`\`.`;
+		const requestId = `${id}-${Date.now().toString(36)}`;
+		const wrappedQuery = buildStructuredQueryPrompt(query, format, requestId);
 
 		await deps.tmux.sendKeys(id, wrappedQuery);
 
@@ -402,21 +452,21 @@ export function createAgentQueryHandler(deps: SideAgentToolDeps): ToolHandler {
 				continue;
 			}
 
-			const jsonMatch = output.match(/```json\s*([\s\S]*?)```/);
-			if (jsonMatch?.[1]) {
-				try {
-					const parsed = JSON.parse(jsonMatch[1].trim());
+			try {
+				const parsed = extractStructuredQueryResponse(output, requestId);
+				if (parsed) {
 					const result = {
 						id,
 						query,
+						requestId,
 						format,
 						response: parsed,
 						responseType: "structured",
 					};
 					return { output: JSON.stringify(result, null, "\t"), isError: false };
-				} catch {
-					// JSON not valid yet, keep polling
 				}
+			} catch {
+				// JSON not valid yet, keep polling
 			}
 		}
 

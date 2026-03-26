@@ -27,6 +27,25 @@ describe("KeyBindingRegistry", () => {
 			reg.register("ctrl+k", "Kill line", vi.fn());
 
 			expect(reg.get("ctrl+k")).toBeDefined();
+			expect(reg.get("ctrl+k")!.id).toBe("legacy.ctrl+k");
+		});
+
+		it("stores a canonical namespaced id when provided", () => {
+			const reg = new KeyBindingRegistry();
+			reg.register("ctrl+k", "Command palette", vi.fn(), { id: "app.command-palette.toggle" });
+
+			expect(reg.getById("app.command-palette.toggle")?.key).toBe("ctrl+k");
+		});
+
+		it("supports alias keys for the same action", () => {
+			const reg = new KeyBindingRegistry();
+			reg.register("ctrl+k", "Command palette", vi.fn(), {
+				id: "app.command-palette.toggle",
+				aliases: ["ctrl+p"],
+			});
+
+			expect(reg.get("ctrl+k")?.id).toBe("app.command-palette.toggle");
+			expect(reg.get("ctrl+p")?.id).toBe("app.command-palette.toggle");
 		});
 
 		it("stores description", () => {
@@ -124,6 +143,20 @@ describe("KeyBindingRegistry", () => {
 			expect(altHandler).toHaveBeenCalledOnce();
 		});
 
+		it("triggers through alias keys", () => {
+			const reg = new KeyBindingRegistry();
+			const handler = vi.fn();
+			reg.register("ctrl+k", "Command palette", handler, {
+				id: "app.command-palette.toggle",
+				aliases: ["ctrl+p"],
+			});
+
+			const result = reg.handle(makeKeyEvent({ key: "p", ctrl: true }));
+
+			expect(result).toBe(true);
+			expect(handler).toHaveBeenCalledOnce();
+		});
+
 		it("does not trigger disabled bindings", () => {
 			const reg = new KeyBindingRegistry();
 			const handler = vi.fn();
@@ -176,6 +209,14 @@ describe("KeyBindingRegistry", () => {
 			// Should not throw
 			reg.setEnabled("ctrl+z", false);
 			expect(reg.get("ctrl+z")).toBeUndefined();
+		});
+
+		it("can disable by namespaced id", () => {
+			const reg = new KeyBindingRegistry();
+			reg.register("ctrl+k", "Command palette", vi.fn(), { id: "app.command-palette.toggle" });
+			reg.setEnabledById("app.command-palette.toggle", false);
+
+			expect(reg.getById("app.command-palette.toggle")?.enabled).toBe(false);
 		});
 	});
 
@@ -318,10 +359,35 @@ describe("KeyBindingRegistry", () => {
 
 			const bindings = reg.list();
 			expect(bindings[0]).toEqual({
+				id: "legacy.ctrl+k",
 				key: "ctrl+k",
 				description: "Kill line",
 				handler,
 				enabled: true,
+				aliases: [],
+			});
+		});
+
+		it("can unregister by canonical id", () => {
+			const reg = new KeyBindingRegistry();
+			reg.register("ctrl+k", "Command palette", vi.fn(), { id: "app.command-palette.toggle" });
+
+			expect(reg.unregisterById("app.command-palette.toggle")).toBe(true);
+			expect(reg.get("ctrl+k")).toBeUndefined();
+			expect(reg.getById("app.command-palette.toggle")).toBeUndefined();
+		});
+
+		describe("matches", () => {
+			it("matches a namespaced action id against a key event", () => {
+				const reg = new KeyBindingRegistry();
+				reg.register("ctrl+k", "Command palette", vi.fn(), {
+					id: "app.command-palette.toggle",
+					aliases: ["ctrl+p"],
+				});
+
+				expect(reg.matches("app.command-palette.toggle", makeKeyEvent({ key: "k", ctrl: true }))).toBe(true);
+				expect(reg.matches("app.command-palette.toggle", makeKeyEvent({ key: "p", ctrl: true }))).toBe(true);
+				expect(reg.matches("app.command-palette.toggle", makeKeyEvent({ key: "x", ctrl: true }))).toBe(false);
 			});
 		});
 

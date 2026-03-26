@@ -20,9 +20,10 @@ import {
 	type SteeringQueue,
 	type ToolRegistry,
 } from "@takumi/agent";
-import type { AgentEvent, Message, PermissionDecision, TakumiConfig, ToolDefinition } from "@takumi/core";
+import type { AgentEvent, Message, PermissionDecision, TakumiConfig, ToolDefinition, ToolResult } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import { hydrateRunnerCognition, materializeWorkspaceDirectives } from "./agent-runner-cognition.js";
+import { executeCommandTool } from "./agent-runner-command-tools.js";
 import { getBoundSessionId } from "./chitragupta-executor-runtime.js";
 import type { AppState } from "./state.js";
 
@@ -96,6 +97,9 @@ export class AgentRunner {
 	async submit(text: string, options?: { images?: Array<{ mediaType: string; data: string }> }): Promise<void> {
 		if (this.state.isStreaming.value) {
 			log.warn("Already streaming, ignoring submit");
+			this.addAssistantTextMessage(
+				"The current run is still active. I ignored the new submit instead of interleaving it.",
+			);
 			return;
 		}
 
@@ -223,6 +227,7 @@ export class AgentRunner {
 					break;
 				} else if (event.type === "error") {
 					log.error("Agent error", event.error);
+					this.presentRuntimeError(event.error);
 					break;
 				}
 			}
@@ -274,6 +279,7 @@ export class AgentRunner {
 			}
 		} catch (err) {
 			log.error("Agent loop error", err);
+			this.presentRuntimeError(err);
 		} finally {
 			this.memoryHooks.save();
 			this.principleMemory.save();
@@ -366,6 +372,20 @@ export class AgentRunner {
 		return decision.allowed;
 	}
 
+	async executeCommandTool(tool: string, args: Record<string, unknown>): Promise<ToolResult> {
+		return executeCommandTool({
+			toolName: tool,
+			input: args,
+			tools: this.tools,
+			extensionRunner: this.extensionRunner,
+			observer: this.state.chitraguptaObserver.value,
+			sessionId: this.state.sessionId.value || null,
+			getPermissionDecision: (name, input) => this.getToolPermissionDecision(name, input),
+			recordToolUse: (name, input, result) => this.experienceMemory.recordToolUse(name, input, result),
+			onObservationFlush: () => this.state.observationFlushCount.value++,
+		});
+	}
+
 	async getToolPermissionDecision(tool: string, args: Record<string, unknown>): Promise<PermissionDecision> {
 		return this.permissions.check(tool, args);
 	}
@@ -427,6 +447,21 @@ export class AgentRunner {
 			log.debug("Agent event", { type: event.type });
 		}
 	}
+
+	private presentRuntimeError(error: unknown): void {
+		const detail = formatRuntimeError(error);
+		this.addAssistantTextMessage(`Run failed.\n${detail}`);
+	}
+
+	private addAssistantTextMessage(text: string): void {
+		const message: Message = {
+			id: `msg-${Date.now()}`,
+			role: "assistant",
+			content: [{ type: "text", text }],
+			timestamp: Date.now(),
+		};
+		this.state.addMessage(message);
+	}
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -477,4 +512,18 @@ function renderToolRoutingHints(text: string, tools: ToolDefinition[], memory: E
 		"## Dynamic Tool Ranking",
 		...ranked.map((entry, index) => `${index + 1}. ${entry.name} — ${entry.reason}`),
 	].join("\n");
+}
+
+function formatRuntimeError(error: unknown): string {
+	if (error instanceof Error) {
+		return error.message.trim() || error.name;
+	}
+	if (typeof error === "string") {
+		return error.trim() || "Unknown runtime error";
+	}
+	try {
+		return JSON.stringify(error);
+	} catch {
+		return "Unknown runtime error";
+	}
 }

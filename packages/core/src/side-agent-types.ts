@@ -31,6 +31,7 @@ export type SideAgentState =
 	| "finishing"
 	| "waiting_merge_lock"
 	| "retrying_reconcile"
+	| "stopped"
 	| "done"
 	| "failed"
 	| "crashed";
@@ -42,8 +43,12 @@ export interface SideAgentInfo {
 	description: string;
 	state: SideAgentState;
 	model: string;
+	slotId: string | null;
 	worktreePath: string | null;
 	tmuxWindow: string | null;
+	tmuxSessionName: string | null;
+	tmuxWindowId: string | null;
+	tmuxPaneId: string | null;
 	branch: string;
 	pid: number | null;
 	startedAt: number;
@@ -58,4 +63,5 @@ export type SideAgentEvent =
 	| { type: "agent_state_changed"; id: string; from: SideAgentState; to: SideAgentState }
 	| { type: "agent_output"; id: string; text: string }
 	| { type: "agent_completed"; id: string; mergeResult: "success" | "conflict" | "error" }
+	| { type: "agent_stopped"; id: string; reason: string }
 	| { type: "agent_failed"; id: string; error: string };

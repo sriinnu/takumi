@@ -42,6 +42,17 @@ describe("SlashCommandRegistry", () => {
 			const cmds = reg.list();
 			expect(cmds[0].aliases).toEqual([]);
 		});
+
+		it("stores argument completion handlers from register options", async () => {
+			const reg = new SlashCommandRegistry();
+			const complete = vi.fn(async () => ["resume", "refresh"]);
+			reg.register("/lane", "Lane tools", vi.fn(), { getArgumentCompletions: complete });
+
+			const cmd = reg.get("/lane");
+			expect(cmd?.getArgumentCompletions).toBeDefined();
+			await expect(cmd?.getArgumentCompletions?.("re")).resolves.toEqual(["resume", "refresh"]);
+			expect(complete).toHaveBeenCalledWith("re");
+		});
 	});
 
 	/* ---- has ------------------------------------------------------------- */
@@ -69,6 +80,15 @@ describe("SlashCommandRegistry", () => {
 			reg.register("/help", "Help", vi.fn());
 			reg.unregister("/help");
 			expect(reg.has("/help")).toBe(false);
+		});
+	});
+
+	describe("get", () => {
+		it("returns the canonical command for names and aliases", () => {
+			const reg = new SlashCommandRegistry();
+			reg.register("/help", "Help", vi.fn(), ["/h"]);
+			expect(reg.get("/help")?.name).toBe("/help");
+			expect(reg.get("/h")?.name).toBe("/help");
 		});
 	});
 

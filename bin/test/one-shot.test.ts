@@ -9,6 +9,21 @@ vi.mock("../cli/provider.js", () => ({
 	})),
 }));
 
+vi.mock("../cli/side-agent-tools.js", () => ({
+	probeSideAgentBootstrap: vi.fn(async () => ({
+		enabled: false,
+		degraded: true,
+		reason: "tmux_unavailable",
+		summary: "tmux is unavailable",
+	})),
+	registerOptionalSideAgentTools: vi.fn(async () => ({
+		enabled: false,
+		degraded: true,
+		reason: "tmux_unavailable",
+		summary: "tmux is unavailable",
+	})),
+}));
+
 vi.mock("@takumi/agent", () => ({
 	bootstrapChitraguptaForExec: vi.fn(async () => ({
 		connected: false,
@@ -57,7 +72,7 @@ describe("runOneShot", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("returns a policy exit code for headless permission denials", async () => {
+	it("returns a policy exit code for headless permission denials and reports side-agent bootstrap in ndjson mode", async () => {
 		const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: string | Uint8Array) => {
 			emitted.push(String(chunk));
 			return true;
@@ -85,7 +100,20 @@ describe("runOneShot", () => {
 			.split("\n")
 			.map((line) => line.trim())
 			.filter(Boolean)
-			.map((line) => JSON.parse(line) as { kind: string; exitCode?: number; phase?: string; category?: string; protocol?: string });
+			.map((line) =>
+				JSON.parse(line) as {
+					kind: string;
+					exitCode?: number;
+					phase?: string;
+					category?: string;
+					protocol?: string;
+					bootstrap?: { summary?: string; sideAgents?: { reason?: string } };
+				},
+			);
+
+		const bootstrapEvent = events.find((event) => event.kind === "bootstrap_status");
+		expect(bootstrapEvent?.bootstrap?.summary).toBe("bootstrap not requested");
+		expect(bootstrapEvent?.bootstrap?.sideAgents?.reason).toBe("tmux_unavailable");
 
 		expect(events.at(-1)).toMatchObject({
 			protocol: EXEC_PROTOCOL,
@@ -94,5 +122,33 @@ describe("runOneShot", () => {
 			phase: "policy",
 			category: "policy",
 		});
+	});
+
+	it("prints bootstrap warnings consistently in text mode", async () => {
+		const stderrChunks: string[] = [];
+		const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(((chunk: string | Uint8Array) => {
+			stderrChunks.push(String(chunk));
+			return true;
+		}) as never);
+
+		const { runOneShot } = await import("../cli/one-shot.js");
+		const result = await runOneShot(
+			{
+				provider: "openai",
+				model: "gpt-4.1",
+				maxTurns: 4,
+				permissions: [],
+			} as never,
+			"modify the readme",
+			undefined,
+			"text",
+			{ runId: "exec-policy-text", headless: true, enableChitraguptaBootstrap: true },
+		);
+
+		stderrSpy.mockRestore();
+
+		expect(result.exitCode).toBe(EXEC_EXIT_CODES.POLICY);
+		expect(stderrChunks.join("")).toContain("[warning] Side agents: tmux is unavailable");
+		expect(stderrChunks.join("")).toContain("[warning] Chitragupta: offline");
 	});
 });

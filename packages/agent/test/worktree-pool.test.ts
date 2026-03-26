@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // ── Mock @takumi/bridge git helpers ───────────────────────────────────────────
 
 vi.mock("@takumi/bridge", () => ({
-	gitWorktreeAdd: vi.fn((_root: string, path: string, _commitish?: string) => path),
+	gitWorktreeAdd: vi.fn((_root: string, path: string, _commitish?: string, _options?: { newBranch?: string }) => path),
 	gitWorktreeRemove: vi.fn(() => true),
 	gitWorktreeList: vi.fn(() => []),
 	gitBranch: vi.fn(() => "main"),
@@ -59,14 +59,24 @@ describe("WorktreePoolManager", () => {
 			expect(slot.createdAt).toBeGreaterThan(0);
 
 			expect(gitWorktreeAdd).toHaveBeenCalledOnce();
-			expect(gitWorktreeAdd).toHaveBeenCalledWith(REPO_ROOT, join(REPO_ROOT, BASE_DIR, "wt-0001"), "main");
+			expect(gitWorktreeAdd).toHaveBeenCalledWith(
+				REPO_ROOT,
+				join(REPO_ROOT, BASE_DIR, "wt-0001"),
+				"main",
+				expect.objectContaining({ newBranch: slot.branch }),
+			);
 		});
 
 		it("uses the provided baseBranch instead of current branch", async () => {
 			const pool = createPool();
 			await pool.allocate("agent-2", "develop");
 
-			expect(gitWorktreeAdd).toHaveBeenCalledWith(REPO_ROOT, expect.any(String), "develop");
+			expect(gitWorktreeAdd).toHaveBeenCalledWith(
+				REPO_ROOT,
+				expect.any(String),
+				"develop",
+				expect.objectContaining({ newBranch: expect.stringContaining("agent-2") }),
+			);
 			// gitBranch should NOT be called when baseBranch is explicit
 			expect(gitBranch).not.toHaveBeenCalled();
 		});
@@ -127,11 +137,37 @@ describe("WorktreePoolManager", () => {
 			await pool.release(slot.id);
 			expect(pool.hasCapacity()).toBe(true);
 		});
+
+		it("throws and keeps the slot when git worktree removal fails", async () => {
+			const pool = createPool();
+			const slot = await pool.allocate("agent-bad-remove");
+			vi.mocked(gitWorktreeRemove).mockReturnValueOnce(false);
+
+			await expect(pool.release(slot.id)).rejects.toThrow(/Failed to remove worktree slot/);
+			expect(pool.getSlot(slot.id)).toBeDefined();
+		});
 	});
 
 	// ── getActiveSlots / getAllSlots ─────────────────────────────────────────
 
 	describe("slot queries", () => {
+		it("adopt rehydrates a persisted slot without touching git", () => {
+			const pool = createPool(2);
+			const slot = pool.adopt({
+				id: "wt-0004",
+				path: join(REPO_ROOT, BASE_DIR, "wt-0004"),
+				branch: "takumi/side-agent/side-4-wt-0004",
+				inUse: true,
+				agentId: "side-4",
+				createdAt: 123,
+			});
+
+			expect(slot.id).toBe("wt-0004");
+			expect(pool.getSlot("wt-0004")).toMatchObject({ agentId: "side-4", inUse: true });
+			expect(gitWorktreeAdd).not.toHaveBeenCalled();
+			expect(gitWorktreeRemove).not.toHaveBeenCalled();
+		});
+
 		it("getActiveSlots returns only in-use slots", async () => {
 			const pool = createPool(5);
 			const s1 = await pool.allocate("a");
@@ -154,6 +190,21 @@ describe("WorktreePoolManager", () => {
 		it("getSlot returns undefined for missing ID", () => {
 			const pool = createPool();
 			expect(pool.getSlot("nope")).toBeUndefined();
+		});
+
+		it("adopt keeps the slot counter aligned with persisted slots", async () => {
+			const pool = createPool(3);
+			pool.adopt({
+				id: "wt-0007",
+				path: join(REPO_ROOT, BASE_DIR, "wt-0007"),
+				branch: "takumi/side-agent/side-7-wt-0007",
+				inUse: true,
+				agentId: "side-7",
+				createdAt: 123,
+			});
+
+			const slot = await pool.allocate("fresh");
+			expect(slot.id).toBe("wt-0008");
 		});
 	});
 
@@ -240,6 +291,16 @@ describe("WorktreePoolManager", () => {
 			const cleaned = await pool.cleanOrphans();
 
 			expect(cleaned).toBe(0);
+		});
+
+		it("does not treat sibling path prefixes as managed worktrees", async () => {
+			vi.mocked(gitWorktreeList).mockReturnValue([join(REPO_ROOT, ".takumi/worktrees-old", "wt-stale")]);
+
+			const pool = createPool();
+			const cleaned = await pool.cleanOrphans();
+
+			expect(cleaned).toBe(0);
+			expect(gitWorktreeRemove).not.toHaveBeenCalled();
 		});
 	});
 

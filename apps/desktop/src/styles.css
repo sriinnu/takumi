@@ -1,0 +1,161 @@
+/* ── Base reset ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+	margin: 0;
+	background: var(--c-bg-page);
+	color: var(--c-text);
+	font-family: system-ui, -apple-system, sans-serif;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* ── Color tokens (light) ───────────────────────────────────────────────────── */
+:root {
+	--c-bg:             #ffffff;
+	--c-bg-page:        #f3f4f6;
+	--c-bg-card:        #f9fafb;
+	--c-border:         #e5e7eb;
+	--c-text:           #111827;
+	--c-text-secondary: #374151;
+	--c-text-muted:     #6b7280;
+	--c-text-dim:       #9ca3af;
+	--c-text-medium:    #4b5563;
+	--c-input-border:   #d1d5db;
+	--c-accent:         #2563eb;
+}
+
+/* ── Color tokens (dark — Ghostty/tmux friendly) ────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+	:root {
+		--c-bg:             #1e2533;
+		--c-bg-page:        #0f1117;
+		--c-bg-card:        #1a2032;
+		--c-border:         #2d3748;
+		--c-text:           #f1f5f9;
+		--c-text-secondary: #cbd5e1;
+		--c-text-muted:     #94a3b8;
+		--c-text-dim:       #64748b;
+		--c-text-medium:    #a1afc3;
+		--c-input-border:   #2d3748;
+		--c-accent:         #3b82f6;
+	}
+}
+
+/* ── Responsive 3-column layout grid ───────────────────────────────────────── */
+.app-layout-grid {
+	display: grid;
+	grid-template-columns: 280px minmax(0, 1fr) 300px;
+	gap: 16px;
+	margin-bottom: 16px;
+}
+
+.app-sidebar-shell {
+	position: relative;
+	min-width: 280px;
+}
+
+.app-sidebar-resize-handle {
+	position: absolute;
+	left: -10px;
+	top: 0;
+	bottom: 0;
+	width: 16px;
+	cursor: col-resize;
+	touch-action: none;
+	z-index: 2;
+}
+
+.app-sidebar-resize-handle::before {
+	content: "";
+	position: absolute;
+	left: 7px;
+	top: 16px;
+	bottom: 16px;
+	width: 2px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--c-border) 85%, transparent);
+	transition: background 120ms ease;
+}
+
+.app-sidebar-resize-handle:hover::before,
+.app-sidebar-resizing .app-sidebar-resize-handle::before {
+	background: color-mix(in srgb, var(--c-accent) 75%, white 10%);
+}
+
+.app-sidebar-resizing {
+	user-select: none;
+	cursor: col-resize;
+}
+
+@media (max-width: 1100px) {
+	.app-layout-grid {
+		grid-template-columns: 240px minmax(0, 1fr);
+	}
+	.app-layout-grid > .app-sidebar-shell:last-of-type {
+		grid-column: 1 / -1;
+	}
+	.app-sidebar-resize-handle {
+		display: none;
+	}
+}
+
+@media (max-width: 800px) {
+	.app-layout-grid {
+		grid-template-columns: 1fr;
+	}
+	.app-sidebar-shell {
+		width: auto !important;
+		max-width: none;
+	}
+}
+
+/* ── Responsive health / status bar ────────────────────────────────────────── */
+.app-health-grid {
+	display: grid;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+@media (max-width: 1000px) {
+	.app-health-grid {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 640px) {
+	.app-health-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+/* ── Message input ──────────────────────────────────────────────────────────── */
+.app-message-input {
+	flex: 1;
+	padding: 8px 12px;
+	border-radius: 6px;
+	border: 1px solid var(--c-input-border);
+	background: var(--c-bg);
+	color: var(--c-text);
+	font-size: 14px;
+	font-family: inherit;
+	outline: none;
+	transition: border-color 0.1s;
+}
+
+.app-message-input:focus {
+	border-color: var(--c-accent);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-accent) 25%, transparent);
+}
+
+.app-message-input::placeholder {
+	color: var(--c-text-muted);
+}
+
+/* ── Dark-mode scrollbars ───────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+	::-webkit-scrollbar { width: 6px; height: 6px; }
+	::-webkit-scrollbar-track { background: var(--c-bg-card); }
+	::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 3px; }
+	::-webkit-scrollbar-thumb:hover { background: var(--c-text-dim); }
+}

@@ -1,5 +1,4 @@
-import type { AgentEvent, TakumiConfig, Usage, ExecLaneSnapshot } from "@takumi/core";
-import { bootstrapChitraguptaForExec } from "@takumi/agent";
+import type { AgentEvent, ExecBootstrapSnapshot, TakumiConfig, Usage, ExecLaneSnapshot } from "@takumi/core";
 import {
 	EXEC_EXIT_CODES,
 	type ExecArtifact,
@@ -24,7 +23,7 @@ import {
 	persistExecSession,
 	resolveExecRouting,
 } from "./one-shot-helpers.js";
-import { registerOptionalSideAgentTools } from "./side-agent-tools.js";
+import { collectRuntimeBootstrap } from "./runtime-bootstrap.js";
 
 export interface OneShotOptions {
 	runId: string;
@@ -88,7 +87,7 @@ export async function runOneShot(
 	let agentError: Error | undefined;
 	let policyError: Error | undefined;
 	let bootstrapConnected = false;
-	let bootstrapBridge: Awaited<ReturnType<typeof bootstrapChitraguptaForExec>>["bridge"] | null = null;
+	let bootstrapBridge: NonNullable<Awaited<ReturnType<typeof collectRuntimeBootstrap>>["chitragupta"]>["bridge"] | null = null;
 	let sessionBinding: ExecSessionBinding = { projectPath: process.cwd() };
 	let routedModel = config.model;
 	const routingBinding: ExecRoutingBinding = {
@@ -124,20 +123,31 @@ export async function runOneShot(
 		);
 	}
 
-	try {
-		const provider = await createProvider(config, fallbackName);
-		const tools = new ToolRegistry();
-		registerBuiltinTools(tools);
-		await registerOptionalSideAgentTools(tools, config);
-		const recentReflexions = await loadRecentReflexions(5);
-		const reflexionPrompt = buildReflexionPrompt(recentReflexions);
-
-		let bootstrapPrompt = "";
-		if (options?.enableChitraguptaBootstrap) {
-			const bootstrap = await bootstrapChitraguptaForExec({ cwd: process.cwd() });
-			bootstrapConnected = bootstrap.connected;
-			bootstrapBridge = bootstrap.bridge;
-			bootstrapPrompt = bootstrap.memoryContext ?? "";
+		try {
+			const tools = new ToolRegistry();
+			registerBuiltinTools(tools);
+			const [provider, runtimeBootstrap, recentReflexions] = await Promise.all([
+				createProvider(config, fallbackName),
+				collectRuntimeBootstrap(config, {
+					cwd: process.cwd(),
+					tools,
+					enableChitraguptaBootstrap: Boolean(options?.enableChitraguptaBootstrap),
+				}),
+				loadRecentReflexions(5),
+			]);
+			if (runtimeBootstrap.sideAgents.degraded) {
+				failures.push(`side_agent_bootstrap: ${runtimeBootstrap.sideAgents.summary}`);
+			}
+			if (streamFormat === "text") {
+				for (const line of runtimeBootstrap.warningLines) {
+					process.stderr.write(`[warning] ${line}\n`);
+				}
+			}
+			const reflexionPrompt = buildReflexionPrompt(recentReflexions);
+			const bootstrapSnapshot: ExecBootstrapSnapshot = runtimeBootstrap.bootstrap;
+			bootstrapConnected = runtimeBootstrap.bootstrap.connected;
+			bootstrapBridge = runtimeBootstrap.chitragupta?.bridge ?? null;
+			const bootstrapPrompt = runtimeBootstrap.chitragupta?.memoryContext ?? "";
 			if (bootstrapBridge?.isConnected) {
 				sessionBinding = await ensureExecCanonicalSession(bootstrapBridge, prompt, config);
 				const routed = await resolveExecRouting(bootstrapBridge, sessionBinding, prompt, config, routingBinding.capability);
@@ -153,13 +163,12 @@ export async function runOneShot(
 				emitExecEvent(
 					createBootstrapStatusEvent({
 						runId,
-						bootstrap,
+						bootstrap: bootstrapSnapshot,
 					}),
 				);
 			}
-		}
 
-		const combinedSystemPrompt = [config.systemPrompt || "", reflexionPrompt, bootstrapPrompt]
+			const combinedSystemPrompt = [config.systemPrompt || "", reflexionPrompt, bootstrapPrompt]
 			.filter(Boolean)
 			.join("\n\n");
 

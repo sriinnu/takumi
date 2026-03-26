@@ -8,6 +8,12 @@ export interface SlashCommand {
 	description: string;
 	handler: (args: string) => void | Promise<void>;
 	aliases: string[];
+	getArgumentCompletions?: (partial: string) => string[] | Promise<string[]>;
+}
+
+export interface RegisterSlashCommandOptions {
+	aliases?: string[];
+	getArgumentCompletions?: (partial: string) => string[] | Promise<string[]>;
 }
 
 export class SlashCommandRegistry {
@@ -18,11 +24,18 @@ export class SlashCommandRegistry {
 		name: string,
 		description: string,
 		handler: (args: string) => void | Promise<void>,
-		aliases: string[] = [],
+		aliasesOrOptions: string[] | RegisterSlashCommandOptions = [],
 	): void {
-		const cmd: SlashCommand = { name, description, handler, aliases };
+		const options = Array.isArray(aliasesOrOptions) ? { aliases: aliasesOrOptions } : aliasesOrOptions;
+		const cmd: SlashCommand = {
+			name,
+			description,
+			handler,
+			aliases: options.aliases ?? [],
+			getArgumentCompletions: options.getArgumentCompletions,
+		};
 		this.commands.set(name, cmd);
-		for (const alias of aliases) {
+		for (const alias of cmd.aliases) {
 			this.commands.set(alias, cmd);
 		}
 	}
@@ -92,5 +105,10 @@ export class SlashCommandRegistry {
 	/** Check if a command exists. */
 	has(name: string): boolean {
 		return this.commands.has(name);
+	}
+
+	/** Get a command by canonical name or alias. */
+	get(name: string): SlashCommand | undefined {
+		return this.commands.get(name);
 	}
 }

@@ -17,6 +17,10 @@ describe("cli capability presets", () => {
 		expect(CODEX_CLI_CAPABILITY.id).toBe("cli.codex");
 		expect(AIDER_CLI_CAPABILITY.id).toBe("cli.aider");
 		expect(DEFAULT_CLI_CAPABILITIES).toHaveLength(3);
+		expect(CODEX_CLI_CAPABILITY.priority).toBeGreaterThan(CLAUDE_CLI_CAPABILITY.priority ?? 0);
+		expect(CODEX_CLI_CAPABILITY.capabilities).toContain("coding.fast-local");
+		expect(CLAUDE_CLI_CAPABILITY.capabilities).toContain("coding.fast-local");
+		expect(AIDER_CLI_CAPABILITY.capabilities).toContain("coding.fast-local");
 	});
 
 	it("builds a cli capability from a generic contract", () => {
@@ -53,8 +57,8 @@ describe("cli capability presets", () => {
 		expect(capabilities[0]?.id).toBe(TAKUMI_CAPABILITY.id);
 		expect(capabilities.map((capability) => capability.id)).toEqual([
 			TAKUMI_CAPABILITY.id,
-			CLAUDE_CLI_CAPABILITY.id,
 			CODEX_CLI_CAPABILITY.id,
+			CLAUDE_CLI_CAPABILITY.id,
 			AIDER_CLI_CAPABILITY.id,
 		]);
 	});

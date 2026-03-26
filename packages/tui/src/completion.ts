@@ -26,6 +26,10 @@ export interface CompletionItem {
 	label: string;
 	/** Text to insert when the completion is confirmed. */
 	insertText: string;
+	/** Grapheme column where the replacement starts. */
+	replaceStart: number;
+	/** Grapheme column where the replacement ends. */
+	replaceEnd: number;
 	/** Category of completion. */
 	kind: CompletionKind;
 	/** Secondary description shown alongside the label. */
@@ -78,11 +82,21 @@ export function cloneProviderModelCatalog(catalog: ProviderModelCatalog): Provid
 	return Object.fromEntries(Object.entries(catalog).map(([provider, models]) => [provider, [...models]]));
 }
 
-/** Flat list of all known model IDs across providers. */
-const _KNOWN_MODELS = Object.values(PROVIDER_MODELS).flat();
-
 /** All supported provider names. */
 export const KNOWN_PROVIDERS = Object.keys(PROVIDER_MODELS);
+
+export interface AppliedCompletionEdit {
+	text: string;
+	cursorCol: number;
+}
+
+export function applyCompletionEdit(text: string, item: CompletionItem): AppliedCompletionEdit {
+	const nextText = text.slice(0, item.replaceStart) + item.insertText + text.slice(item.replaceEnd);
+	return {
+		text: nextText,
+		cursorCol: item.replaceStart + item.insertText.length,
+	};
+}
 
 // ── CompletionEngine ─────────────────────────────────────────────────────────
 
@@ -112,49 +126,57 @@ export class CompletionEngine {
 		this.currentProviderProvider = provider;
 	}
 
-	/**
-	 * Get completions for the current input at the given cursor position.
-	 * Determines completion type from context and returns matching items.
-	 * For synchronous completions (commands, models, providers) this resolves immediately.
-	 */
+	/** Get completions for the current input at the given cursor position. */
 	async getCompletions(text: string, cursorCol: number): Promise<CompletionItem[]> {
-		// Try synchronous completions first — avoid async overhead for command/model
 		const syncResult = this.getCompletionsSync(text, cursorCol);
 		if (syncResult !== null) return syncResult;
 
-		// Async: @ file path completion
 		const before = text.slice(0, cursorCol);
+		if (this.commands && before.startsWith("/") && before.includes(" ")) {
+			const spaceIndex = before.indexOf(" ");
+			const cmd = this.commands.get(before.slice(0, spaceIndex));
+			if (cmd?.getArgumentCompletions) {
+				try {
+					return (await cmd.getArgumentCompletions(before.slice(spaceIndex + 1))).map((label) => ({
+						label,
+						insertText: label,
+						replaceStart: spaceIndex + 1,
+						replaceEnd: cursorCol,
+						kind: "command" as CompletionKind,
+						detail: cmd.description,
+					}));
+				} catch {}
+			}
+		}
+
 		const atIdx = before.lastIndexOf("@");
 		if (atIdx >= 0) {
 			const afterAt = before.slice(atIdx + 1);
-			// Only trigger if @ is at word boundary (start, after space, etc.)
 			if (atIdx === 0 || /\s/.test(before[atIdx - 1])) {
-				return this.getFileCompletions(afterAt);
+				return this.getFileCompletions(afterAt, atIdx, cursorCol);
 			}
 		}
 
 		return [];
 	}
 
-	/**
-	 * Synchronous completion — handles slash commands, /model, and /provider.
-	 * Returns null when async completion is required (e.g. @ file paths).
-	 * Call this before getCompletions to avoid unnecessary async overhead.
-	 */
+	/** Synchronous completion for slash commands, /model, and /provider. */
 	getCompletionsSync(text: string, cursorCol: number): CompletionItem[] | null {
 		const before = text.slice(0, cursorCol);
+		const modelPrefix = "/model ";
+		const providerPrefix = "/provider ";
 
 		// /model <partial> — model name completion
-		const modelMatch = before.match(/^\/model\s+(.*)$/);
-		if (modelMatch) return this.getModelCompletions(modelMatch[1]);
+		if (before.startsWith(modelPrefix))
+			return this.getModelCompletions(before.slice(modelPrefix.length), undefined, modelPrefix.length, cursorCol);
 
 		// /provider <partial> — provider name completion
-		const providerMatch = before.match(/^\/provider\s+(.*)$/);
-		if (providerMatch) return this.getProviderCompletions(providerMatch[1]);
+		if (before.startsWith(providerPrefix))
+			return this.getProviderCompletions(before.slice(providerPrefix.length), providerPrefix.length, cursorCol);
 
 		// /command — slash command completion (no space yet)
 		if (before.startsWith("/") && !before.includes(" ")) {
-			return this.getSlashCompletions(before);
+			return this.getSlashCompletions(before, 0, cursorCol);
 		}
 
 		// Needs async file I/O
@@ -167,7 +189,7 @@ export class CompletionEngine {
 	 * Get file path completions for the text after @.
 	 * Supports directory listing (e.g. "src/") and fuzzy matching.
 	 */
-	async getFileCompletions(partial: string): Promise<CompletionItem[]> {
+	async getFileCompletions(partial: string, replaceStart: number, replaceEnd: number): Promise<CompletionItem[]> {
 		if (!this.projectRoot) return [];
 
 		try {
@@ -192,7 +214,7 @@ export class CompletionEngine {
 			}
 
 			const items = await this.listDirectory(searchDir, partial, filterPrefix);
-			return items.slice(0, MAX_RESULTS);
+			return items.slice(0, MAX_RESULTS).map((item) => ({ ...item, replaceStart, replaceEnd }));
 		} catch {
 			return [];
 		}
@@ -202,7 +224,11 @@ export class CompletionEngine {
 	 * List directory entries and build CompletionItems.
 	 * Skips node_modules, .git, dist, etc.
 	 */
-	private async listDirectory(dir: string, pathPrefix: string, filter: string): Promise<CompletionItem[]> {
+	private async listDirectory(
+		dir: string,
+		pathPrefix: string,
+		filter: string,
+	): Promise<Array<Omit<CompletionItem, "replaceStart" | "replaceEnd">>> {
 		let entries: import("node:fs").Dirent[];
 		try {
 			entries = (await readdir(dir, { withFileTypes: true })) as unknown as import("node:fs").Dirent[];
@@ -210,7 +236,7 @@ export class CompletionEngine {
 			return [];
 		}
 
-		const results: CompletionItem[] = [];
+		const results: Array<Omit<CompletionItem, "replaceStart" | "replaceEnd">> = [];
 		const dirPrefix = pathPrefix.includes("/")
 			? pathPrefix.slice(0, pathPrefix.lastIndexOf("/") + 1)
 			: pathPrefix.endsWith("/")
@@ -254,13 +280,15 @@ export class CompletionEngine {
 	/**
 	 * Get slash command completions for the given partial input (e.g. "/th").
 	 */
-	getSlashCompletions(partial: string): CompletionItem[] {
+	getSlashCompletions(partial: string, replaceStart: number, replaceEnd: number): CompletionItem[] {
 		if (!this.commands) return [];
 
 		const cmds = this.commands.getCompletions(partial);
 		return cmds.map((cmd) => ({
 			label: cmd.name,
 			insertText: cmd.name,
+			replaceStart,
+			replaceEnd,
 			kind: "command" as CompletionKind,
 			detail: cmd.description,
 		}));
@@ -272,7 +300,12 @@ export class CompletionEngine {
 	 * Get model name completions for the partial text after "/model ".
 	 * When a provider is specified, only that provider's models are returned.
 	 */
-	getModelCompletions(partial: string, provider?: string): CompletionItem[] {
+	getModelCompletions(
+		partial: string,
+		provider?: string,
+		replaceStart = 0,
+		replaceEnd = partial.length,
+	): CompletionItem[] {
 		const providerModels = this.providerCatalogProvider();
 		const knownModels = [...new Set(Object.values(providerModels).flat())];
 		const lower = partial.toLowerCase();
@@ -282,7 +315,9 @@ export class CompletionEngine {
 			.filter((m) => m.toLowerCase().includes(lower))
 			.map((m) => ({
 				label: m,
-				insertText: `/model ${m}`,
+				insertText: m,
+				replaceStart,
+				replaceEnd,
 				kind: "model" as CompletionKind,
 			}));
 	}
@@ -292,7 +327,7 @@ export class CompletionEngine {
 	/**
 	 * Get provider name completions for the partial text after "/provider ".
 	 */
-	getProviderCompletions(partial: string): CompletionItem[] {
+	getProviderCompletions(partial: string, replaceStart = 0, replaceEnd = partial.length): CompletionItem[] {
 		const providerModels = this.providerCatalogProvider();
 		const knownProviders = Object.keys(providerModels);
 		const lower = partial.toLowerCase();
@@ -300,7 +335,9 @@ export class CompletionEngine {
 			.filter((p) => p.includes(lower))
 			.map((p) => ({
 				label: p,
-				insertText: `/provider ${p}`,
+				insertText: p,
+				replaceStart,
+				replaceEnd,
 				kind: "command" as CompletionKind,
 				detail: `${providerModels[p]?.length ?? 0} models`,
 			}));

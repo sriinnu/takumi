@@ -36,6 +36,27 @@ export interface AgentStateSnapshot {
 		details: string;
 		suggestion: string | null;
 	} | null;
+	extensionUi?: {
+		prompt:
+			| {
+					kind: "confirm";
+					title?: string;
+					message: string;
+			  }
+			| {
+					kind: "pick";
+					title?: string;
+					message: string;
+					optionCount: number;
+					options: Array<{ index: number; label: string; description?: string }>;
+			  }
+			| null;
+		widgets: Array<{
+			key: string;
+			previewLines: string[];
+			truncated: boolean;
+		}>;
+	} | null;
 	updatedAt: number;
 }
 
@@ -137,6 +158,11 @@ export interface HttpBridgeConfig {
 	listRuntimes?: () => Promise<RuntimeSummary[]>;
 	/** Stop a runtime by ID. */
 	stopRuntime?: (runtimeId: string) => Promise<boolean>;
+	/** Resolve an active extension-owned prompt from a remote operator surface. */
+	respondExtensionPrompt?: (response: { action: "confirm" | "cancel" | "pick"; index?: number }) => Promise<{
+		success: boolean;
+		error?: string;
+	}>;
 }
 
 const MAX_WATCH_WAITERS = 100;
@@ -280,6 +306,26 @@ export class HttpBridgeServer {
 			const result = await this.config.onAttachSession(request.params.sessionId);
 			if (!result.success) {
 				return reply.code(404).send({ error: result.error ?? "Session not found" });
+			}
+			return reply.send({ success: true });
+		});
+
+		this.server.post<{ Body: { action?: string; index?: number } }>("/extension-ui/respond", async (request, reply) => {
+			if (!this.config.respondExtensionPrompt) {
+				return reply.code(501).send({ error: "Extension UI response not configured" });
+			}
+			const action = request.body?.action;
+			if (action !== "confirm" && action !== "cancel" && action !== "pick") {
+				return reply.code(400).send({ error: "Bad Request: Invalid extension prompt action" });
+			}
+			if (action === "pick" && !Number.isInteger(request.body?.index)) {
+				return reply.code(400).send({ error: "Bad Request: Pick responses require an integer index" });
+			}
+			const result = await this.config.respondExtensionPrompt(
+				action === "pick" ? { action, index: request.body.index } : { action },
+			);
+			if (!result.success) {
+				return reply.code(409).send({ error: result.error ?? "Extension prompt response rejected" });
 			}
 			return reply.send({ success: true });
 		});

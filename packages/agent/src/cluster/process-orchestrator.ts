@@ -85,6 +85,11 @@ export class ProcessOrchestrator {
 		return win.output.slice(-lines).join("\n");
 	}
 
+	/** Check whether a process window is still tracked. */
+	async isWindowAlive(id: string): Promise<boolean> {
+		return this.windows.has(id);
+	}
+
 	/** Kill a running process window. */
 	async killWindow(id: string): Promise<void> {
 		const win = this.windows.get(id);

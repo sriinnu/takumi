@@ -40,10 +40,16 @@ export class Input extends Component {
 	}
 
 	/** Set the input value programmatically. */
-	setValue(value: string): void {
+	setValue(value: string, cursorPos?: number): void {
 		this.value = value;
-		this.cursorPos = segmentGraphemes(value).length;
+		const graphemes = segmentGraphemes(value);
+		this.cursorPos = cursorPos === undefined ? graphemes.length : Math.max(0, Math.min(cursorPos, graphemes.length));
 		this.markDirty();
+	}
+
+	/** Get the current cursor position in grapheme columns. */
+	getCursorPos(): number {
+		return this.cursorPos;
 	}
 
 	/** Clear the input and optionally save to history. */

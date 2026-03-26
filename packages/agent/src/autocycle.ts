@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { createLogger } from "@takumi/core";
+import { extractAutocycleMetric } from "./autocycle-metric.js";
 
 const log = createLogger("autocycle");
 const AUTOCYCLE_LEDGER_DIR = path.join(".takumi", "autocycle");
@@ -25,9 +26,6 @@ export const DEFAULT_MAX_ITERATIONS = 7;
 /** Grace period after SIGTERM before SIGKILL (ms). */
 const SIGKILL_GRACE_MS = 3000;
 
-/** Maximum output bytes searched for metric regex (mitigates ReDoS on large output). */
-const MAX_METRIC_SEARCH_BYTES = 64 * 1024;
-
 /** Configuration for an autonomous research/coding cycle. */
 export interface AutocycleOptions {
 	/** Path to the target file that the agent will iteratively modify. */
@@ -38,12 +36,16 @@ export interface AutocycleOptions {
 	evalBudgetMs: number;
 	/** Regular expression to extract the quantitative metric from stdout/stderr. */
 	metricRegex?: RegExp;
+	/** Optional TSV column name to extract from stdout/stderr before regex fallback. */
+	metricColumn?: string;
 	/** Should the metric be minimized or maximized? Default: minimize. */
 	optimizeDirection?: "minimize" | "maximize";
 	/** Working directory for the eval command. */
 	cwd?: string;
 	/** Optional path for the per-run JSONL ledger file. Defaults under .takumi/autocycle in cwd. */
 	ledgerFile?: string;
+	/** Resume metrics, iteration count, and run identity from an existing ledger file when present. */
+	resumeFromLedger?: boolean;
 }
 
 export type CycleOutcome = "keep" | "discard" | "timeout" | "crash" | "metric-missing" | "aborted";
@@ -85,6 +87,14 @@ export interface AutocycleRunSummary {
 	optimizeDirection: "minimize" | "maximize";
 }
 
+interface ParsedLedgerState {
+	runId: string;
+	entries: CycleLedgerEntry[];
+	currentIteration: number;
+	baselineMetric: number | null;
+	bestMetric: number | null;
+}
+
 /**
  * Autocycle: An autonomous research execution loop inspired by karpathy/autoresearch.
  * It pipelines sub-agents to mutate a file, evaluates the mutation with a fixed wall-clock budget,
@@ -92,7 +102,7 @@ export interface AutocycleRunSummary {
  */
 export class Autocycle {
 	private readonly options: AutocycleOptions;
-	private readonly runId: string;
+	private runId: string;
 	private readonly ledgerFilePath: string;
 	private readonly ledgerEntries: CycleLedgerEntry[] = [];
 	private currentIteration = 0;
@@ -130,6 +140,15 @@ export class Autocycle {
 
 	getLedgerFilePath(): string {
 		return this.ledgerFilePath;
+	}
+
+	async initializeRunState(): Promise<AutocycleRunSummary> {
+		await this.validateTargetFile();
+		if (this.options.resumeFromLedger) {
+			await this.restoreStateFromLedger();
+		}
+		await this.backupTargetFile();
+		return this.getRunSummary();
 	}
 
 	getRunSummary(): AutocycleRunSummary {
@@ -186,6 +205,89 @@ export class Autocycle {
 		this.ledgerEntries.push(entry);
 		await fs.mkdir(path.dirname(this.ledgerFilePath), { recursive: true });
 		await fs.appendFile(this.ledgerFilePath, `${JSON.stringify(entry)}\n`, "utf-8");
+	}
+
+	private async restoreStateFromLedger(): Promise<void> {
+		const state = await this.readLedgerState();
+		if (!state) {
+			return;
+		}
+
+		this.runId = state.runId;
+		this.currentIteration = state.currentIteration;
+		this.baselineMetric = state.baselineMetric;
+		this.bestMetric = state.bestMetric;
+		this.ledgerEntries.splice(0, this.ledgerEntries.length, ...state.entries);
+	}
+
+	private async readLedgerState(): Promise<ParsedLedgerState | null> {
+		let ledgerText: string;
+		try {
+			ledgerText = await fs.readFile(this.ledgerFilePath, "utf-8");
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+				return null;
+			}
+			throw error;
+		}
+
+		const lines = ledgerText
+			.split("\n")
+			.map((line) => line.trim())
+			.filter(Boolean);
+		if (lines.length === 0) {
+			return null;
+		}
+
+		const entries = lines.map((line, index) => this.parseLedgerEntry(line, index + 1));
+		this.validateLedgerEntries(entries);
+
+		const runId = entries[0]!.runId;
+		const currentIteration = entries.reduce((max, entry) => Math.max(max, entry.iteration), 0);
+		const baselineMetric = entries.find((entry) => entry.success && entry.metric !== null)?.metric ?? null;
+		const bestMetric = entries[entries.length - 1]?.bestMetric ?? null;
+
+		return {
+			runId,
+			entries,
+			currentIteration,
+			baselineMetric,
+			bestMetric,
+		};
+	}
+
+	private parseLedgerEntry(line: string, lineNumber: number): CycleLedgerEntry {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(line);
+		} catch {
+			throw new Error(`Invalid Autocycle ledger JSON at line ${lineNumber}.`);
+		}
+		if (!isCycleLedgerEntry(parsed)) {
+			throw new Error(`Invalid Autocycle ledger entry at line ${lineNumber}.`);
+		}
+		return parsed;
+	}
+
+	private validateLedgerEntries(entries: CycleLedgerEntry[]): void {
+		const expectedDirection = this.options.optimizeDirection ?? "minimize";
+		for (const entry of entries) {
+			if (entry.targetFile !== this.options.targetFile) {
+				throw new Error(
+					`Autocycle ledger target mismatch: expected ${this.options.targetFile}, got ${entry.targetFile}.`,
+				);
+			}
+			if (entry.evalCommand !== this.options.evalCommand) {
+				throw new Error("Autocycle ledger eval command mismatch.");
+			}
+			if (entry.optimizeDirection !== expectedDirection) {
+				throw new Error("Autocycle ledger optimize direction mismatch.");
+			}
+		}
+		const runIds = new Set(entries.map((entry) => entry.runId));
+		if (runIds.size !== 1) {
+			throw new Error("Autocycle ledger contains multiple run IDs and cannot be resumed safely.");
+		}
 	}
 
 	/**
@@ -274,24 +376,6 @@ export class Autocycle {
 		});
 	}
 
-	/**
-	 * Parses stdout then stderr for the optimization metric.
-	 * Searches stdout first (most likely location), then stderr.
-	 */
-	private extractMetric(stdout: string, stderr: string): number | null {
-		if (!this.options.metricRegex) return null;
-
-		for (const source of [stdout, stderr]) {
-			const searchStr = source.length > MAX_METRIC_SEARCH_BYTES ? source.slice(-MAX_METRIC_SEARCH_BYTES) : source;
-			const match = searchStr.match(this.options.metricRegex);
-			if (match?.[1]) {
-				const val = Number.parseFloat(match[1]);
-				if (!Number.isNaN(val)) return val;
-			}
-		}
-		return null;
-	}
-
 	private async getValidatedTargetPath(checkAccess = false): Promise<string> {
 		const cwd = path.resolve(this.options.cwd ?? process.cwd());
 		const fullPath = path.resolve(cwd, this.options.targetFile);
@@ -371,7 +455,12 @@ export class Autocycle {
 		const evalResult = await this.evaluateCommand(signal);
 		const durationMs = Math.round(performance.now() - t0);
 
-		const metric = this.extractMetric(evalResult.stdout, evalResult.stderr);
+		const metric = extractAutocycleMetric({
+			stdout: evalResult.stdout,
+			stderr: evalResult.stderr,
+			metricColumn: this.options.metricColumn,
+			metricRegex: this.options.metricRegex,
+		});
 
 		let success = false;
 		let status: CycleOutcome = "discard";
@@ -446,4 +535,35 @@ export class Autocycle {
 			durationMs,
 		};
 	}
+}
+
+function isCycleOutcome(value: unknown): value is CycleOutcome {
+	return (
+		value === "keep" ||
+		value === "discard" ||
+		value === "timeout" ||
+		value === "crash" ||
+		value === "metric-missing" ||
+		value === "aborted"
+	);
+}
+
+function isCycleLedgerEntry(value: unknown): value is CycleLedgerEntry {
+	if (!value || typeof value !== "object") {
+		return false;
+	}
+	const entry = value as Record<string, unknown>;
+	return (
+		typeof entry.runId === "string" &&
+		typeof entry.iteration === "number" &&
+		isCycleOutcome(entry.status) &&
+		typeof entry.success === "boolean" &&
+		(entry.metric === null || typeof entry.metric === "number") &&
+		(entry.bestMetric === null || typeof entry.bestMetric === "number") &&
+		typeof entry.durationMs === "number" &&
+		typeof entry.evalCommand === "string" &&
+		typeof entry.targetFile === "string" &&
+		(entry.optimizeDirection === "minimize" || entry.optimizeDirection === "maximize") &&
+		typeof entry.timestamp === "string"
+	);
 }

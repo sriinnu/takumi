@@ -197,7 +197,9 @@ Type `/` at the start of input to activate. Tab completes partial matches.
 | `/parent` | Navigate to the parent session | | `/up` |
 | `/steer` | Queue a normal-priority directive | | `/st` |
 | `/interrupt` | Queue a highest-priority directive | | `/int` |
-| `/steerq` | Inspect the steering queue | | `/sq` |
+| `/steerq` | Inspect the steering queue with item ids | | `/sq` |
+| `/steercancel` | Cancel a queued directive by id | | `/scancel` |
+| `/steerclear` | Clear all queued directives that have not run yet | | `/sclear` |
 | `/template` | List, inspect, or run built-in prompt templates | | `/tmpl` |
 | `/share` | Export conversation to file, clipboard, or private GitHub gist | | |
 | `/image` | Attach an image from a file or data URL with an optional prompt | | `/img` |

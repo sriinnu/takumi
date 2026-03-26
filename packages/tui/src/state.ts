@@ -21,13 +21,11 @@ import { cloneProviderModelCatalog, PROVIDER_MODELS } from "./completion.js";
 import { ValidationResultsDialog } from "./dialogs/validation-results.js";
 import type { ScarlettIntegrityReport } from "./scarlett-runtime.js";
 import { buildScarlettIntegrityReport } from "./scarlett-runtime.js";
+import { SideLaneStore } from "./side-lane-store.js";
 import { ToolSpinner } from "./spinner.js";
 
 // ── Cluster command channel type ──────────────────────────────────────────────
-/**
- * Commands dispatched from slash commands / dialogs to CodingAgent.
- * CodingAgent observes `AppState.clusterCommand` via an effect and handles them.
- */
+/** Commands dispatched from slash commands / dialogs to CodingAgent. */
 export type ClusterCommandEvent =
 	| { type: "retry"; maxAttempts?: number }
 	| { type: "validate" }
@@ -78,15 +76,9 @@ export class AppState {
 	readonly sidebarVisible: Signal<boolean> = signal(false);
 	readonly terminalSize: Signal<Size> = signal({ width: 80, height: 24 });
 	readonly showThinking: Signal<boolean> = signal(true);
-	/**
-	 * Dialog stack — each push opens a new modal on top of the previous;
-	 * Esc pops the top. Use `pushDialog()` / `popDialog()` helpers.
-	 */
+	/** Dialog stack — each push opens a new modal on top of the previous; Esc pops the top. */
 	readonly dialogStack: Signal<string[]> = signal<string[]>([]);
-	/**
-	 * Legacy computed accessor — returns the top dialog name or null.
-	 * Kept for backward-compat with existing render code; prefer `topDialog`.
-	 */
+	/** Legacy computed accessor — returns the top dialog name or null; prefer `topDialog`. */
 	readonly activeDialog: ReadonlySignal<string | null> = computed(() => {
 		const stack = this.dialogStack.value;
 		return stack.length > 0 ? stack[stack.length - 1] : null;
@@ -141,14 +133,13 @@ export class AppState {
 	readonly clusterValidationAttempt: Signal<number> = signal(0);
 	/** Isolation mode for cluster execution. */
 	readonly isolationMode: Signal<"none" | "worktree" | "docker"> = signal("none");
+	/** Stable registry of spawned workflow side lanes. */
+	readonly sideLanes: SideLaneStore = new SideLaneStore();
 
 	// ── Chitragupta integration ───────────────────────────────────────────────
 	readonly chitraguptaConnected: Signal<boolean> = signal(false);
 	readonly chitraguptaBridge: Signal<ChitraguptaBridge | null> = signal(null);
-	/**
-	 * Formatted memory context loaded from Chitragupta on startup.
-	 * Injected into agent system prompts to give the LLM project-level memory.
-	 */
+	/** Formatted memory context loaded from Chitragupta on startup for agent prompts. */
 	readonly chitraguptaMemory: Signal<string> = signal("");
 	/** Number of knowledge deposits made to Akasha mesh in this session. */
 	readonly akashaDeposits: Signal<number> = signal(0);
@@ -244,10 +235,7 @@ export class AppState {
 			evolveQueueLength: this.chitraguptaEvolveQueue.value.length,
 		}),
 	);
-	/**
-	 * Cluster command channel — slash commands and dialogs write here;
-	 * CodingAgent observes via an effect and handles immediately.
-	 */
+	/** Cluster command channel observed by CodingAgent. */
 	readonly clusterCommand: Signal<ClusterCommandEvent | null> = signal<ClusterCommandEvent | null>(null);
 
 	// ── Replay (Phase 19) ─────────────────────────────────────────────────────
@@ -281,10 +269,7 @@ export class AppState {
 	readonly consolidationInProgress: Signal<boolean> = signal(false);
 
 	// ── Dialog instances ──────────────────────────────────────────────────────
-	/**
-	 * Validation results dialog — opened by CodingAgent when multi-agent
-	 * validation produces at least one REJECT. Callbacks are wired in CodingAgent.
-	 */
+	/** Validation results dialog opened by CodingAgent for multi-agent review failures. */
 	readonly validationResultsDialog: ValidationResultsDialog = new ValidationResultsDialog();
 
 	// ── Computed values ───────────────────────────────────────────────────────
@@ -416,6 +401,7 @@ export class AppState {
 		this.clusterId.value = null;
 		this.clusterAgentCount.value = 0;
 		this.clusterValidationAttempt.value = 0;
+		this.sideLanes.clear();
 		this.thinking.value = false;
 		this.thinkingBudget.value = 10000;
 		this.chitraguptaConnected.value = false;

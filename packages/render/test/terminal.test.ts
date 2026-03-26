@@ -8,7 +8,10 @@ import {
 	detectCapabilities,
 	detectTerminal,
 	endSyncUpdate,
+	osc133CommandDone,
+	osc133CommandStart,
 	supportsOsc52,
+	supportsOsc133,
 	supportsTruecolor,
 	terminalSummary,
 } from "../src/terminal.js";
@@ -109,6 +112,7 @@ describe("detectCapabilities", () => {
 	it("returns full capabilities for Ghostty", () => {
 		const caps = detectCapabilities({ TERM_PROGRAM: "ghostty" });
 		expect(caps.name).toBe("ghostty");
+		expect(caps.osc133).toBe(true);
 		expect(caps.truecolor).toBe(true);
 		expect(caps.osc52).toBe(true);
 		expect(caps.hyperlinks).toBe(true);
@@ -169,6 +173,7 @@ describe("detectCapabilities", () => {
 	it("unknown terminal has conservative defaults", () => {
 		const caps = detectCapabilities({});
 		expect(caps.name).toBe("unknown");
+		expect(caps.osc133).toBe(false);
 		expect(caps.truecolor).toBe(false);
 		expect(caps.osc52).toBe(false);
 		expect(caps.kittyImages).toBe(false);
@@ -230,6 +235,26 @@ describe("supportsOsc52", () => {
 	});
 });
 
+describe("supportsOsc133", () => {
+	it("returns true for Ghostty", () => {
+		expect(supportsOsc133({ TERM_PROGRAM: "ghostty" })).toBe(true);
+	});
+
+	it("returns false for unknown terminals", () => {
+		expect(supportsOsc133({})).toBe(false);
+	});
+});
+
+describe("OSC 133 markers", () => {
+	it("emits the command start marker", () => {
+		expect(osc133CommandStart()).toBe("\x1b]133;C\x07");
+	});
+
+	it("emits the command done marker with an exit status", () => {
+		expect(osc133CommandDone(7)).toBe("\x1b]133;D;7\x07");
+	});
+});
+
 // ── Synchronized output ───────────────────────────────────────────────────────
 
 describe("synchronizedOutput", () => {
@@ -251,6 +276,7 @@ describe("terminalSummary", () => {
 		expect(summary).toContain("ghostty");
 		expect(summary).toContain("rgb");
 		expect(summary).toContain("clip");
+		expect(summary).toContain("osc133");
 		expect(summary).toContain("sync");
 	});
 

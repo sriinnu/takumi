@@ -36,6 +36,19 @@ export interface SessionSummary {
 	model: string;
 }
 
+export interface SessionJsonlMetaRecord {
+	type: "session_meta";
+	version: 1;
+	session: Omit<SessionData, "messages">;
+}
+
+export interface SessionJsonlMessageRecord {
+	type: "message";
+	message: Message;
+}
+
+export type SessionJsonlRecord = SessionJsonlMetaRecord | SessionJsonlMessageRecord;
+
 // ── Paths ─────────────────────────────────────────────────────────────────────
 
 /** Default sessions directory: ~/.config/takumi/sessions/ */
@@ -81,6 +94,78 @@ export async function saveSession(session: SessionData, sessionsDir?: string): P
 }
 
 /**
+ * Export a session as JSONL using an explicit metadata envelope followed by one
+ * message record per line.
+ */
+export function exportSessionAsJsonl(session: SessionData): string {
+	const meta: SessionJsonlMetaRecord = {
+		type: "session_meta",
+		version: 1,
+		session: {
+			id: session.id,
+			title: session.title,
+			createdAt: session.createdAt,
+			updatedAt: session.updatedAt,
+			model: session.model,
+			tokenUsage: session.tokenUsage,
+		},
+	};
+
+	const lines = [JSON.stringify(meta)];
+	for (const message of session.messages) {
+		const record: SessionJsonlMessageRecord = { type: "message", message };
+		lines.push(JSON.stringify(record));
+	}
+	return lines.join("\n");
+}
+
+/**
+ * Import a session from Takumi JSONL export format.
+ */
+export function importSessionFromJsonl(jsonl: string, sessionIdOverride?: string): SessionData {
+	const lines = jsonl
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean);
+
+	if (lines.length === 0) {
+		throw new Error("JSONL input is empty");
+	}
+
+	let meta: SessionJsonlMetaRecord | null = null;
+	const messages: Message[] = [];
+
+	for (const line of lines) {
+		const record = JSON.parse(line) as SessionJsonlRecord;
+		if (record.type === "session_meta") {
+			meta = record;
+			continue;
+		}
+		if (record.type === "message") {
+			messages.push(record.message);
+			continue;
+		}
+		throw new Error(`Unsupported JSONL record type: ${(record as { type?: string }).type ?? "unknown"}`);
+	}
+
+	if (!meta) {
+		throw new Error("JSONL import is missing the session_meta record");
+	}
+
+	const imported: SessionData = {
+		...meta.session,
+		id: sessionIdOverride ?? meta.session.id ?? generateSessionId(),
+		messages,
+	};
+
+	if (!isSessionData(imported)) {
+		throw new Error("Imported JSONL does not contain a valid Takumi session");
+	}
+
+	return imported;
+}
+
+/**
  * Load a session from disk by ID.
  * Returns null if the session file does not exist or is corrupt.
  */
@@ -91,7 +176,7 @@ export async function loadSession(id: string, sessionsDir?: string): Promise<Ses
 		const raw = await readFile(filePath, "utf-8");
 		const data = JSON.parse(raw) as SessionData;
 		// Basic validation
-		if (!data.id || !Array.isArray(data.messages)) {
+		if (!isSessionData(data)) {
 			return null;
 		}
 		return data;
@@ -120,7 +205,7 @@ export async function listSessions(limit?: number, sessionsDir?: string): Promis
 		try {
 			const raw = await readFile(join(dir, file), "utf-8");
 			const data = JSON.parse(raw) as SessionData;
-			if (!data.id || !Array.isArray(data.messages)) continue;
+			if (!isSessionData(data)) continue;
 			summaries.push({
 				id: data.id,
 				title: data.title,
@@ -179,6 +264,12 @@ export async function deleteSession(id: string, sessionsDir?: string): Promise<v
 	} catch {
 		// File doesn't exist — nothing to do
 	}
+}
+
+function isSessionData(data: unknown): data is SessionData {
+	if (!data || typeof data !== "object") return false;
+	const candidate = data as Partial<SessionData>;
+	return typeof candidate.id === "string" && Array.isArray(candidate.messages);
 }
 
 // ── Auto-saver ────────────────────────────────────────────────────────────────

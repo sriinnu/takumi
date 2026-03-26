@@ -17,7 +17,7 @@ The important distinction: **not every document here describes fully shipped beh
 
 ### Current user reference
 
-- [`../README.md`](../README.md) — truthful top-level product overview
+- [`../README.md`](../README.md) — truthful top-level product overview, product stance, and package ownership summary
 - [`KEYBINDINGS.md`](./KEYBINDINGS.md) — current commands, shortcuts, and input behavior
 - [`packages.md`](./packages.md) — Takumi packages, package CLI, and examples
 - [`examples/multi-agent-workflow.md`](./examples/multi-agent-workflow.md) — current orchestration workflow example
@@ -58,8 +58,9 @@ If you want the shortest accurate path:
 
 1. read the repo `README.md`
 2. read `KEYBINDINGS.md`
-3. read `ARCHITECTURE.md`
-4. read `packages.md` or `orchestration.md` depending on what you are using
+3. read `packages.md` if you want to extend Takumi without crossing the Chitragupta boundary
+4. read `ARCHITECTURE.md`
+5. read `orchestration.md` if you are working on multi-agent/runtime behavior
 
 ## Branding assets
 

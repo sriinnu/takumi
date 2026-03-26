@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MemoryHooks } from "../src/context/memory-hooks.js";
 import { PrincipleMemory } from "../src/context/principles.js";
 import { type AgentLoopOptions, agentLoop, type MessagePayload } from "../src/loop.js";
+import { SteeringPriority, SteeringQueue } from "../src/steering-queue.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 
 const TEST_DIR = join(tmpdir(), "takumi-loop-principles-test");
@@ -148,7 +149,8 @@ describe("agentLoop", () => {
 
 			// Verify tool was called
 			expect(toolHandler).toHaveBeenCalledOnce();
-			expect(toolHandler).toHaveBeenCalledWith({ path: "/src/main.ts" }, undefined);
+			// Tools always receive an AbortSignal (from the preemption watcher)
+			expect(toolHandler).toHaveBeenCalledWith({ path: "/src/main.ts" }, expect.any(AbortSignal));
 
 			// Check event sequence
 			const types = events.map((e) => e.type);
@@ -1019,6 +1021,192 @@ describe("agentLoop", () => {
 			// No text_delta from the second response
 			const textDeltas = events.filter((e) => e.type === "text_delta");
 			expect(textDeltas).toHaveLength(0);
+		});
+
+		it("processes queued directives one at a time and preserves non-interrupt work after an interrupt", async () => {
+			const registry = createRegistry([{ name: "tool_a" }]);
+			const steeringQueue = new SteeringQueue();
+			steeringQueue.enqueue("follow up with the queued cleanup", { priority: SteeringPriority.NORMAL });
+			steeringQueue.enqueue("urgent: inspect the failing path first", { priority: SteeringPriority.INTERRUPT });
+
+			const capturedMessages: MessagePayload[][] = [];
+			const sendMessage: AgentLoopOptions["sendMessage"] = async function* (messages) {
+				capturedMessages.push(structuredClone(messages));
+				const turn = capturedMessages.length;
+				if (turn === 1) {
+					yield { type: "tool_use" as const, id: "toolu_1", name: "tool_a", input: {} };
+					yield { type: "done" as const, stopReason: "tool_use" as const };
+					return;
+				}
+				if (turn === 2) {
+					yield { type: "text_delta" as const, text: "Handled the interrupt first." };
+					yield { type: "done" as const, stopReason: "end_turn" as const };
+					return;
+				}
+				yield { type: "text_delta" as const, text: "Handled the queued follow-up next." };
+				yield { type: "done" as const, stopReason: "end_turn" as const };
+			};
+
+			const events = await collectEvents("start the workflow", [], {
+				sendMessage,
+				tools: registry,
+				steeringQueue,
+			});
+
+			expect(capturedMessages).toHaveLength(3);
+			expect(JSON.stringify(capturedMessages[1])).toContain("urgent: inspect the failing path first");
+			expect(JSON.stringify(capturedMessages[1])).not.toContain("follow up with the queued cleanup");
+			expect(JSON.stringify(capturedMessages[2])).toContain("follow up with the queued cleanup");
+			expect(steeringQueue.isEmpty).toBe(true);
+			expect(events.filter((event) => event.type === "text_delta")).toHaveLength(2);
+		});
+	});
+
+	/* ---- Mid-tool hard preemption --------------------------------------- */
+
+	describe("mid-tool hard preemption", () => {
+		it("aborts running tools immediately when INTERRUPT is enqueued mid-execution", async () => {
+			const steeringQueue = new SteeringQueue();
+			const capturedSignals: Array<AbortSignal | undefined> = [];
+
+			// Tool that enqueues an INTERRUPT while it is running, then waits for abort.
+			const registry = createRegistry([
+				{
+					name: "long_tool",
+					handler: async (_input, signal) => {
+						capturedSignals.push(signal);
+						// Fire the interrupt mid-execution
+						steeringQueue.enqueue("stop: redirect to urgent task", { priority: SteeringPriority.INTERRUPT });
+						// Wait for the preempt abort signal (with a hard timeout fallback)
+						await new Promise<void>((resolve) => {
+							if (signal?.aborted) {
+								resolve();
+								return;
+							}
+							signal?.addEventListener("abort", () => resolve(), { once: true });
+							setTimeout(resolve, 100);
+						});
+						return { output: "tool interrupted mid-run", isError: true };
+					},
+				},
+			]);
+
+			const capturedMessages: MessagePayload[][] = [];
+			let callIndex = 0;
+			const sendMessage: AgentLoopOptions["sendMessage"] = async function* (messages) {
+				capturedMessages.push(structuredClone(messages));
+				callIndex++;
+				if (callIndex === 1) {
+					yield { type: "tool_use" as const, id: "toolu_preempt", name: "long_tool", input: {} };
+					yield { type: "done" as const, stopReason: "tool_use" as const };
+					return;
+				}
+				// Turn 2: the loop sees the interrupt directive injected after preemption
+				yield { type: "text_delta" as const, text: "Redirected to urgent task." };
+				yield { type: "done" as const, stopReason: "end_turn" as const };
+			};
+
+			const events = await collectEvents("begin long task", [], {
+				sendMessage,
+				tools: registry,
+				steeringQueue,
+			});
+
+			// The tool received a signal that was aborted by the preemption watcher
+			expect(capturedSignals[0]).toBeDefined();
+			expect(capturedSignals[0]?.aborted).toBe(true);
+
+			// Loop ran exactly 2 LLM turns: tool-call turn + interrupt turn
+			expect(capturedMessages).toHaveLength(2);
+
+			// Turn 2's last user message contains the interrupt text
+			const turn2 = capturedMessages[1];
+			const lastMsg = turn2[turn2.length - 1];
+			expect(lastMsg.role).toBe("user");
+			const msgText = Array.isArray(lastMsg.content)
+				? (lastMsg.content as Array<{ type: string; text?: string }>).map((b) => b.text ?? "").join("")
+				: String(lastMsg.content);
+			expect(msgText).toContain("stop: redirect to urgent task");
+
+			// The tool_result for the preempted tool is a clean non-error preemption message
+			const toolResultEvent = events.find((e) => e.type === "tool_result");
+			expect(toolResultEvent).toBeDefined();
+			if (toolResultEvent?.type === "tool_result") {
+				expect(toolResultEvent.isError).toBe(false);
+				expect(toolResultEvent.output).toContain("Preempted");
+			}
+
+			// The interrupt was consumed; queue is now empty
+			expect(steeringQueue.isEmpty).toBe(true);
+
+			// The loop returned the redirect text from turn 2
+			const textEvents = events.filter((e) => e.type === "text_delta");
+			expect(textEvents.length).toBeGreaterThan(0);
+		});
+
+		it("preserves successfully-completed tool results when only some tools are preempted", async () => {
+			const steeringQueue = new SteeringQueue();
+			let interruptFired = false;
+
+			const registry = new ToolRegistry();
+			// fast_tool completes before the interrupt fires
+			registry.register(makeDef("fast_tool"), async () => ({ output: "fast result", isError: false }));
+			// slow_tool enqueues an interrupt and waits for abort
+			registry.register(makeDef("slow_tool"), async (_input, signal) => {
+				if (!interruptFired) {
+					interruptFired = true;
+					steeringQueue.enqueue("interrupt: stop slow work", { priority: SteeringPriority.INTERRUPT });
+				}
+				await new Promise<void>((resolve) => {
+					if (signal?.aborted) {
+						resolve();
+						return;
+					}
+					signal?.addEventListener("abort", () => resolve(), { once: true });
+					setTimeout(resolve, 100);
+				});
+				return { output: "slow aborted", isError: true };
+			});
+
+			const capturedMessages: MessagePayload[][] = [];
+			let callIndex = 0;
+			const sendMessage: AgentLoopOptions["sendMessage"] = async function* (messages) {
+				capturedMessages.push(structuredClone(messages));
+				callIndex++;
+				if (callIndex === 1) {
+					yield { type: "tool_use" as const, id: "toolu_fast", name: "fast_tool", input: {} };
+					yield { type: "tool_use" as const, id: "toolu_slow", name: "slow_tool", input: {} };
+					yield { type: "done" as const, stopReason: "tool_use" as const };
+					return;
+				}
+				yield { type: "text_delta" as const, text: "Handled interrupt." };
+				yield { type: "done" as const, stopReason: "end_turn" as const };
+			};
+
+			const events = await collectEvents("parallel work", [], {
+				sendMessage,
+				tools: registry,
+				steeringQueue,
+			});
+
+			const toolResults = events.filter((e) => e.type === "tool_result");
+			expect(toolResults).toHaveLength(2);
+
+			// fast_tool result is preserved as-is (completed before preemption)
+			const fastResult = toolResults.find((e) => e.type === "tool_result" && e.name === "fast_tool");
+			expect(fastResult).toBeDefined();
+			if (fastResult?.type === "tool_result") {
+				expect(fastResult.output).toBe("fast result");
+				expect(fastResult.isError).toBe(false);
+			}
+
+			// slow_tool result is replaced with the preemption message
+			const slowResult = toolResults.find((e) => e.type === "tool_result" && e.name === "slow_tool");
+			expect(slowResult).toBeDefined();
+			if (slowResult?.type === "tool_result") {
+				expect(slowResult.isError).toBe(false);
+				expect(slowResult.output).toContain("Preempted");
+			}
 		});
 	});
 

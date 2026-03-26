@@ -43,6 +43,8 @@ const ROUTED_ROLES: AgentRole[] = [
 	AgentRole.VALIDATOR_ADVERSARIAL,
 ];
 
+const DEFAULT_CODING_CLI_PREFERENCES = ["cli.codex"];
+
 export async function resolveRoutingOverrides({
 	observer,
 	sessionId,
@@ -143,11 +145,25 @@ function constraintsForRouteClass(routeClass: ModelRecommendation["routeClass"])
 		case "memory.semantic-recall":
 			return { preferLocal: true, allowCloud: false, maxCostClass: "low" };
 		case "coding.fast-local":
-			return { preferLocal: true, requireStreaming: true, maxCostClass: "low" };
+			return {
+				preferLocal: true,
+				requireStreaming: true,
+				maxCostClass: "low",
+				preferredCapabilityIds: DEFAULT_CODING_CLI_PREFERENCES,
+			};
 		case "coding.patch-cheap":
-			return { preferLocal: true, requireStreaming: true, maxCostClass: "low" };
+			return {
+				preferLocal: true,
+				requireStreaming: true,
+				maxCostClass: "low",
+				preferredCapabilityIds: DEFAULT_CODING_CLI_PREFERENCES,
+			};
 		case "coding.review.strict":
-			return { requireStreaming: true, maxCostClass: "medium" };
+			return {
+				requireStreaming: true,
+				maxCostClass: "medium",
+				preferredCapabilityIds: DEFAULT_CODING_CLI_PREFERENCES,
+			};
 		case "coding.validation-high-trust":
 			return { requireStreaming: true, maxCostClass: "medium", trustFloor: "sandboxed" };
 		case "coding.deep-reasoning":

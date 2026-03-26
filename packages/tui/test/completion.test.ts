@@ -3,7 +3,7 @@ import { KEY_CODES } from "@takumi/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SlashCommandRegistry } from "../src/commands.js";
 import type { CompletionItem } from "../src/completion.js";
-import { CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "../src/completion.js";
+import { applyCompletionEdit, CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "../src/completion.js";
 
 // ── Mock fs ──────────────────────────────────────────────────────────────────
 
@@ -74,6 +74,8 @@ function makeItems(labels: string[]): CompletionItem[] {
 	return labels.map((l) => ({
 		label: l,
 		insertText: l,
+		replaceStart: 0,
+		replaceEnd: 0,
 		kind: "command" as const,
 	}));
 }
@@ -197,6 +199,14 @@ describe("CompletionEngine", () => {
 			const labels = items.map((i) => i.label);
 			expect(labels).toContain("app.ts");
 		});
+
+		it("tracks the replacement range for mid-line file completion", async () => {
+			const items = await engine.getCompletions("check @src/ later", 11);
+			expect(items[0]).toMatchObject({
+				replaceStart: 6,
+				replaceEnd: 11,
+			});
+		});
 	});
 
 	// ── Slash command completions ─────────────────────────────────────────
@@ -259,6 +269,26 @@ describe("CompletionEngine", () => {
 			const items = await engine.getCompletions("/help arg", 9);
 			expect(items).toEqual([]);
 		});
+
+		it("uses command-specific argument completions after the command name", async () => {
+			const commands = new SlashCommandRegistry();
+			commands.register("/lane", "Lane tools", () => {}, {
+				getArgumentCompletions: async (partial) => (partial === "re" ? ["refresh", "resume"] : []),
+			});
+			engine.setCommands(commands);
+
+			const items = await engine.getCompletions("/lane re", 8);
+			expect(items.map((item) => item.label)).toEqual(["refresh", "resume"]);
+			expect(items[0]).toMatchObject({
+				replaceStart: "/lane ".length,
+				replaceEnd: 8,
+				detail: "Lane tools",
+			});
+			expect(applyCompletionEdit("/lane re later", items[0] as CompletionItem)).toEqual({
+				text: "/lane refresh later",
+				cursorCol: "/lane refresh".length,
+			});
+		});
 	});
 
 	// ── Model completions ────────────────────────────────────────────────
@@ -288,10 +318,12 @@ describe("CompletionEngine", () => {
 			expect(items.length).toBeGreaterThan(5);
 		});
 
-		it("insertText includes /model prefix", async () => {
+		it("insertText replaces only the model argument", async () => {
 			const items = await engine.getCompletions("/model cl", 9);
 			for (const item of items) {
-				expect(item.insertText.startsWith("/model ")).toBe(true);
+				expect(item.insertText.startsWith("/model ")).toBe(false);
+				expect(item.replaceStart).toBe("/model ".length);
+				expect(item.replaceEnd).toBe(9);
 			}
 		});
 
@@ -310,6 +342,16 @@ describe("CompletionEngine", () => {
 			const items = await engine.getCompletions("/provider za", 12);
 			expect(items.map((item) => item.label)).toEqual(["zai"]);
 		});
+
+		it("replaces only the model query when applying a model completion", async () => {
+			const item = (await engine.getCompletions("/model cla", 10)).find((candidate) =>
+				candidate.label.includes("claude"),
+			);
+			expect(item).toBeDefined();
+			const applied = applyCompletionEdit("/model cla", item as CompletionItem);
+			expect(applied.text).toBe(`/model ${(item as CompletionItem).label}`);
+			expect(applied.cursorCol).toBe(applied.text.length);
+		});
 	});
 
 	// ── Edge cases ────────────────────────────────────────────────────────
@@ -323,6 +365,21 @@ describe("CompletionEngine", () => {
 		it("returns empty for empty input", async () => {
 			const items = await engine.getCompletions("", 0);
 			expect(items).toEqual([]);
+		});
+	});
+});
+
+describe("applyCompletionEdit", () => {
+	it("preserves surrounding text for mid-line file completion", async () => {
+		const engine = new CompletionEngine();
+		engine.setProjectRoot("/project");
+		const item = (await engine.getCompletions("check @src/ later", 11)).find(
+			(candidate) => candidate.label === "app.ts",
+		);
+		expect(item).toBeDefined();
+		expect(applyCompletionEdit("check @src/ later", item as CompletionItem)).toEqual({
+			text: "check @src/app.ts later",
+			cursorCol: "check @src/app.ts".length,
 		});
 	});
 });

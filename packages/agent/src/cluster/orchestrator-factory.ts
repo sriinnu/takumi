@@ -19,6 +19,7 @@ export interface Orchestrator {
 	createWindow(name: string, ...rest: unknown[]): Promise<unknown>;
 	sendKeys(id: string, text: string): void | Promise<void>;
 	captureOutput(id: string, lines?: number): string | Promise<string>;
+	isWindowAlive(id: string): boolean | Promise<boolean>;
 	killWindow(id: string): Promise<void>;
 }
 

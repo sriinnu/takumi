@@ -6,43 +6,62 @@ import { AppState } from "../src/state.js";
 
 /* ── Module-level mocks ─────────────────────────────────────────────────────── */
 
-const mockValidateTargetFile = vi.fn(async () => {});
-const mockRunCycleEvaluation = vi.fn(async (_signal?: AbortSignal) => ({
-	iteration: 1,
-	success: true,
-	status: "keep" as const,
-	metric: null as number | null,
-	stdout: "ok",
-	durationMs: 5,
-}));
+const {
+	defaultRunSummary,
+	mockInitializeRunState,
+	mockRunCycleEvaluation,
+	mockGetRunSummary,
+	mockAutocycleConstructor,
+	mockReportAutocycleIterationToChitragupta,
+} = vi.hoisted(() => {
+	const runSummary = {
+		runId: "run-1",
+		ledgerFilePath: ".takumi/autocycle/mock-ledger.jsonl",
+		completedEvaluations: 1,
+		counts: {
+			keep: 1,
+			discard: 0,
+			timeout: 0,
+			crash: 0,
+			"metric-missing": 0,
+			aborted: 0,
+		},
+		keepRate: 1,
+		totalDurationMs: 5,
+		averageDurationMs: 5,
+		baselineMetric: null as number | null,
+		bestMetric: null as number | null,
+		latestMetric: null as number | null,
+		optimizeDirection: "minimize" as const,
+	};
+	return {
+		defaultRunSummary: runSummary,
+		mockInitializeRunState: vi.fn(async () => ({ ...runSummary })),
+		mockRunCycleEvaluation: vi.fn(async (_signal?: AbortSignal) => ({
+			iteration: 1,
+			success: true,
+			status: "keep" as const,
+			metric: null as number | null,
+			stdout: "ok",
+			durationMs: 5,
+		})),
+		mockGetRunSummary: vi.fn(() => ({ ...runSummary })),
+		mockAutocycleConstructor: vi.fn(),
+		mockReportAutocycleIterationToChitragupta: vi.fn(async () => {}),
+	};
+});
 
 vi.mock("@takumi/agent", async (importOriginal) => {
 	const actual = (await importOriginal()) as Record<string, unknown>;
 	return {
 		...actual,
 		Autocycle: class {
+			constructor(options: unknown) {
+				mockAutocycleConstructor(options);
+			}
 			getLedgerFilePath = () => ".takumi/autocycle/mock-ledger.jsonl";
-			getRunSummary = () => ({
-				runId: "run-1",
-				ledgerFilePath: ".takumi/autocycle/mock-ledger.jsonl",
-				completedEvaluations: 1,
-				counts: {
-					keep: 1,
-					discard: 0,
-					timeout: 0,
-					crash: 0,
-					"metric-missing": 0,
-					aborted: 0,
-				},
-				keepRate: 1,
-				totalDurationMs: 5,
-				averageDurationMs: 5,
-				baselineMetric: null,
-				bestMetric: null,
-				latestMetric: null,
-				optimizeDirection: "minimize" as const,
-			});
-			validateTargetFile = mockValidateTargetFile;
+			getRunSummary = mockGetRunSummary;
+			initializeRunState = mockInitializeRunState;
 			runCycleEvaluation = mockRunCycleEvaluation;
 		},
 	};
@@ -53,6 +72,10 @@ vi.mock("@takumi/render", async (importOriginal) => {
 	const actual = (await importOriginal()) as Record<string, unknown>;
 	return { ...actual, batch: (fn: () => void) => fn() };
 });
+
+vi.mock("../src/autocycle-chitragupta.js", () => ({
+	reportAutocycleIterationToChitragupta: mockReportAutocycleIterationToChitragupta,
+}));
 
 // Content-aware crypto mock: produces deterministic hashes based on input data
 vi.mock("node:crypto", async (importOriginal) => {
@@ -161,6 +184,17 @@ describe("parseBasicArgs", () => {
 		expect(parsed.iterations).toBe("10");
 	});
 
+	it("parses camelCase flags used by autocycle research options", () => {
+		const { parsed } = parseBasicArgs("go --metricColumn val_bpb --manifest notes.md");
+		expect(parsed.metricColumn).toBe("val_bpb");
+		expect(parsed.manifest).toBe("notes.md");
+	});
+
+	it("parses resume ledger flag", () => {
+		const { parsed } = parseBasicArgs("go --resume .takumi/autocycle/run.jsonl");
+		expect(parsed.resume).toBe(".takumi/autocycle/run.jsonl");
+	});
+
 	it("handles hyphenated file names", () => {
 		const { parsed } = parseBasicArgs("go --target my-file.ts --command echo");
 		expect(parsed.target).toBe("my-file.ts");
@@ -199,8 +233,20 @@ describe("parseBasicArgs", () => {
 
 describe("AutocycleAgent", () => {
 	beforeEach(async () => {
-		mockValidateTargetFile.mockClear();
+		mockInitializeRunState.mockClear();
 		mockRunCycleEvaluation.mockClear();
+		mockGetRunSummary.mockClear();
+		mockAutocycleConstructor.mockClear();
+		mockReportAutocycleIterationToChitragupta.mockClear();
+		mockInitializeRunState.mockResolvedValue({
+			...defaultRunSummary,
+			completedEvaluations: 0,
+			counts: { ...defaultRunSummary.counts, keep: 0 },
+			keepRate: 0,
+			totalDurationMs: 0,
+			averageDurationMs: 0,
+		});
+		mockGetRunSummary.mockImplementation(() => ({ ...defaultRunSummary, completedEvaluations: 1 }));
 		fsReadCallCount = 0;
 		// Restore default readFile: incrementing content for mutation detection
 		const fsModule = await import("node:fs/promises");
@@ -247,7 +293,7 @@ describe("AutocycleAgent", () => {
 		expect(ctx.agentRunner!.cancel).not.toHaveBeenCalled();
 	});
 
-	it("start() validates target file before loop", async () => {
+	it("start() initializes run state before loop", async () => {
 		const ctx = makeMockCtx();
 		const agent = new AutocycleAgent(ctx, {
 			targetFile: "x",
@@ -258,7 +304,7 @@ describe("AutocycleAgent", () => {
 
 		await agent.start("test");
 
-		expect(mockValidateTargetFile).toHaveBeenCalledOnce();
+		expect(mockInitializeRunState).toHaveBeenCalledOnce();
 	});
 
 	it("start() sets state signals and resets on completion", async () => {
@@ -287,8 +333,95 @@ describe("AutocycleAgent", () => {
 		// Metric should have been set during run
 		expect(ctx.state.autocycleMetric.value).toBe(0.95);
 		expect(ctx.addInfoMessage).toHaveBeenCalledWith(expect.stringContaining("Starting Autocycle"));
+		expect(ctx.addInfoMessage).toHaveBeenCalledWith(expect.stringContaining("Autocycle manifest:"));
 		expect(ctx.addInfoMessage).toHaveBeenCalledWith(expect.stringContaining("Autocycle summary:"));
 		expect(ctx.addInfoMessage).toHaveBeenCalledWith(expect.stringContaining("complete after"));
+		expect(mockReportAutocycleIterationToChitragupta).toHaveBeenCalled();
+	});
+
+	it("reports each completed evaluation to Chitragupta hook with manifest and summary", async () => {
+		const ctx = makeMockCtx();
+		mockRunCycleEvaluation.mockResolvedValue({
+			iteration: 1,
+			success: true,
+			status: "keep",
+			metric: 0.91,
+			stdout: "ok",
+			durationMs: 11,
+		});
+
+		const agent = new AutocycleAgent(ctx, {
+			targetFile: "x",
+			evalCommand: "echo ok",
+			evalBudgetMs: 500,
+			maxIterations: 1,
+		});
+
+		await agent.start("improve quality");
+
+		expect(mockReportAutocycleIterationToChitragupta).toHaveBeenCalledWith(
+			expect.objectContaining({
+				objective: "improve quality",
+				targetFile: "x",
+				evalCommand: "echo ok",
+				manifestFilePath: expect.stringContaining(".experiment.md"),
+				result: expect.objectContaining({ iteration: 1, metric: 0.91, status: "keep" }),
+				summary: expect.objectContaining({ completedEvaluations: 1, counts: expect.objectContaining({ keep: 1 }) }),
+			}),
+		);
+	});
+
+	it("resumes from an existing ledger and only runs remaining iterations", async () => {
+		const ctx = makeMockCtx();
+		mockInitializeRunState.mockResolvedValueOnce({
+			...defaultRunSummary,
+			completedEvaluations: 2,
+			counts: { ...defaultRunSummary.counts, keep: 2 },
+			keepRate: 1,
+			totalDurationMs: 20,
+			averageDurationMs: 10,
+			baselineMetric: 1.2,
+			bestMetric: 0.9,
+			latestMetric: 0.9,
+		});
+		mockGetRunSummary.mockImplementation(() => ({
+			...defaultRunSummary,
+			completedEvaluations: 3,
+			counts: { ...defaultRunSummary.counts, keep: 3 },
+			keepRate: 1,
+			totalDurationMs: 30,
+			averageDurationMs: 10,
+			baselineMetric: 1.2,
+			bestMetric: 0.8,
+			latestMetric: 0.8,
+		}));
+		mockRunCycleEvaluation.mockResolvedValueOnce({
+			iteration: 3,
+			success: true,
+			status: "keep",
+			metric: 0.8,
+			stdout: "ok",
+			durationMs: 10,
+		});
+
+		const agent = new AutocycleAgent(ctx, {
+			targetFile: "x",
+			evalCommand: "echo ok",
+			evalBudgetMs: 500,
+			maxIterations: 3,
+			resumeLedgerFile: ".takumi/autocycle/run.jsonl",
+		});
+
+		await agent.start("resume me");
+
+		expect(ctx.agentRunner!.submit).toHaveBeenCalledTimes(1);
+		expect(ctx.addInfoMessage).toHaveBeenCalledWith(expect.stringContaining("Resuming Autocycle"));
+		expect(mockAutocycleConstructor).toHaveBeenCalledWith(
+			expect.objectContaining({
+				ledgerFile: ".takumi/autocycle/run.jsonl",
+				resumeFromLedger: true,
+			}),
+		);
 	});
 
 	it("start() prints a run summary even when iterations are skipped", async () => {
@@ -556,6 +689,21 @@ describe("registerAutocycleCommands", () => {
 		expect(ctx.addInfoMessage).toHaveBeenCalledWith(expect.stringContaining("No agent runner"));
 	});
 
+	it("/autocycle passes --resume ledger path into Autocycle construction", async () => {
+		const ctx = makeMockCtx();
+		registerAutocycleCommands(ctx);
+		const handler = (ctx.commands.register as ReturnType<typeof vi.fn>).mock.calls[0][2];
+
+		await handler('improve --target foo.ts --command "npm test" --resume .takumi/autocycle/run.jsonl');
+
+		expect(mockAutocycleConstructor).toHaveBeenCalledWith(
+			expect.objectContaining({
+				ledgerFile: ".takumi/autocycle/run.jsonl",
+				resumeFromLedger: true,
+			}),
+		);
+	});
+
 	it("/autocycle-cancel reports no active cycle", () => {
 		const ctx = makeMockCtx();
 		registerAutocycleCommands(ctx);
@@ -567,14 +715,16 @@ describe("registerAutocycleCommands", () => {
 
 	it("/autocycle guards against double invocation", async () => {
 		const ctx = makeMockCtx();
-		const mockAgent = {} as any;
+		const mockAgent = { isActive: true } as any;
 		ctx.setActiveAutocycle(mockAgent);
 
 		registerAutocycleCommands(ctx);
 		const handler = (ctx.commands.register as ReturnType<typeof vi.fn>).mock.calls[0][2];
 
 		await handler('improve --target foo.ts --command "npm test"');
-		expect(ctx.addInfoMessage).toHaveBeenCalledWith(expect.stringContaining("already running"));
+		expect(ctx.addInfoMessage).toHaveBeenCalledWith(
+			expect.stringContaining("/autocycle is unavailable while the autocycle lane is active."),
+		);
 	});
 
 	it("/autocycle-cancel calls cancel on active agent", () => {

@@ -16,6 +16,8 @@ interface ResolveRoutingOverridesOptions {
 	classification?: TaskClassification;
 }
 
+const DEFAULT_CODING_CLI_PREFERENCES = ["cli.codex"];
+
 export async function resolveRoutingOverrides({
 	observer,
 	sessionId,
@@ -50,7 +52,11 @@ async function resolveLegacyRoutingOverrides(
 			consumer: "takumi",
 			sessionId: sessionId ?? "transient",
 			capability: "coding.patch-cheap",
-			constraints: { preferLocal: true, requireStreaming: true },
+			constraints: {
+				preferLocal: true,
+				requireStreaming: true,
+				preferredCapabilityIds: DEFAULT_CODING_CLI_PREFERENCES,
+			},
 			context: { mode: "multi-agent", role: "worker" },
 		}),
 		resolveLegacyPlan(
@@ -68,7 +74,10 @@ async function resolveLegacyRoutingOverrides(
 				consumer: "takumi",
 				sessionId: sessionId ?? "transient",
 				capability: "coding.review.strict",
-				constraints: { requireStreaming: true },
+				constraints: {
+					requireStreaming: true,
+					preferredCapabilityIds: DEFAULT_CODING_CLI_PREFERENCES,
+				},
 				context: { mode: "multi-agent", role: "coordination" },
 			},
 		),

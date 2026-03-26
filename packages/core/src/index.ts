@@ -73,6 +73,7 @@ export type {
 	ExecRunFailedEvent,
 	ExecRunStartedEvent,
 	ExecSessionBinding,
+	ExecSideAgentBootstrapSnapshot,
 	ExecValidationSummary,
 	SerializedError,
 } from "./exec-protocol.js";
@@ -171,12 +172,21 @@ export {
 	removeNode,
 	saveTreeManifest,
 } from "./session-tree.js";
-export type { AutoSaver, SessionData, SessionSummary } from "./sessions.js";
+export type {
+	AutoSaver,
+	SessionData,
+	SessionJsonlMessageRecord,
+	SessionJsonlMetaRecord,
+	SessionJsonlRecord,
+	SessionSummary,
+} from "./sessions.js";
 export {
 	createAutoSaver,
 	deleteSession,
+	exportSessionAsJsonl,
 	forkSession,
 	generateSessionId,
+	importSessionFromJsonl,
 	listSessions,
 	loadSession,
 	saveSession,

@@ -15,12 +15,12 @@ function actionButtonStyle(active = false): CSSProperties {
 
 function DiffPreview({ title, diff }: { title: string; diff: string }) {
 	if (!diff.trim()) {
-		return <div style={{ fontSize: 12, color: "#6b7280" }}>No diff content available.</div>;
+		return <div style={{ fontSize: 12, color: "var(--c-text-muted)" }}>No diff content available.</div>;
 	}
 	const lines = diff.split("\n").slice(0, 160);
 	return (
 		<div>
-			<div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 8 }}>{title}</div>
+			<div style={{ fontSize: 12, fontWeight: 700, color: "var(--c-text-secondary)", marginBottom: 8 }}>{title}</div>
 			<pre
 				style={{
 					whiteSpace: "pre-wrap",
@@ -118,9 +118,9 @@ export function ReviewSurface(props: {
 	const selectedDiff = diffSections.find((section) => section.key === selectedDiffKey) ?? diffSections[0] ?? null;
 
 	return (
-		<div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
+		<div style={{ background: "white", border: "1px solid var(--c-border)", borderRadius: 10, padding: 14 }}>
 			<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-				<div style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Review Surface</div>
+				<div style={{ fontSize: 12, fontWeight: 700, color: "var(--c-text-secondary)" }}>Review Surface</div>
 				<div style={{ display: "flex", gap: 8 }}>
 					{selectedArtifactDetail && (
 						<>
@@ -139,24 +139,24 @@ export function ReviewSurface(props: {
 			</div>
 			{selectedArtifactDetail ? (
 				<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-					<div style={{ fontSize: 12, color: "#6b7280" }}>
+					<div style={{ fontSize: 12, color: "var(--c-text-muted)" }}>
 						{selectedArtifactDetail.kind} · {selectedArtifactDetail.producer} · {new Date(selectedArtifactDetail.createdAt).toLocaleString()}
 						{selectedArtifactDetail.promoted ? " · promoted" : ""}
 					</div>
-					<div style={{ fontSize: 13, color: "#111827", fontWeight: 700 }}>{selectedArtifactDetail.summary}</div>
+					<div style={{ fontSize: 13, color: "var(--c-text)", fontWeight: 700 }}>{selectedArtifactDetail.summary}</div>
 					{selectedArtifactDetail.body && isDiffLike(selectedArtifactDetail.body) ? (
 						<DiffPreview title="Artifact diff" diff={selectedArtifactDetail.body} />
 					) : selectedArtifactDetail.body ? (
-						<pre style={{ whiteSpace: "pre-wrap", fontSize: 12, background: "#f9fafb", padding: 12, borderRadius: 8, margin: 0, maxHeight: 240, overflow: "auto" }}>
+						<pre style={{ whiteSpace: "pre-wrap", fontSize: 12, background: "var(--c-bg-card)", padding: 12, borderRadius: 8, margin: 0, maxHeight: 240, overflow: "auto" }}>
 							{selectedArtifactDetail.body}
 						</pre>
 					) : (
-						<div style={{ fontSize: 12, color: "#6b7280" }}>This artifact has summary metadata only.</div>
+						<div style={{ fontSize: 12, color: "var(--c-text-muted)" }}>This artifact has summary metadata only.</div>
 					)}
 				</div>
 			) : repoDiff ? (
 				<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-					<div style={{ fontSize: 12, color: "#6b7280" }}>
+					<div style={{ fontSize: 12, color: "var(--c-text-muted)" }}>
 						Branch: {repoDiff.branch ?? "unknown"} · {repoDiff.stagedFiles.length} staged · {repoDiff.modifiedFiles.length} modified · {repoDiff.untrackedFiles.length} untracked
 					</div>
 					{diffSections.length > 0 ? (
@@ -178,10 +178,10 @@ export function ReviewSurface(props: {
 					) : (
 						<DiffPreview title="Repo diff" diff={repoDiff.stagedDiff || repoDiff.workingDiff} />
 					)}
-					{repoDiff.untrackedFiles.length > 0 && <div style={{ fontSize: 12, color: "#6b7280" }}>Untracked: {repoDiff.untrackedFiles.join(", ")}</div>}
+					{repoDiff.untrackedFiles.length > 0 && <div style={{ fontSize: 12, color: "var(--c-text-muted)" }}>Untracked: {repoDiff.untrackedFiles.join(", ")}</div>}
 				</div>
 			) : (
-				<div style={{ fontSize: 12, color: "#6b7280" }}>Review state unavailable.</div>
+				<div style={{ fontSize: 12, color: "var(--c-text-muted)" }}>Review state unavailable.</div>
 			)}
 		</div>
 	);

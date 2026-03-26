@@ -1,7 +1,13 @@
 import type { TakumiConfig } from "@takumi/core";
 import type { DaemonStatusSummary } from "./daemon-status.js";
 import { loadDetachedJobs, toDetachedJobView, type DetachedJobView } from "./detached-jobs.js";
-import { formatDoctorReport, resolveDoctorReport, type DoctorReport, type DoctorSeverity } from "./doctor.js";
+import {
+	formatDoctorReport,
+	resolveDoctorReport,
+	type DoctorCollectionOptions,
+	type DoctorReport,
+	type DoctorSeverity,
+} from "./doctor.js";
 import { toSessionListEntry, type SessionListEntry } from "./session-commands.js";
 
 export interface PlatformReport {
@@ -20,6 +26,9 @@ export interface PlatformReport {
 		authenticatedProviders: number;
 		totalProviders: number;
 		daemonHealthy: boolean;
+		activeSideAgents: number;
+		sideAgentIssues: number;
+		orphanedSideAgentWorktrees: number;
 	};
 }
 
@@ -30,8 +39,13 @@ export interface BuildPlatformReportInput {
 	generatedAt?: number;
 }
 
+export interface PlatformReportOptions extends DoctorCollectionOptions {}
+
 export function buildPlatformReport(input: BuildPlatformReportInput): PlatformReport {
 	const runningDetachedJobs = input.detachedJobs.filter((job) => job.state === "running").length;
+	const activeSideAgents = input.doctor.sideAgents.audit?.activeAgents ?? 0;
+	const sideAgentIssues = input.doctor.sideAgents.audit?.issues.length ?? 0;
+	const orphanedSideAgentWorktrees = input.doctor.sideAgents.audit?.orphanedWorktrees.length ?? 0;
 	return {
 		version: input.doctor.version,
 		generatedAt: input.generatedAt ?? Date.now(),
@@ -48,6 +62,9 @@ export function buildPlatformReport(input: BuildPlatformReportInput): PlatformRe
 			authenticatedProviders: input.doctor.kosha.authenticatedProviders,
 			totalProviders: input.doctor.kosha.totalProviders,
 			daemonHealthy: input.doctor.daemon.healthy,
+			activeSideAgents,
+			sideAgentIssues,
+			orphanedSideAgentWorktrees,
 		},
 	};
 }
@@ -59,6 +76,7 @@ export function formatPlatformReport(report: PlatformReport): string {
 		`Workspace:         ${report.workspace}`,
 		`Daemon:            ${report.summary.daemonHealthy ? "healthy" : "degraded"}`,
 		`Providers:         ${report.summary.authenticatedProviders}/${report.summary.totalProviders} authenticated`,
+		`Side agents:       ${report.summary.activeSideAgents} active · ${report.summary.sideAgentIssues} issue(s) · ${report.summary.orphanedSideAgentWorktrees} orphaned`,
 		`Detached jobs:     ${report.summary.runningDetachedJobs}/${report.summary.totalDetachedJobs} running`,
 		`Recent sessions:   ${report.summary.recentSessions}`,
 		"",
@@ -95,8 +113,9 @@ export async function collectPlatformReport(
 	config: TakumiConfig,
 	version: string,
 	applyFixes = false,
+	options: PlatformReportOptions = {},
 ): Promise<PlatformReport> {
-	const doctor = await resolveDoctorReport(config, version, applyFixes);
+	const doctor = await resolveDoctorReport(config, version, applyFixes, options);
 	const [{ listSessions }, jobs] = await Promise.all([import("@takumi/core"), loadDetachedJobs()]);
 	const sessions = (await listSessions(5)).map(toSessionListEntry);
 	const detachedJobs = jobs.map(toDetachedJobView);

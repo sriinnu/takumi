@@ -39,6 +39,7 @@ export type PlatformWatchAction =
 	| null;
 
 const REFRESH_MS = 2_000;
+const SIDE_AGENT_AUDIT_CACHE_MS = 15_000;
 
 export function decodePlatformWatchAction(input: Buffer | string): PlatformWatchAction {
 	const value = typeof input === "string" ? input : input.toString("utf8");
@@ -73,6 +74,7 @@ export function formatPlatformWatchScreen(report: PlatformReport, state: Platfor
 		"",
 		`${label("workspace")} ${report.workspace}`,
 		`${label("model")} ${report.doctor.provider} / ${report.doctor.model}`,
+		`${label("side-agents")} ${report.summary.activeSideAgents} active · ${report.summary.sideAgentIssues} issue(s) · ${report.summary.orphanedSideAgentWorktrees} orphaned`,
 		`${label("sessions")} ${report.summary.recentSessions} recent · ${report.doctor.telemetry.activeInstances} active instance(s) · ${report.doctor.telemetry.working} working`,
 		`${label("jobs")} ${report.summary.runningDetachedJobs}/${report.summary.totalDetachedJobs} running · ${report.doctor.telemetry.waitingInput} waiting input`,
 		`${label("warnings")} ${report.doctor.warnings.length} · ${report.doctor.fixes.length} suggested fix(es) · ${state.fixesApplied} applied this watch`,
@@ -181,18 +183,20 @@ export async function cmdPlatformWatch(config: TakumiConfig, version: string, ap
 		process.stdout.write("\n");
 	};
 
-	const refresh = async (withFixes = false, hard = false) => {
-		if (state.refreshing) return;
-		state.refreshing = true;
-		if (hard) {
-			state.error = null;
-			state.lastMessage = "Hard refresh requested…";
-		} else {
-			state.lastMessage = withFixes ? "Applying safe fixes…" : "Refreshing platform state…";
-		}
-		try {
-			report = await collectPlatformReport(config, version, withFixes);
-			state.lastRefreshAt = Date.now();
+		const refresh = async (withFixes = false, hard = false, allowCachedAudit = false) => {
+			if (state.refreshing) return;
+			state.refreshing = true;
+			if (hard) {
+				state.error = null;
+				state.lastMessage = "Hard refresh requested…";
+			} else {
+				state.lastMessage = withFixes ? "Applying safe fixes…" : "Refreshing platform state…";
+			}
+			try {
+				report = await collectPlatformReport(config, version, withFixes, {
+					sideAgentAuditMaxAgeMs: allowCachedAudit ? SIDE_AGENT_AUDIT_CACHE_MS : 0,
+				});
+				state.lastRefreshAt = Date.now();
 			if (withFixes) {
 				state.fixesApplied += 1;
 				state.lastMessage = "Refresh complete after safe fixes.";
@@ -218,15 +222,15 @@ export async function cmdPlatformWatch(config: TakumiConfig, version: string, ap
 				cleanup();
 				process.exit(0);
 				break;
-			case "refresh":
-				void refresh(false);
-				break;
-			case "hard-refresh":
-				void refresh(false, true);
-				break;
-			case "fix":
-				void refresh(true);
-				break;
+				case "refresh":
+					void refresh(false, false, false);
+					break;
+				case "hard-refresh":
+					void refresh(false, true, false);
+					break;
+				case "fix":
+					void refresh(true, false, false);
+					break;
 			case "toggle-doctor":
 				state.showDoctor = !state.showDoctor;
 				state.lastMessage = `Doctor section ${state.showDoctor ? "shown" : "hidden"}.`;
@@ -307,12 +311,12 @@ export async function cmdPlatformWatch(config: TakumiConfig, version: string, ap
 		process.stdin.resume();
 	}
 
-	await refresh(applyFixes);
-	refreshTimer = setInterval(() => {
-		if (!state.paused) {
-			void refresh(false);
-		}
-	}, REFRESH_MS);
+		await refresh(applyFixes, false, false);
+		refreshTimer = setInterval(() => {
+			if (!state.paused) {
+				void refresh(false, false, true);
+			}
+		}, REFRESH_MS);
 	while (running) {
 		await new Promise((resolve) => setTimeout(resolve, 250));
 	}

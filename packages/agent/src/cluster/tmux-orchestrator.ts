@@ -30,6 +30,13 @@ export interface TmuxWindow {
 	paneId: string;
 }
 
+export interface TmuxWindowLocator {
+	sessionName?: string | null;
+	windowId?: string | null;
+	windowName?: string | null;
+	paneId?: string | null;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_SESSION_PREFIX = "takumi-agents";
@@ -74,6 +81,23 @@ export class TmuxOrchestrator {
 	/** Check if we're currently inside a tmux session. */
 	static isInsideTmux(): boolean {
 		return typeof process.env.TMUX === "string" && process.env.TMUX.length > 0;
+	}
+
+	/**
+	 * I list tmux windows for one session in a read-only way so audits can batch
+	 * window discovery instead of probing each lane individually.
+	 */
+	static async listWindows(sessionName: string): Promise<TmuxWindow[]> {
+		try {
+			const output = await tmux("list-windows", "-t", sessionName, "-F", "#{window_id}:#{window_name}:#{pane_id}");
+			return output
+				.split("\n")
+				.map((line) => parseWindow(line))
+				.filter((window): window is Omit<TmuxWindow, "sessionName"> => window !== null)
+				.map((window) => ({ sessionName, ...window }));
+		} catch {
+			return [];
+		}
 	}
 
 	// ── Session Bootstrap ───────────────────────────────────────────────────
@@ -189,6 +213,34 @@ export class TmuxOrchestrator {
 		}
 	}
 
+	/**
+	 * I look up a window by locator without taking ownership of it.
+	 */
+	async findWindow(locatorOrWindowName: string | TmuxWindowLocator): Promise<TmuxWindow | null> {
+		const locator = typeof locatorOrWindowName === "string" ? { windowName: locatorOrWindowName } : locatorOrWindowName;
+		const sessionName = locator.sessionName ?? this.sessionName;
+		if (!(await this.hasSession(sessionName))) {
+			return null;
+		}
+		const windows = await TmuxOrchestrator.listWindows(sessionName);
+		return windows.find((window) => matchesLocator(window, locator)) ?? null;
+	}
+
+	/**
+	 * Reattach a persisted side agent to an existing tmux window in our session.
+	 * I use this during CLI restart recovery so live lanes stay controllable.
+	 */
+	async adoptWindow(agentId: string, locatorOrWindowName: string | TmuxWindowLocator): Promise<TmuxWindow | null> {
+		const existing = this.windows.get(agentId);
+		if (existing) {
+			return existing;
+		}
+		const adopted = await this.findWindow(locatorOrWindowName);
+		if (!adopted) return null;
+		this.windows.set(agentId, adopted);
+		return adopted;
+	}
+
 	// ── Cleanup ─────────────────────────────────────────────────────────────
 
 	/** Kill all managed windows and destroy the session if we created it. */
@@ -216,4 +268,46 @@ export class TmuxOrchestrator {
 		}
 		return win;
 	}
+
+	private async hasSession(sessionName = this.sessionName): Promise<boolean> {
+		try {
+			await tmux("has-session", "-t", sessionName);
+			if (sessionName === this.sessionName) {
+				this.sessionCreated = true;
+			}
+			return true;
+		} catch {
+			return false;
+		}
+	}
+}
+
+function parseWindow(line: string): Omit<TmuxWindow, "sessionName"> | null {
+	const trimmed = line.trim();
+	if (!trimmed) {
+		return null;
+	}
+	const firstColon = trimmed.indexOf(":");
+	const lastColon = trimmed.lastIndexOf(":");
+	if (firstColon <= 0 || lastColon <= firstColon) {
+		return null;
+	}
+	return {
+		windowId: trimmed.slice(0, firstColon),
+		windowName: trimmed.slice(firstColon + 1, lastColon),
+		paneId: trimmed.slice(lastColon + 1),
+	};
+}
+
+function matchesLocator(window: Omit<TmuxWindow, "sessionName">, locator: TmuxWindowLocator): boolean {
+	if (locator.windowId && window.windowId !== locator.windowId) {
+		return false;
+	}
+	if (locator.windowName && window.windowName !== locator.windowName) {
+		return false;
+	}
+	if (locator.paneId && window.paneId !== locator.paneId) {
+		return false;
+	}
+	return Boolean(locator.windowId || locator.windowName || locator.paneId);
 }

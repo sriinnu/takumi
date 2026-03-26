@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ExtensionUiStore } from "../src/extension-ui-store.js";
 import {
 	buildAgentStateSnapshot,
 	buildFleetSummary,
@@ -33,13 +34,22 @@ function createState(): AppState {
 describe("http-bridge-runtime helpers", () => {
 	it("buildAgentStateSnapshot includes routing and approval metadata", () => {
 		const state = createState();
+		const extensionUiStore = new ExtensionUiStore();
 		state.pendingPermission.value = {
 			tool: "write_file",
 			args: { filePath: "README.md" },
 			resolve: () => undefined,
 		};
+		void extensionUiStore.requestPick(
+			[
+				{ label: "Alpha", value: "a" },
+				{ label: "Beta", value: "b" },
+			],
+			"Select task",
+		);
+		extensionUiStore.setWidget("status", () => ["ready", "steady"]);
 
-		const snapshot = buildAgentStateSnapshot(state);
+		const snapshot = buildAgentStateSnapshot(state, extensionUiStore);
 		expect(snapshot.bridgeConnected).toBe(true);
 		expect(snapshot.contextPressure).toBe("near_limit");
 		expect(snapshot.routing).toMatchObject({
@@ -51,6 +61,18 @@ describe("http-bridge-runtime helpers", () => {
 		expect(snapshot.approval).toMatchObject({
 			pendingCount: 1,
 			tool: "write_file",
+		});
+		expect(snapshot.extensionUi).toMatchObject({
+			prompt: {
+				kind: "pick",
+				title: "Select task",
+				optionCount: 2,
+				options: [
+					{ index: 0, label: "Alpha" },
+					{ index: 1, label: "Beta" },
+				],
+			},
+			widgets: [{ key: "status", previewLines: ["ready", "steady"], truncated: false }],
 		});
 	});
 

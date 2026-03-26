@@ -6,14 +6,18 @@
 import type { Rect } from "@takumi/core";
 import type { ListItem, Screen } from "@takumi/render";
 import { Border, Component, effect, List } from "@takumi/render";
+import type { ExtensionUiStore } from "../extension-ui-store.js";
 import type { AppState } from "../state.js";
 import { ClusterStatusPanel } from "./cluster-status.js";
+import { ExtensionWidgetsPanel } from "./extension-widgets-panel.js";
 import { LaneTrackerPanel } from "./lane-tracker.js";
 import { RouteCardPanel } from "./route-card.js";
 import { SabhaPanel } from "./sabha-panel.js";
+import { SideLanesPanel } from "./side-lanes-panel.js";
 
 export interface SidebarPanelProps {
 	state: AppState;
+	extensionUiStore?: ExtensionUiStore;
 	width?: number;
 }
 
@@ -38,8 +42,12 @@ export class SidebarPanel extends Component {
 	readonly routeCard: RouteCardPanel;
 	/** Lane tracker — recent routing history shown as lanes. */
 	readonly laneTracker: LaneTrackerPanel;
+	/** Side-lane tracker — active workflow side agents surfaced in the sidebar. */
+	readonly sideLanesPanel: SideLanesPanel;
 	/** Sabha panel — deliberation council state and predictions. */
 	readonly sabhaPanel: SabhaPanel;
+	/** Extension widgets panel — host-owned sidebar surface for extension widgets. */
+	readonly extensionWidgetsPanel: ExtensionWidgetsPanel | null;
 
 	constructor(props: SidebarPanelProps) {
 		super();
@@ -90,7 +98,11 @@ export class SidebarPanel extends Component {
 		this.clusterPanel = new ClusterStatusPanel({ state: props.state });
 		this.routeCard = new RouteCardPanel({ state: props.state });
 		this.laneTracker = new LaneTrackerPanel({ state: props.state, maxLanes: 4 });
+		this.sideLanesPanel = new SideLanesPanel({ state: props.state, maxLanes: 2 });
 		this.sabhaPanel = new SabhaPanel({ state: props.state });
+		this.extensionWidgetsPanel = props.extensionUiStore
+			? new ExtensionWidgetsPanel({ extensionUiStore: props.extensionUiStore })
+			: null;
 	}
 
 	onUnmount(): void {
@@ -101,7 +113,9 @@ export class SidebarPanel extends Component {
 		this.clusterPanel.onUnmount();
 		this.routeCard.onUnmount();
 		this.laneTracker.onUnmount();
+		this.sideLanesPanel.onUnmount();
 		this.sabhaPanel.onUnmount();
+		this.extensionWidgetsPanel?.onUnmount();
 		super.onUnmount();
 	}
 
@@ -150,14 +164,21 @@ export class SidebarPanel extends Component {
 		if (cursorY >= maxY) return;
 
 		const files = this.state.modifiedFiles.value;
+		const reservedAfterFiles =
+			this.computeFixedSectionHeight() +
+			this.computeTrailingPanelHeight(
+				this.clusterPanel.height,
+				this.routeCard.height,
+				this.laneTracker.height,
+				this.sideLanesPanel.height,
+				this.sabhaPanel.height,
+				this.extensionWidgetsPanel?.measure(innerW) ?? 0,
+			);
 		if (files.length === 0) {
 			screen.writeText(cursorY, innerX, "(no files)", { fg: 8, dim: true });
 			cursorY++;
 		} else {
-			const fileAreaHeight = Math.min(
-				files.length,
-				maxY - cursorY - SESSION_INFO_ROWS - KEYBIND_HINT_ROWS - 2 * SECTION_GAP - 2 * SECTION_HEADER_HEIGHT,
-			);
+			const fileAreaHeight = Math.min(files.length, maxY - cursorY - reservedAfterFiles);
 			if (fileAreaHeight > 0) {
 				this.fileList.render(screen, {
 					x: innerX,
@@ -257,6 +278,21 @@ export class SidebarPanel extends Component {
 			}
 		}
 
+		// ── Section: Side Lanes ────────────────────────────────────────────
+		const sideLaneHeight = this.sideLanesPanel.height;
+		if (sideLaneHeight > 0 && cursorY + sideLaneHeight <= maxY) {
+			cursorY += SECTION_GAP;
+			if (cursorY < maxY) {
+				this.sideLanesPanel.render(screen, {
+					x: innerX,
+					y: cursorY,
+					width: innerW,
+					height: sideLaneHeight,
+				});
+				cursorY += sideLaneHeight;
+			}
+		}
+
 		// ── Section: Sabha Panel ───────────────────────────────────────────
 		const sabhaHeight = this.sabhaPanel.height;
 		if (sabhaHeight > 0 && cursorY + sabhaHeight <= maxY) {
@@ -267,6 +303,20 @@ export class SidebarPanel extends Component {
 					y: cursorY,
 					width: innerW,
 					height: sabhaHeight,
+				});
+			}
+		}
+
+		// ── Section: Extension Widgets ───────────────────────────────────────
+		const widgetHeight = this.extensionWidgetsPanel?.measure(innerW) ?? 0;
+		if (this.extensionWidgetsPanel && widgetHeight > 0 && cursorY + widgetHeight <= maxY) {
+			cursorY += SECTION_GAP;
+			if (cursorY < maxY) {
+				this.extensionWidgetsPanel.render(screen, {
+					x: innerX,
+					y: cursorY,
+					width: innerW,
+					height: widgetHeight,
 				});
 			}
 		}
@@ -292,5 +342,17 @@ export class SidebarPanel extends Component {
 	private truncField(text: string, width: number): string {
 		if (text.length <= width) return text;
 		return `${text.slice(0, width - 1)}\u2026`;
+	}
+
+	/** Height reserved for the fixed session + keybind sections below the file list. */
+	private computeFixedSectionHeight(): number {
+		return (
+			SECTION_GAP + SECTION_HEADER_HEIGHT + SESSION_INFO_ROWS + SECTION_GAP + SECTION_HEADER_HEIGHT + KEYBIND_HINT_ROWS
+		);
+	}
+
+	/** Height reserved for dynamic panels below the fixed sections, including gaps. */
+	private computeTrailingPanelHeight(...panelHeights: number[]): number {
+		return panelHeights.reduce((total, height) => total + (height > 0 ? SECTION_GAP + height : 0), 0);
 	}
 }

@@ -10,8 +10,10 @@ import type { Screen } from "@takumi/render";
 import { Component, effect } from "@takumi/render";
 import type { SlashCommandRegistry } from "../commands.js";
 import { CommandPalette } from "../dialogs/command-palette.js";
+import { ExtensionPromptDialog } from "../dialogs/extension-prompt.js";
 import { ModelPicker } from "../dialogs/model-picker.js";
 import { type SessionEntry, SessionList } from "../dialogs/session-list.js";
+import type { ExtensionUiStore } from "../extension-ui-store.js";
 import type { KeyBindingRegistry } from "../keybinds.js";
 import type { AppState } from "../state.js";
 
@@ -19,6 +21,7 @@ export interface DialogOverlayProps {
 	state: AppState;
 	commands?: SlashCommandRegistry;
 	keybinds?: KeyBindingRegistry;
+	extensionUiStore?: ExtensionUiStore;
 	onResumeSession?: (sessionId: string) => Promise<void> | void;
 }
 
@@ -26,8 +29,10 @@ export class DialogOverlay extends Component {
 	private readonly state: AppState;
 	private readonly commands: SlashCommandRegistry | null;
 	private readonly keybinds: KeyBindingRegistry | null;
+	private readonly extensionUiStore: ExtensionUiStore | null;
 	private readonly sessionList = new SessionList();
 	private readonly modelPicker = new ModelPicker();
+	private readonly extensionPrompt = new ExtensionPromptDialog();
 	private readonly commandPalette: CommandPalette | null;
 	private disposeEffects: Array<() => void> = [];
 	private loadingSessions = false;
@@ -38,6 +43,7 @@ export class DialogOverlay extends Component {
 		this.state = props.state;
 		this.commands = props.commands ?? null;
 		this.keybinds = props.keybinds ?? null;
+		this.extensionUiStore = props.extensionUiStore ?? null;
 		this.commandPalette = this.commands && this.keybinds ? new CommandPalette(this.commands, this.keybinds) : null;
 
 		this.modelPicker.onSelect = (model) => {
@@ -67,7 +73,11 @@ export class DialogOverlay extends Component {
 				const topDialog = this.state.topDialog;
 				const provider = this.state.provider.value;
 				const pendingPermission = this.state.pendingPermission.value;
+				const extensionPrompt = this.extensionUiStore?.activePrompt.value ?? null;
 				void pendingPermission;
+
+				if (extensionPrompt) this.extensionPrompt.open(extensionPrompt);
+				else this.extensionPrompt.close();
 
 				if (topDialog === "model-picker") {
 					const models = this.state.availableProviderModels.value[provider] ?? [this.state.model.value];
@@ -124,7 +134,7 @@ export class DialogOverlay extends Component {
 	}
 
 	get active(): boolean {
-		return Boolean(this.state.pendingPermission.value || this.state.topDialog);
+		return Boolean(this.state.pendingPermission.value || this.extensionPrompt.isOpen || this.state.topDialog);
 	}
 
 	handleKey(event: KeyEvent): boolean {
@@ -151,6 +161,17 @@ export class DialogOverlay extends Component {
 				this.markDirty();
 				return true;
 			}
+			return true;
+		}
+
+		if (this.extensionPrompt.isOpen) {
+			const outcome = this.extensionPrompt.handleKey(event);
+			if (outcome.kind === "resolve") {
+				this.extensionUiStore?.resolveActivePrompt(outcome.value);
+			} else if (outcome.kind === "cancel") {
+				this.extensionUiStore?.cancelActivePrompt();
+			}
+			this.markDirty();
 			return true;
 		}
 
@@ -200,6 +221,10 @@ export class DialogOverlay extends Component {
 		const pending = this.state.pendingPermission.value;
 		if (pending) {
 			this.renderPermission(screen, rect, pending.tool, JSON.stringify(pending.args, null, 2));
+			return;
+		}
+		if (this.extensionPrompt.isOpen) {
+			this.renderExtensionPrompt(screen, rect);
 			return;
 		}
 
@@ -294,6 +319,38 @@ export class DialogOverlay extends Component {
 						return `${marker} ${session.id} — ${session.preview}`;
 					});
 		this.renderBox(screen, rect, "Sessions", lines, 96);
+	}
+
+	private renderExtensionPrompt(screen: Screen, rect: Rect): void {
+		const prompt = this.extensionPrompt.prompt;
+		if (!prompt) return;
+		if (prompt.kind === "confirm") {
+			this.renderBox(
+				screen,
+				rect,
+				prompt.title ?? "Confirm",
+				[prompt.message, "", "Enter/y = confirm   n/Esc = cancel"],
+				88,
+			);
+			return;
+		}
+		const { items, offset } = this.extensionPrompt.getPickWindow();
+		const lines = [
+			prompt.message,
+			`Filter: ${this.extensionPrompt.filterText || "(type to narrow)"}`,
+			"",
+			...(items.length === 0
+				? ["(no matches)"]
+				: items.map((item, index) => {
+						const absoluteIndex = offset + index;
+						const marker = absoluteIndex === this.extensionPrompt.selectedIndex ? ">" : " ";
+						const detail = item.description ? ` — ${item.description}` : "";
+						return `${marker} ${item.label}${detail}`;
+					})),
+			"",
+			"↑/↓ or j/k = move   Enter = select   Esc = cancel",
+		];
+		this.renderBox(screen, rect, prompt.title ?? "Select", lines, 96);
 	}
 
 	private renderBox(screen: Screen, rect: Rect, title: string, lines: string[], maxWidth: number): void {

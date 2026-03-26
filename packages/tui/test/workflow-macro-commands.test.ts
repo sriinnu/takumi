@@ -28,6 +28,7 @@ function createContext() {
 	const toolDefinitions = new Map<string, ToolDefinition>();
 	const toolExecute = vi.fn<(inputName: string, input: Record<string, unknown>) => Promise<ToolResult>>();
 	const getDefinition = vi.fn((name: string) => toolDefinitions.get(name));
+	const executeCommandTool = vi.fn((name: string, input: Record<string, unknown>) => toolExecute(name, input));
 
 	commands.register("/code", "Start coding agent", codeHandler);
 
@@ -39,6 +40,7 @@ function createContext() {
 			submit,
 			clearHistory: vi.fn(),
 			checkToolPermission: vi.fn(async () => true),
+			executeCommandTool,
 			getTools: () => ({
 				getDefinition,
 				execute: (name: string, input: Record<string, unknown>) => toolExecute(name, input),
@@ -76,6 +78,7 @@ function createContext() {
 		codeHandler,
 		toolDefinitions,
 		toolExecute,
+		executeCommandTool,
 		getDefinition,
 	};
 }
@@ -182,6 +185,13 @@ describe("workflow/productivity slash commands", () => {
 			requiresPermission: false,
 			category: "interact",
 		});
+		toolDefinitions.set("takumi_agent_check", {
+			name: "takumi_agent_check",
+			description: "check",
+			inputSchema: { type: "object", properties: {} },
+			requiresPermission: false,
+			category: "read",
+		});
 		toolExecute.mockImplementation(async (name) => {
 			if (name === "takumi_agent_start") {
 				return {
@@ -191,6 +201,19 @@ describe("workflow/productivity slash commands", () => {
 						worktree: "/tmp/wt-1",
 						branch: "takumi/side-agent/side-1-wt-1",
 						tmuxWindow: "agent-side-1",
+					}),
+					isError: false,
+				};
+			}
+			if (name === "takumi_agent_check") {
+				return {
+					output: JSON.stringify({
+						id: "side-1",
+						state: "running",
+						description: "improve auth flow",
+						model: "o3-mini",
+						branch: "takumi/side-agent/side-1-wt-1",
+						recentOutput: "booting\nplanning\n",
 					}),
 					isError: false,
 				};
@@ -209,7 +232,7 @@ describe("workflow/productivity slash commands", () => {
 
 		await commands.execute("/co-plan improve auth flow");
 
-		expect(ctx.agentRunner?.checkToolPermission).toHaveBeenCalledWith(
+		expect(ctx.agentRunner?.executeCommandTool).toHaveBeenCalledWith(
 			"takumi_agent_start",
 			expect.objectContaining({ description: expect.stringContaining("improve auth flow"), preferredModel: "o3-mini" }),
 		);
@@ -217,9 +240,31 @@ describe("workflow/productivity slash commands", () => {
 			"takumi_agent_query",
 			expect.objectContaining({ id: "side-1", format: "json" }),
 		);
+		expect(lastInfoText(ctx.state)).toContain("tmux window: agent-side-1");
+		expect(lastInfoText(ctx.state)).toContain("recent output:");
+		expect(ctx.state.sideLanes.list()).toEqual([
+			expect.objectContaining({
+				id: "side-1",
+				commandName: "/co-plan",
+				tmuxWindow: "agent-side-1",
+				state: "running",
+				recentOutput: "booting\nplanning",
+				responseSummary: "Alt plan",
+			}),
+		]);
 		expect(submit).toHaveBeenCalledOnce();
 		expect(submit.mock.calls[0][0]).toContain("Independent side-lane output");
 		expect(submit.mock.calls[0][0]).toContain("Alt plan");
+	});
+
+	it("/plan is blocked while the coding lane is active", async () => {
+		const { commands, submit, ctx, state } = createContext();
+		ctx.getActiveCoder = vi.fn(() => ({ isActive: true }));
+
+		await commands.execute("/plan harden the runtime contract");
+
+		expect(submit).not.toHaveBeenCalled();
+		expect(lastInfoText(state)).toContain("/plan is unavailable while the coding lane is active.");
 	});
 
 	it("/question-chain delegates framing, risk, and validation lanes when native side-agent tools are available", async () => {
@@ -274,7 +319,7 @@ describe("workflow/productivity slash commands", () => {
 
 		await commands.execute("/question-chain improve release handoff flow");
 
-		expect(ctx.agentRunner?.checkToolPermission).toHaveBeenCalledTimes(3);
+		expect(ctx.agentRunner?.executeCommandTool).toHaveBeenCalledTimes(6);
 		expect(toolExecute).toHaveBeenCalledWith(
 			"takumi_agent_query",
 			expect.objectContaining({ id: "side-1", format: "json" }),
@@ -322,7 +367,7 @@ describe("workflow/productivity slash commands", () => {
 
 		await commands.execute("/worktree-spin add caching");
 
-		expect(ctx.agentRunner?.checkToolPermission).toHaveBeenCalledWith(
+		expect(ctx.agentRunner?.executeCommandTool).toHaveBeenCalledWith(
 			"worktree_create",
 			expect.objectContaining({ label: "add-caching" }),
 		);
