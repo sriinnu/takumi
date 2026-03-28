@@ -9,9 +9,10 @@ import { EXEC_EXIT_CODES, createExecRunId, createRunFailedEvent, emitExecEvent }
 import { printHelp } from "./cli/help.js";
 import { fetchIssueContext, readStdin, runOneShot } from "./cli/one-shot.js";
 import { cmdPlatform } from "./cli/platform.js";
+import { chooseProviderAndModel } from "./cli/provider-picker.js";
 import { buildSingleProvider, canSkipApiKey, createProvider } from "./cli/provider.js";
-import { autoDetectAuth } from "./cli/cli-auth.js";
-import { koshaProviderModels, koshaProviders } from "./cli/kosha-bridge.js";
+import { autoDetectAuth, collectFastProviderStatus } from "./cli/cli-auth.js";
+import { shouldTraceStartup, StartupTrace } from "./cli/startup-trace.js";
 import { cmdDelete, cmdExport, cmdList, cmdLogs, cmdStatus } from "./cli/session-commands.js";
 import { cmdDaemon } from "./cli/daemon.js";
 import { printSplash } from "./cli/splash.js";
@@ -34,137 +35,6 @@ function hasProviderEnvKey(config: TakumiConfig): boolean {
 		(config.provider === "openrouter" && env.OPENROUTER_API_KEY) ||
 		env.TAKUMI_API_KEY,
 	);
-}
-
-async function chooseProviderAndModel(config: TakumiConfig): Promise<void> {
-	const p = await import("@clack/prompts");
-	const { PROVIDER_MODELS } = await import("@takumi/tui");
-
-	p.intro("\x1b[1;36mTakumi AI Coding Agent\x1b[0m");
-
-	// ── Build dynamic provider list from kosha-discovery ─────────────────────
-	let dynamicProviders: Record<string, string[]> = {};
-	try {
-		dynamicProviders = await koshaProviderModels();
-	} catch {
-		// kosha unavailable — fall through to static list
-	}
-
-	// Merge kosha-discovered providers with static PROVIDER_MODELS (kosha wins)
-	const allProviders = { ...PROVIDER_MODELS, ...dynamicProviders };
-
-	// Build selection options — authenticated kosha providers first, then static
-	let koshaProviderStatus: Array<{ id: string; name: string; authenticated: boolean }> = [];
-	try {
-		const kProviders = await koshaProviders();
-		koshaProviderStatus = kProviders.map((kp) => ({
-			id: mapKoshaToTakumi(kp.id),
-			name: kp.name,
-			authenticated: kp.authenticated || kp.id === "ollama",
-		}));
-	} catch {
-		// fallback — no status info
-	}
-
-	const providerOptions = buildProviderOptions(allProviders, koshaProviderStatus);
-
-	const providerChoice = await p.select({
-		message: "Select AI Provider",
-		options: providerOptions,
-		initialValue: config.provider || "anthropic",
-	});
-
-	if (p.isCancel(providerChoice)) {
-		p.outro("Cancelled.");
-		process.exit(0);
-	}
-
-	const selectedProvider = providerChoice as string;
-	const models = allProviders[selectedProvider] || [];
-
-	let selectedModel = config.model;
-	if (models.length > 0) {
-		const modelChoice = await p.select({
-			message: "Select Model",
-			options: models.map((m: string) => ({ value: m, label: m })),
-			initialValue: models.includes(config.model) ? config.model : models[0],
-		});
-		if (p.isCancel(modelChoice)) {
-			p.outro("Cancelled.");
-			process.exit(0);
-		}
-		selectedModel = modelChoice as string;
-	} else {
-		const modelInput = await p.text({ message: "Enter Model Name", initialValue: config.model });
-		if (p.isCancel(modelInput)) {
-			p.outro("Cancelled.");
-			process.exit(0);
-		}
-		selectedModel = modelInput as string;
-	}
-
-	config.provider = selectedProvider;
-	config.model = selectedModel;
-	p.outro(`Starting with \x1b[32m${selectedProvider}\x1b[0m / \x1b[32m${selectedModel}\x1b[0m...`);
-}
-
-/** Map kosha provider IDs → Takumi provider names. */
-function mapKoshaToTakumi(koshaId: string): string {
-	const mapping: Record<string, string> = {
-		anthropic: "anthropic",
-		openai: "openai",
-		google: "gemini",
-		ollama: "ollama",
-		openrouter: "openrouter",
-		bedrock: "bedrock",
-		vertex: "vertex",
-	};
-	return mapping[koshaId] ?? koshaId;
-}
-
-/** Provider display name map. */
-const PROVIDER_LABELS: Record<string, string> = {
-	anthropic: "Claude (Anthropic)",
-	openai: "OpenAI (GPT / Codex / o-series)",
-	gemini: "Google Gemini",
-	github: "GitHub Models (free with gh CLI)",
-	groq: "Groq (Fast Llama/Mixtral)",
-	deepseek: "DeepSeek",
-	mistral: "Mistral AI",
-	together: "Together AI",
-	openrouter: "OpenRouter",
-	ollama: "Ollama (Local)",
-	bedrock: "AWS Bedrock",
-	vertex: "Google Vertex AI",
-};
-
-/** Build sorted provider selection options: authenticated first, then rest. */
-function buildProviderOptions(
-	allProviders: Record<string, string[]>,
-	koshaStatus: Array<{ id: string; name: string; authenticated: boolean }>,
-): Array<{ value: string; label: string; hint?: string }> {
-	const statusMap = new Map(koshaStatus.map((s) => [s.id, s]));
-
-	const authenticated: Array<{ value: string; label: string; hint?: string }> = [];
-	const unauthenticated: Array<{ value: string; label: string; hint?: string }> = [];
-
-	for (const provider of Object.keys(allProviders)) {
-		const status = statusMap.get(provider);
-		const label = PROVIDER_LABELS[provider] ?? provider;
-		const hint = status?.authenticated
-			? `✓ ${allProviders[provider].length} models`
-			: undefined;
-
-		const option = { value: provider, label, hint };
-
-		if (status?.authenticated) {
-			authenticated.push(option);
-		} else {
-			unauthenticated.push(option);
-		}
-	}
-
-	return [...authenticated, ...unauthenticated];
 }
 
 function installFatalHandlers(): void {
@@ -192,15 +62,12 @@ async function runInteractiveApp(
 	config: TakumiConfig,
 	args: ReturnType<typeof parseArgs>,
 	startupAuthSource: string,
+	startupTrace: StartupTrace,
 ): Promise<void> {
 	installFatalHandlers();
 
 	// Show the colourful splash banner before entering the alternate screen
 	printSplash(VERSION);
-	if (!args.yes) {
-		// Brief pause so the splash is visible before alt-screen takes over
-		await new Promise((r) => setTimeout(r, 600));
-	}
 
 	const { PROVIDER_MODELS, TakumiApp } = await import("@takumi/tui");
 	const {
@@ -220,25 +87,16 @@ async function runInteractiveApp(
 	// Phase 45 — Discover and load extensions
 	const configuredPaths = config.plugins?.map((p) => p.name) ?? [];
 	const configuredPackagePaths = config.packages?.map((pkg) => pkg.name) ?? [];
-	const [provider, runtimeBootstrap, providerModelCatalog, localModels, extResult] = await Promise.all([
-		createProvider(config, args.fallback),
-		collectRuntimeBootstrap(config, { cwd, tools }),
-		koshaProviderModels().catch(() => null),
-		koshaProviders()
-			.then((providers) => {
-				const ollama = providers.find((provider) => mapKoshaToTakumi(provider.id) === "ollama");
-				return (ollama?.models ?? [])
-					.filter((model) => model.mode === "chat")
-					.map((model) => model.id)
-					.slice(0, 4);
-			})
-			.catch(() => []),
-		discoverAndLoadExtensions(configuredPaths, cwd, configuredPackagePaths),
+	const [provider, runtimeBootstrap, providerStatuses, extResult] = await Promise.all([
+		startupTrace.measure("provider.create", () => createProvider(config, args.fallback)),
+		startupTrace.measure("runtime.bootstrap", () => collectRuntimeBootstrap(config, { cwd, tools })),
+		startupTrace.measure("providers.fast-status", () => collectFastProviderStatus().catch(() => [])),
+		startupTrace.measure("extensions.discover", () => discoverAndLoadExtensions(configuredPaths, cwd, configuredPackagePaths)),
 	]);
-	if (providerModelCatalog) {
-		availableProviderModels = { ...PROVIDER_MODELS, ...providerModelCatalog };
-		syncModelTiersFromKosha(providerModelCatalog);
-	}
+	const localModels = providerStatuses.find((provider) => provider.id === "ollama")?.models.slice(0, 4) ?? [];
+	syncModelTiersFromKosha(availableProviderModels);
+	const startupTraceLines = startupTrace.formatLines("Startup handoff");
+	const startupNotes = [runtimeBootstrap.warningLines[0], ...startupTraceLines].filter(Boolean).join("\n");
 	const extensionRunner = extResult.extensions.length > 0 ? new ExtensionRunner(extResult.extensions) : undefined;
 	if (extResult.extensions.length > 0) {
 		process.stderr.write(`\x1b[2m⚡ Loaded ${extResult.extensions.length} extension(s)\x1b[0m\n`);
@@ -259,7 +117,7 @@ async function runInteractiveApp(
 				provider: config.provider,
 				model: config.model,
 				authSource: startupAuthSource,
-				sideAgents: runtimeBootstrap.warningLines[0] ?? undefined,
+				sideAgents: startupNotes || undefined,
 				localModels,
 				availableProviderModels,
 			},
@@ -287,6 +145,7 @@ async function main(): Promise<void> {
 	const args = parseArgs(process.argv);
 	const isExecMode = args.subcommand === "exec";
 	const execRunId = isExecMode || args.headless ? createExecRunId() : undefined;
+	const startupTrace = new StartupTrace(shouldTraceStartup(Boolean(args.startupTrace)));
 
 	if (args.invalidStream) {
 		console.error(`Error: Unsupported stream format \"${args.invalidStream}\". Use \"text\" or \"ndjson\".`);
@@ -412,7 +271,7 @@ async function main(): Promise<void> {
 		config.apiKey || config.proxyUrl || canSkipApiKey(config) || hasProviderEnvKey(config),
 	);
 	if (!alreadyAuthenticated && !args.apiKey) {
-		const detected = await autoDetectAuth();
+		const detected = await startupTrace.measure("auth.detect", () => autoDetectAuth());
 		if (detected) {
 			// Only override the provider if the user didn't explicitly pick one
 			if (!args.provider) config.provider = detected.provider;
@@ -429,7 +288,8 @@ async function main(): Promise<void> {
 		config.apiKey || config.proxyUrl || canSkipApiKey(config) || hasProviderEnvKey(config),
 	);
 	if (!isOneShot && !args.provider && !args.model && !args.resume && !args.yes && !readyToRun) {
-		await chooseProviderAndModel(config);
+		const { PROVIDER_MODELS } = await import("@takumi/tui");
+		await startupTrace.measure("provider.pick", () => chooseProviderAndModel(config, PROVIDER_MODELS));
 	}
 
 	// ── Hard fail if still nothing ───────────────────────────────────────────
@@ -477,7 +337,9 @@ async function main(): Promise<void> {
 				return m ? (m[1] ?? m[2] ?? "") : "";
 			})()
 		: "");
-	if (issueRef) issueContext = await fetchIssueContext(issueRef);
+	if (issueRef) {
+		issueContext = await startupTrace.measure("issue.context", () => fetchIssueContext(issueRef));
+	}
 
 	if (isOneShot) {
 		let finalPrompt = prompt;
@@ -500,6 +362,7 @@ async function main(): Promise<void> {
 			runId: execRunId ?? createExecRunId(),
 			headless: Boolean(args.headless || isExecMode || args.print || isNonTTY),
 			enableChitraguptaBootstrap: Boolean(isExecMode || args.headless),
+			startupTrace,
 		});
 		process.exit(result.exitCode);
 		return;
@@ -517,7 +380,7 @@ async function main(): Promise<void> {
 				? "local endpoint"
 				: "unknown";
 
-	await runInteractiveApp(config, args, startupAuthSource);
+	await runInteractiveApp(config, args, startupAuthSource, startupTrace);
 }
 
 main().catch((err) => {

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EXEC_EXIT_CODES, EXEC_PROTOCOL, type AgentEvent } from "@takumi/core";
+import { StartupTrace } from "../cli/startup-trace.js";
 
 const emitted: string[] = [];
 
@@ -142,7 +143,12 @@ describe("runOneShot", () => {
 			"modify the readme",
 			undefined,
 			"text",
-			{ runId: "exec-policy-text", headless: true, enableChitraguptaBootstrap: true },
+			{
+				runId: "exec-policy-text",
+				headless: true,
+				enableChitraguptaBootstrap: true,
+				startupTrace: new StartupTrace(true),
+			},
 		);
 
 		stderrSpy.mockRestore();
@@ -150,5 +156,7 @@ describe("runOneShot", () => {
 		expect(result.exitCode).toBe(EXEC_EXIT_CODES.POLICY);
 		expect(stderrChunks.join("")).toContain("[warning] Side agents: tmux is unavailable");
 		expect(stderrChunks.join("")).toContain("[warning] Chitragupta: offline");
+		expect(stderrChunks.join("")).toContain("[startup] Startup trace:");
+		expect(stderrChunks.join("")).toContain("provider.create");
 	});
 });

@@ -1,4 +1,4 @@
-import type { MessagePayload } from "@takumi/agent";
+import type { ConventionFiles, ExtensionRunner, MessagePayload } from "@takumi/agent";
 import type { AgentEvent, SessionData, TakumiConfig, ToolDefinition } from "@takumi/core";
 import type { AgentRunner } from "./agent-runner.js";
 import type { AutocycleAgent } from "./autocycle-agent.js";
@@ -33,6 +33,8 @@ export interface AppCommandContext {
 	resumeSession?(sessionId: string): Promise<void>;
 	activateSession?(session: SessionData, notice?: string, reason?: "new" | "resume"): Promise<void>;
 	quit(): Promise<void>;
+	getExtensionRunner(): ExtensionRunner | null;
+	getConventionFiles(): ConventionFiles | null;
 	getActiveCoder(): CodingAgent | null;
 	setActiveCoder(coder: CodingAgent | null): void;
 	getActiveAutocycle(): AutocycleAgent | null;

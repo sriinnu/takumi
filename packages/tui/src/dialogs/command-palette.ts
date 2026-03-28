@@ -14,6 +14,7 @@ export interface CommandPaletteItem {
 	name: string;
 	description: string;
 	type: "command" | "keybind";
+	aliases?: string[];
 }
 
 export class CommandPalette {
@@ -114,9 +115,19 @@ export class CommandPalette {
 
 		if (!filter) return allItems;
 
-		return allItems.filter(
-			(item) => item.name.toLowerCase().includes(filter) || item.description.toLowerCase().includes(filter),
-		);
+		return allItems
+			.map((item) => ({ item, score: scoreCommandPaletteItem(item, filter) }))
+			.filter((entry): entry is { item: CommandPaletteItem; score: number } => entry.score !== null)
+			.sort((left, right) => {
+				if (left.score !== right.score) {
+					return left.score - right.score;
+				}
+				if (left.item.type !== right.item.type) {
+					return left.item.type === "command" ? -1 : 1;
+				}
+				return left.item.name.localeCompare(right.item.name);
+			})
+			.map((entry) => entry.item);
 	}
 
 	/** Get all available items (commands + keybindings). */
@@ -129,6 +140,7 @@ export class CommandPalette {
 				name: cmd.name,
 				description: cmd.description,
 				type: "command",
+				aliases: cmd.aliases,
 			});
 		}
 
@@ -155,4 +167,36 @@ export class CommandPalette {
 	get isOpen(): boolean {
 		return this._isOpen.value;
 	}
+}
+
+/**
+ * I keep palette matching lightweight and deterministic so operators can predict
+ * why a command showed up near the top.
+ */
+function scoreCommandPaletteItem(item: CommandPaletteItem, filter: string): number | null {
+	const name = item.name.toLowerCase();
+	const description = item.description.toLowerCase();
+	const aliases = item.aliases?.map((alias) => alias.toLowerCase()) ?? [];
+	if (name === filter) {
+		return 0;
+	}
+	if (aliases.includes(filter)) {
+		return 1;
+	}
+	if (name.startsWith(filter)) {
+		return 2;
+	}
+	if (aliases.some((alias) => alias.startsWith(filter))) {
+		return 3;
+	}
+	if (name.includes(filter)) {
+		return 4;
+	}
+	if (aliases.some((alias) => alias.includes(filter))) {
+		return 5;
+	}
+	if (description.includes(filter)) {
+		return 6;
+	}
+	return null;
 }

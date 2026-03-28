@@ -1,10 +1,23 @@
 import { join } from "node:path";
-import type { ToolRegistry } from "@takumi/agent";
 import {
+	agentCheckDefinition,
+	agentQueryDefinition,
+	agentSendDefinition,
+	agentStartDefinition,
+	agentStopDefinition,
+	agentWaitAnyDefinition,
+	createAgentCheckHandler,
+	createAgentQueryHandler,
+	createAgentSendHandler,
+	createAgentStartHandler,
+	createAgentStopHandler,
+	createAgentWaitAnyHandler,
 	reconcilePersistedSideAgents,
-	registerSideAgentTools,
 	SideAgentRegistry,
+	type SideAgentToolDeps,
 	TmuxOrchestrator,
+	type ToolHandler,
+	type ToolRegistry,
 	WorktreePoolManager,
 } from "@takumi/agent";
 import type { TakumiConfig } from "@takumi/core";
@@ -35,6 +48,10 @@ export interface SideAgentBootstrapStatus {
 
 function bootstrapStatus(input: SideAgentBootstrapStatus): SideAgentBootstrapStatus {
 	return input;
+}
+
+interface SideAgentRuntimeHandle {
+	ensureRuntime(): Promise<SideAgentToolDeps>;
 }
 
 /**
@@ -107,6 +124,95 @@ export function formatSideAgentStartupLine(status: SideAgentBootstrapStatus): st
 }
 
 /**
+ * I keep the heavy side-agent runtime bootstrap behind the first real tool
+ * invocation so interactive startup does not pay for reconciliation work that
+ * the session may never use.
+ */
+function createSideAgentRuntimeHandle(config: TakumiConfig, cwd: string): SideAgentRuntimeHandle {
+	const tmux = new TmuxOrchestrator("takumi-side-agents");
+	const pool = new WorktreePoolManager(cwd, {
+		baseDir: config.sideAgent?.worktreeDir,
+		maxSlots: config.sideAgent?.maxConcurrent ?? 2,
+	});
+	const agents = new SideAgentRegistry({
+		baseDir: resolveSideAgentStateDir(cwd),
+		autoSave: true,
+	});
+	const runtime: SideAgentToolDeps = {
+		pool,
+		tmux,
+		agents,
+		repoRoot: cwd,
+		defaultModel: config.sideAgent?.defaultModel ?? config.model,
+	};
+	let initPromise: Promise<SideAgentToolDeps> | null = null;
+
+	return {
+		async ensureRuntime(): Promise<SideAgentToolDeps> {
+			if (!initPromise) {
+				initPromise = (async () => {
+					await agents.load();
+					await reconcilePersistedSideAgents({
+						agents,
+						pool,
+						tmux,
+						repoRoot: cwd,
+					});
+					await agents.flushPersistence();
+					await pool.cleanOrphans();
+					return runtime;
+				})().catch((error) => {
+					initPromise = null;
+					throw error;
+				});
+			}
+			return initPromise;
+		},
+	};
+}
+
+/**
+ * I bind one side-agent tool lazily so the first real invocation pays for
+ * runtime bootstrap, while every later call reuses the hydrated handler.
+ */
+function createLazySideAgentHandler(
+	createHandler: (deps: SideAgentToolDeps) => ToolHandler,
+	runtime: SideAgentRuntimeHandle,
+): ToolHandler {
+	let boundHandler: ToolHandler | null = null;
+
+	return async (input, signal) => {
+		try {
+			const deps = await runtime.ensureRuntime();
+			if (!boundHandler) {
+				boundHandler = createHandler(deps);
+			}
+			return await boundHandler(input, signal);
+		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			return {
+				output: `Error: side-agent runtime bootstrap failed: ${detail}. Run \`takumi doctor\` or \`takumi side-agents inspect\` for details.`,
+				isError: true,
+			};
+		}
+	};
+}
+
+/**
+ * I register the side-agent tool surface immediately, but I keep the runtime
+ * hydration lazy so startup stays responsive without hiding later failures.
+ */
+function registerLazySideAgentTools(registry: ToolRegistry, config: TakumiConfig, cwd: string): void {
+	const runtime = createSideAgentRuntimeHandle(config, cwd);
+	registry.register(agentStartDefinition, createLazySideAgentHandler(createAgentStartHandler, runtime));
+	registry.register(agentCheckDefinition, createLazySideAgentHandler(createAgentCheckHandler, runtime));
+	registry.register(agentWaitAnyDefinition, createLazySideAgentHandler(createAgentWaitAnyHandler, runtime));
+	registry.register(agentSendDefinition, createLazySideAgentHandler(createAgentSendHandler, runtime));
+	registry.register(agentStopDefinition, createLazySideAgentHandler(createAgentStopHandler, runtime));
+	registry.register(agentQueryDefinition, createLazySideAgentHandler(createAgentQueryHandler, runtime));
+}
+
+/**
  * I register side-agent tools only after bootstrap has produced a trustworthy
  * runtime, and I return the reason when that is not possible.
  */
@@ -125,50 +231,12 @@ export async function registerOptionalSideAgentTools(
 	}
 	const preflight = await probeSideAgentBootstrap(config, cwd);
 	if (!preflight.enabled || preflight.degraded) return preflight;
-
-	const orchestrator = new TmuxOrchestrator("takumi-side-agents");
-	const pool = new WorktreePoolManager(cwd, {
-		baseDir: config.sideAgent?.worktreeDir,
-		maxSlots: config.sideAgent?.maxConcurrent ?? 2,
-	});
-	const agents = new SideAgentRegistry({
-		baseDir: resolveSideAgentStateDir(cwd),
-		autoSave: true,
-	});
-
-	try {
-		await agents.load();
-		await reconcilePersistedSideAgents({
-			agents,
-			pool,
-			tmux: orchestrator,
-			repoRoot: cwd,
-		});
-		await agents.flushPersistence();
-		await pool.cleanOrphans();
-	} catch (error) {
-		const detail = error instanceof Error ? error.message : String(error);
-		return bootstrapStatus({
-			enabled: false,
-			degraded: true,
-			reason: "bootstrap_failed",
-			summary: `bootstrap failed (${detail})`,
-			detail,
-		});
-	}
-
-	registerSideAgentTools(tools, {
-		pool,
-		tmux: orchestrator,
-		agents,
-		repoRoot: cwd,
-		defaultModel: config.sideAgent?.defaultModel ?? config.model,
-	});
+	registerLazySideAgentTools(tools, config, cwd);
 
 	return bootstrapStatus({
 		enabled: true,
 		degraded: false,
 		reason: "enabled",
-		summary: "ready",
+		summary: "ready (lazy bootstrap)",
 	});
 }

@@ -2,6 +2,7 @@ import type { AppCommandContext } from "./app-command-context.js";
 import { registerAutocycleCommands } from "./app-commands-autocycle.js";
 import { registerCodingCommands } from "./app-commands-coding.js";
 import { registerCoreCommands } from "./app-commands-core.js";
+import { registerExtensionCommands } from "./app-commands-extensions.js";
 import { registerHandoffCommands } from "./app-commands-handoff.js";
 import { registerHubCommands } from "./app-commands-hub.js";
 import { registerImageCommands } from "./app-commands-image.js";
@@ -16,6 +17,7 @@ import { registerWorkflowCommands } from "./app-commands-workflow.js";
 
 export function registerAppCommands(ctx: AppCommandContext): void {
 	registerCoreCommands(ctx);
+	registerExtensionCommands(ctx);
 	registerCodingCommands(ctx);
 	registerWorkflowCommands(ctx);
 	registerSideLaneCommands(ctx);

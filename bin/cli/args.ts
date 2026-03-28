@@ -88,6 +88,9 @@ export function parseArgs(argv: string[]): CliArgs {
 			case "--fix":
 				args.fix = true;
 				break;
+			case "--startup-trace":
+				args.startupTrace = true;
+				break;
 			case "--theme":
 				args.theme = argv[++i];
 				break;

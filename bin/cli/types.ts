@@ -27,6 +27,7 @@ export interface CliArgs {
 	yes: boolean;
 	json: boolean;
 	fix: boolean;
+	startupTrace?: boolean;
 	stream?: "text" | "ndjson";
 	invalidStream?: string;
 }

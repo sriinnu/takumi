@@ -121,6 +121,47 @@ describe("side-lane slash commands", () => {
 		expect(lastInfoText(state)).toContain("side-1 is waiting_user");
 	});
 
+	it("shows detailed metadata for the latest tracked lane", async () => {
+		const { commands, state } = createContext();
+		state.sideLanes.upsert({
+			id: "side-1",
+			commandName: "/co-plan",
+			title: "Independent planning lane",
+			state: "waiting_user",
+			tmuxWindow: "agent-side-1",
+			branch: "takumi/side-agent/side-1",
+			worktree: "/tmp/takumi/side-1",
+			model: "o3-mini",
+			lastQuery: "continue",
+			responseType: "structured",
+			responseSummary: "Waiting for operator input",
+			recentOutput: "need approval\n",
+		});
+
+		await commands.execute("/lane-show");
+
+		expect(lastInfoText(state)).toContain("Digest: /co-plan:waiting_user@agent-side-1");
+		expect(lastInfoText(state)).toContain("tmux: agent-side-1");
+		expect(lastInfoText(state)).toContain("Branch: takumi/side-agent/side-1");
+		expect(lastInfoText(state)).toContain("Worktree: /tmp/takumi/side-1");
+		expect(lastInfoText(state)).toContain("Model: o3-mini");
+		expect(lastInfoText(state)).toContain("Summary: Waiting for operator input");
+		expect(lastInfoText(state)).toContain("Recent output:");
+	});
+
+	it("offers lane selector completions for inspect and send flows", async () => {
+		const { commands, state } = createContext();
+		state.sideLanes.upsert({
+			id: "side-1",
+			commandName: "/co-plan",
+			state: "waiting_user",
+			tmuxWindow: "agent-side-1",
+		});
+
+		expect(commands.get("/lane-show")?.getArgumentCompletions?.("side")).toEqual(["side-1", "agent-side-1"]);
+		expect(commands.get("/lane-send")?.getArgumentCompletions?.("agent")).toEqual(["agent-side-1 "]);
+	});
+
 	it("sends a prompt to a tracked lane and refreshes it", async () => {
 		const { commands, state, toolDefinitions, toolExecute } = createContext();
 		state.sideLanes.upsert({

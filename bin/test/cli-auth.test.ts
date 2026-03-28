@@ -22,6 +22,14 @@ vi.mock("node:fs", () => ({
 	}),
 }));
 
+const { koshaAutoDetect } = vi.hoisted(() => ({
+	koshaAutoDetect: vi.fn(async () => null),
+}));
+
+vi.mock("../cli/kosha-bridge.js", () => ({
+	koshaAutoDetect,
+}));
+
 // ── Imports ───────────────────────────────────────────────────────────────────
 
 import { execSync } from "node:child_process";
@@ -53,6 +61,7 @@ beforeEach(() => {
 	mockExecSync.mockImplementation(() => {
 		throw new Error("command not found");
 	});
+	koshaAutoDetect.mockResolvedValue(null);
 	// Default: Ollama not available
 	vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("connection refused")));
 
@@ -177,6 +186,7 @@ describe("autoDetectAuth", () => {
 		expect(result!.provider).toBe("anthropic");
 		expect(result!.apiKey).toBe("sk-ant-test");
 		expect(result!.source).toBe("ANTHROPIC_API_KEY");
+		expect(koshaAutoDetect).not.toHaveBeenCalled();
 	});
 
 	it("returns anthropic for CLAUDE_CODE_OAUTH_TOKEN", async () => {
@@ -284,6 +294,22 @@ describe("autoDetectAuth", () => {
 		expect(result!.apiKey).toBe("ghp_cli_token_456");
 		expect(result!.model).toBe("gpt-4.1");
 		expect(result!.source).toMatch(/GitHub CLI/);
+		expect(koshaAutoDetect).not.toHaveBeenCalled();
+	});
+
+	it("falls back to kosha when fast local detection finds nothing", async () => {
+		koshaAutoDetect.mockResolvedValueOnce({
+			provider: "anthropic",
+			apiKey: "kosha-token",
+			source: "Kosha: Claude",
+		} as never);
+		const result = await autoDetectAuth();
+		expect(result).toMatchObject({
+			provider: "anthropic",
+			apiKey: "kosha-token",
+			source: "Kosha: Claude",
+		});
+		expect(koshaAutoDetect).toHaveBeenCalledOnce();
 	});
 
 	it("returns ollama when the local server is running", async () => {

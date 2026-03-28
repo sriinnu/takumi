@@ -23,6 +23,35 @@ export interface ExtensionHostRegistrationReport {
 	invalidCommands: string[];
 }
 
+export interface ExtensionHostSnapshotEntry {
+	path: string;
+	resolvedPath: string;
+	label: string;
+	displayName: string;
+	manifestName: string | null;
+	version: string | null;
+	description: string | null;
+	author: string | null;
+	homepage: string | null;
+	commandCount: number;
+	shortcutCount: number;
+	toolCount: number;
+	handlerCount: number;
+	commands: string[];
+	shortcuts: string[];
+	tools: string[];
+	events: string[];
+}
+
+export interface ExtensionHostSnapshot {
+	extensionCount: number;
+	commandCount: number;
+	shortcutCount: number;
+	toolCount: number;
+	handlerCount: number;
+	extensions: ExtensionHostSnapshotEntry[];
+}
+
 export interface RegisterExtensionHostSurfacesOptions {
 	extensionRunner: ExtensionRunner;
 	commands: SlashCommandRegistry;
@@ -63,6 +92,57 @@ export function formatExtensionHostReport(report: ExtensionHostRegistrationRepor
 	if (report.skippedShortcuts.length > 0) lines.push(`Skipped shortcuts: ${report.skippedShortcuts.join(", ")}`);
 	if (report.invalidCommands.length > 0) lines.push(`Invalid commands: ${report.invalidCommands.join(", ")}`);
 	return lines.length > 3 ? lines.join("\n") : null;
+}
+
+/**
+ * I build a stable operator-facing snapshot of the loaded extension host.
+ *
+ * I keep this separate from registration so commands, diagnostics, and future
+ * remote clients can inspect the same live extension picture.
+ */
+export function inspectExtensionHost(extensionRunner: ExtensionRunner): ExtensionHostSnapshot {
+	const extensions = extensionRunner._extensions
+		.map((extension) => {
+			const label = extensionLabel(extension.path);
+			const manifestName = extension.manifest?.name?.trim() || null;
+			const events = [...extension.handlers.entries()]
+				.filter(([, handlers]) => handlers.length > 0)
+				.map(([event]) => event)
+				.sort((left, right) => left.localeCompare(right));
+			const commands = [...extension.commands.keys()].sort((left, right) => left.localeCompare(right));
+			const shortcuts = [...extension.shortcuts.keys()].sort((left, right) => left.localeCompare(right));
+			const tools = [...extension.tools.keys()].sort((left, right) => left.localeCompare(right));
+			const handlerCount = [...extension.handlers.values()].reduce((total, handlers) => total + handlers.length, 0);
+			return {
+				path: extension.path,
+				resolvedPath: extension.resolvedPath,
+				label,
+				displayName: manifestName || label,
+				manifestName,
+				version: extension.manifest?.version?.trim() || null,
+				description: extension.manifest?.description?.trim() || null,
+				author: extension.manifest?.author?.trim() || null,
+				homepage: extension.manifest?.homepage?.trim() || null,
+				commandCount: commands.length,
+				shortcutCount: shortcuts.length,
+				toolCount: tools.length,
+				handlerCount,
+				commands,
+				shortcuts,
+				tools,
+				events,
+			} satisfies ExtensionHostSnapshotEntry;
+		})
+		.sort((left, right) => left.displayName.localeCompare(right.displayName));
+
+	return {
+		extensionCount: extensions.length,
+		commandCount: extensions.reduce((total, extension) => total + extension.commandCount, 0),
+		shortcutCount: extensions.reduce((total, extension) => total + extension.shortcutCount, 0),
+		toolCount: extensions.reduce((total, extension) => total + extension.toolCount, 0),
+		handlerCount: extensions.reduce((total, extension) => total + extension.handlerCount, 0),
+		extensions,
+	};
 }
 
 function registerExtensionCommand(

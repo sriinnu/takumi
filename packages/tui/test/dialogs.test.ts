@@ -58,7 +58,7 @@ describe("CommandPalette", () => {
 		commands = new SlashCommandRegistry();
 		keybinds = new KeyBindingRegistry();
 		commands.register("/help", "Show help", vi.fn());
-		commands.register("/clear", "Clear conversation", vi.fn());
+		commands.register("/clear", "Clear conversation", vi.fn(), ["/wipe"]);
 		commands.register("/model", "Change model", vi.fn());
 		keybinds.register("ctrl+k", "Command palette", vi.fn());
 		keybinds.register("ctrl+q", "Quit", vi.fn());
@@ -143,6 +143,16 @@ describe("CommandPalette", () => {
 			palette.handleKey(charKey("Q")); // Should match "Quit" description
 			const items = palette.getItems();
 			expect(items.some((i) => i.description === "Quit")).toBe(true);
+		});
+
+		it("matches slash commands by alias and ranks them ahead of weaker matches", () => {
+			palette.open();
+			palette.handleKey(charKey("w"));
+			palette.handleKey(charKey("i"));
+			palette.handleKey(charKey("p"));
+			palette.handleKey(charKey("e"));
+			const items = palette.getItems();
+			expect(items[0]?.name).toBe("/clear");
 		});
 
 		it("returns empty list when no match", () => {

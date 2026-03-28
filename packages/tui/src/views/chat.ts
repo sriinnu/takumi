@@ -1,7 +1,10 @@
 /**
  * ChatView — the main chat interface combining message list and input.
+ * I keep message submission honest, so the transcript only shows messages
+ * that were really sent and queued steering is called out explicitly.
  */
 
+import { SteeringPriority } from "@takumi/agent";
 import type { KeyEvent, Message, Rect, TakumiConfig } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import type { Screen } from "@takumi/render";
@@ -58,9 +61,9 @@ export class ChatView extends Component {
 		this.appendChild(this.statusBar);
 	}
 
-	/** Handle user message submission. */
-	private handleSubmit(text: string): void {
-		if (!text.trim()) return;
+	/** Handle user message submission and report whether I accepted it. */
+	private handleSubmit(text: string): boolean {
+		if (!text.trim()) return true;
 
 		// Try slash commands first
 		if (text.startsWith("/") && this.commands) {
@@ -69,7 +72,11 @@ export class ChatView extends Component {
 					log.warn(`Unknown command: ${text.split(" ")[0]}`);
 				}
 			});
-			return;
+			return true;
+		}
+
+		if (this.state.isStreaming.value) {
+			return this.enqueueSteering(text);
 		}
 
 		const message: Message = {
@@ -86,8 +93,34 @@ export class ChatView extends Component {
 		if (this.agentRunner) {
 			this.agentRunner.submit(text).catch((err) => {
 				log.error("Agent submit failed", err);
+				this.addAssistantText("I failed to submit your message. Check the runtime status and try again.");
 			});
 		}
+		return true;
+	}
+
+	/** Queue a user message as steering instead of lying about a sent turn. */
+	private enqueueSteering(text: string): boolean {
+		const queueId = this.state.steeringQueue.enqueue(text, {
+			priority: SteeringPriority.NORMAL,
+			metadata: { source: "composer" },
+		});
+		if (!queueId) {
+			this.addAssistantText("The steering queue is full. I kept your draft in the composer instead of dropping it.");
+			return false;
+		}
+		this.addAssistantText(`Queued your message for the active run as steering (${queueId}).`);
+		return true;
+	}
+
+	/** Add an assistant text message to the transcript. */
+	private addAssistantText(text: string): void {
+		this.state.addMessage({
+			id: `msg-${Date.now()}`,
+			role: "assistant",
+			content: [{ type: "text", text }],
+			timestamp: Date.now(),
+		});
 	}
 
 	/** Scroll the message list by a number of lines (+down, -up). */
@@ -111,11 +144,11 @@ export class ChatView extends Component {
 	}
 
 	render(screen: Screen, rect: Rect): void {
-		// Layout: header (1 row) | messages (flex) | editor (3 rows) | status (1 row)
+		// Layout: header (1 row) | messages (flex) | editor (auto) | status (1 row)
 		const headerHeight = 1;
-		const editorHeight = 3;
+		const editorHeight = this.editor.getPreferredHeight();
 		const statusHeight = 1;
-		const messageHeight = rect.height - headerHeight - editorHeight - statusHeight;
+		const messageHeight = Math.max(1, rect.height - headerHeight - editorHeight - statusHeight);
 
 		// Render sub-panels
 		this.header.render(screen, {
