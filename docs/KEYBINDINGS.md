@@ -34,7 +34,8 @@ The default mode when the editor is focused.
 | Key | Action |
 |-----|--------|
 | `Enter` | Submit message to agent |
-| `Shift+Enter` | Insert newline (multiline editing) |
+| `Ctrl+J` / `Shift+Enter` | Insert newline (multiline editing) |
+| `Alt+↑` / `Alt+↓` | Recall submitted drafts / restore in-progress draft |
 | `/` | Enter slash command mode |
 | `@` | Enter file reference mode |
 | `!` | Enter shell command mode |
@@ -48,7 +49,7 @@ Standard text editing keys in the input editor.
 | Key | Action |
 |-----|--------|
 | `←` / `→` | Move cursor left / right |
-| `↑` / `↓` | Cycle input history |
+| `↑` / `↓` | Move within multiline draft |
 | `Home` / `Ctrl+A` | Move to start of line |
 | `End` / `Ctrl+E` | Move to end of line |
 | `Ctrl+←` / `Ctrl+→` | Move by word |
@@ -151,6 +152,9 @@ Type `/` at the start of input to activate. Tab completes partial matches.
 | `/provider` | Switch AI provider (tab for autocomplete) | | |
 | `/theme` | Change theme | | |
 | `/help` | Show help | | |
+| `/extensions` | Inspect loaded extensions (`list`, `summary`, `show`) | | |
+| `/conventions` | Inspect loaded local convention files and addons | | |
+| `/packages` | Inspect discovered Takumi packages (`list`, `summary`, `show`) | | |
 | `/status` | Show session statistics | | |
 | `/compact` | Trigger conversation compaction | | |
 | `/session` | Local sessions plus Chitragupta-backed `dates`, `projects`, and `delete` operations | `Ctrl+O` | |
@@ -163,6 +167,10 @@ Type `/` at the start of input to activate. Tab completes partial matches.
 | `/undo` | Undo last file change | | |
 | `/tree` | Print directory tree (`/tree [path] [depth]`) | | |
 | `/permission` | Manage tool permissions (`list`, `reset`) | | |
+| `/tools` | Inspect the live tool registry (`list`, `summary`, `show`) | | |
+| `/skills` | Inspect loaded local skills (`list`, `summary`, `show`) | | |
+| `/lane-list` | List tracked side lanes (`/lanes`) | | |
+| `/lane-show` | Inspect one tracked side lane (`/lane-inspect`) | | |
 | `/think` | Toggle or set thinking level (`off`, `brief`, `normal`, `deep`, `max`) | | |
 | `/memory` | Search project memory, or `/memory scopes` | | |
 | `/sessions` | List Chitragupta sessions | | |

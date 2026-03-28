@@ -24,11 +24,13 @@ import {
 	resolveExecRouting,
 } from "./one-shot-helpers.js";
 import { collectRuntimeBootstrap } from "./runtime-bootstrap.js";
+import type { StartupTrace } from "./startup-trace.js";
 
 export interface OneShotOptions {
 	runId: string;
 	headless: boolean;
 	enableChitraguptaBootstrap?: boolean;
+	startupTrace?: StartupTrace;
 }
 
 export interface OneShotResult {
@@ -75,6 +77,7 @@ export async function runOneShot(
 	options?: OneShotOptions,
 ): Promise<OneShotResult> {
 	const { ToolRegistry, registerBuiltinTools, agentLoop, buildContext } = await import("@takumi/agent");
+	const startupTrace = options?.startupTrace;
 	const runId = options?.runId ?? `exec-${Date.now().toString(36)}`;
 	const startedAt = Date.now();
 	const failures: string[] = [];
@@ -127,13 +130,21 @@ export async function runOneShot(
 			const tools = new ToolRegistry();
 			registerBuiltinTools(tools);
 			const [provider, runtimeBootstrap, recentReflexions] = await Promise.all([
-				createProvider(config, fallbackName),
-				collectRuntimeBootstrap(config, {
+				startupTrace?.measure("provider.create", () => createProvider(config, fallbackName)) ??
+					createProvider(config, fallbackName),
+				startupTrace?.measure("runtime.bootstrap", () =>
+					collectRuntimeBootstrap(config, {
 					cwd: process.cwd(),
 					tools,
 					enableChitraguptaBootstrap: Boolean(options?.enableChitraguptaBootstrap),
-				}),
-				loadRecentReflexions(5),
+					}),
+				) ??
+					collectRuntimeBootstrap(config, {
+						cwd: process.cwd(),
+						tools,
+						enableChitraguptaBootstrap: Boolean(options?.enableChitraguptaBootstrap),
+					}),
+				startupTrace?.measure("reflexion.load", () => loadRecentReflexions(5)) ?? loadRecentReflexions(5),
 			]);
 			if (runtimeBootstrap.sideAgents.degraded) {
 				failures.push(`side_agent_bootstrap: ${runtimeBootstrap.sideAgents.summary}`);
@@ -142,6 +153,9 @@ export async function runOneShot(
 				for (const line of runtimeBootstrap.warningLines) {
 					process.stderr.write(`[warning] ${line}\n`);
 				}
+			}
+			for (const line of startupTrace?.formatLines() ?? []) {
+				process.stderr.write(`[startup] ${line}\n`);
 			}
 			const reflexionPrompt = buildReflexionPrompt(recentReflexions);
 			const bootstrapSnapshot: ExecBootstrapSnapshot = runtimeBootstrap.bootstrap;

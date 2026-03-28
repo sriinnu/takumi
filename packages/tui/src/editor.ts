@@ -49,10 +49,19 @@ export class Editor {
 	}
 
 	set text(value: string) {
+		this.setText(value);
+	}
+
+	/** Replace the entire buffer and optionally place the cursor explicitly. */
+	setText(value: string, cursor?: EditorPosition): void {
 		this.pushUndo();
 		this.lines = value.length === 0 ? [""] : value.split("\n");
-		this._cursorRow = this.lines.length - 1;
-		this._cursorCol = this.lines[this._cursorRow].length;
+		if (cursor) {
+			this.setCursor(cursor.row, cursor.col);
+		} else {
+			this._cursorRow = this.lines.length - 1;
+			this._cursorCol = this.lines[this._cursorRow].length;
+		}
 		this.anchor = null;
 	}
 
@@ -71,6 +80,13 @@ export class Editor {
 	getLine(row: number): string {
 		if (row < 0 || row >= this.lines.length) return "";
 		return this.lines[row];
+	}
+
+	/** Place the cursor on a clamped row and column within the current buffer. */
+	setCursor(row: number, col: number): void {
+		const nextRow = Math.max(0, Math.min(row, this.lines.length - 1));
+		this._cursorRow = nextRow;
+		this._cursorCol = Math.max(0, Math.min(col, this.lines[nextRow].length));
 	}
 
 	handleKey(event: KeyEvent): boolean {

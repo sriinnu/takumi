@@ -64,6 +64,19 @@ function renderBreadcrumb(manifest: SessionTreeManifest, sessionId: string): str
 	return path.map((n) => n.label).join(" → ");
 }
 
+async function getSessionSwitchCompletions(partial: string): Promise<string[]> {
+	const manifest = await loadTreeManifest();
+	const selector = partial.trim().toLowerCase();
+	const entries = flattenTree(manifest);
+	if (!selector) {
+		return entries.slice(0, 12).map((entry) => entry.id);
+	}
+	return entries
+		.filter((entry) => entry.id.toLowerCase().includes(selector) || entry.label.toLowerCase().includes(selector))
+		.slice(0, 12)
+		.map((entry) => entry.id);
+}
+
 // ── Command Registration ─────────────────────────────────────────────────────
 
 export function registerSessionTreeCommands(ctx: AppCommandContext): void {
@@ -162,7 +175,7 @@ export function registerSessionTreeCommands(ctx: AppCommandContext): void {
 					`Messages: ${session.messages.length}, Model: ${session.model}`,
 			);
 		},
-		["/sw"],
+		{ aliases: ["/sw"], getArgumentCompletions: getSessionSwitchCompletions },
 	);
 
 	// /siblings — show branches at the same level

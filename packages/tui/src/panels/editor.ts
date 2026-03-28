@@ -1,20 +1,19 @@
 /**
- * EditorPanel — the message input area with multi-line support
- * and tab-completion popup overlay.
+ * EditorPanel — the main chat composer with multi-line editing,
+ * command/file completion, and honest submit behavior.
  */
 
 import type { KeyEvent, Rect } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import type { Screen } from "@takumi/render";
-import { Component, Input as InputComponent } from "@takumi/render";
+import { Component } from "@takumi/render";
 import type { SlashCommandRegistry } from "../commands.js";
 import type { CompletionItem, ProviderModelCatalog } from "../completion.js";
 import { applyCompletionEdit, CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "../completion.js";
-import type { EditorOp } from "../vim.js";
-import { VimMode } from "../vim.js";
+import { Editor } from "../editor.js";
 
 export interface EditorPanelProps {
-	onSubmit: (text: string) => void;
+	onSubmit: (text: string) => boolean;
 	placeholder?: string;
 	commands?: SlashCommandRegistry;
 	projectRoot?: string;
@@ -22,73 +21,60 @@ export interface EditorPanelProps {
 	getCurrentProvider?: () => string | undefined;
 }
 
-const VIM_MODAL_INPUT_ENABLED = false;
+const TAB_SIZE = 2;
+const MAX_SUBMITTED_HISTORY = 50;
 
 export class EditorPanel extends Component {
-	private onSubmit: (text: string) => void;
-	private input: InputComponent;
+	private readonly onSubmit: (text: string) => boolean;
+	private readonly editor = new Editor({ tabSize: TAB_SIZE });
 	readonly completion: CompletionPopup;
-	private engine: CompletionEngine;
-	/** Debounce timer for async file completions (@ prefix). */
+	private readonly engine: CompletionEngine;
 	private completionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-	readonly vimMode = new VimMode();
+	private submittedHistory: string[] = [];
+	private historyIndex: number | null = null;
+	private draftBeforeHistory = "";
 
 	constructor(props: EditorPanelProps) {
 		super();
 		this.onSubmit = props.onSubmit;
-		this.input = new InputComponent({
-			prefix: "⛩  ",
-			placeholder: props.placeholder ?? "Message Takumi... (Ctrl+C to quit)",
-			onSubmit: (value) => {
-				this.onSubmit(value);
-				this.input.clear();
-			},
-			onChange: (value) => {
-				this.onInputChange(value);
-			},
-		});
-
 		this.completion = new CompletionPopup();
 		this.engine = new CompletionEngine();
-
-		if (props.commands) {
-			this.engine.setCommands(props.commands);
-		}
-		if (props.projectRoot) {
-			this.engine.setProjectRoot(props.projectRoot);
-		}
-		if (props.getProviderCatalog) {
-			this.engine.setProviderCatalog(props.getProviderCatalog);
-		}
-		if (props.getCurrentProvider) {
-			this.engine.setCurrentProvider(props.getCurrentProvider);
-		}
+		if (props.commands) this.engine.setCommands(props.commands);
+		if (props.projectRoot) this.engine.setProjectRoot(props.projectRoot);
+		if (props.getProviderCatalog) this.engine.setProviderCatalog(props.getProviderCatalog);
+		if (props.getCurrentProvider) this.engine.setCurrentProvider(props.getCurrentProvider);
 	}
 
-	/** Update the project root for file completions. */
+	/** Update the project root used for file completion. */
 	setProjectRoot(root: string): void {
 		this.engine.setProjectRoot(root);
 	}
 
-	/** Update the command registry for slash completions. */
+	/** Update the slash command registry used for completion. */
 	setCommands(commands: SlashCommandRegistry): void {
 		this.engine.setCommands(commands);
 	}
 
-	/** Get current input value. */
+	/** Return the current editor text. */
 	getValue(): string {
-		return this.input.getValue();
+		return this.editor.text;
 	}
 
-	/** Set input value. */
+	/** Replace the current editor text. */
 	setValue(value: string): void {
-		this.input.setValue(value);
+		this.editor.setText(value);
+		this.resetHistoryNavigation();
+		this.onInputChange();
+		this.markDirty();
 	}
 
-	/** Handle key events, with completion popup interception and vim modal input. */
+	/** Return the editor height Takumi should reserve in chat layout. */
+	getPreferredHeight(maxRows = 8): number {
+		return Math.min(Math.max(3, this.editor.lineCount + 2), maxRows);
+	}
+
+	/** Handle keys for completion, multiline editing, and submit. */
 	handleKey(event: KeyEvent): boolean {
-		// Completion popup takes priority: intercept confirm / navigation / close
 		if (this.completion.isVisible.value) {
 			if (event.raw === KEY_CODES.TAB || event.raw === KEY_CODES.ENTER) {
 				const item = this.completion.confirm();
@@ -101,7 +87,6 @@ export class EditorPanel extends Component {
 				this.markDirty();
 				return true;
 			}
-			// Escape: close popup without toggling vim mode
 			if (event.raw === KEY_CODES.ESCAPE) {
 				this.completion.hide();
 				this.markDirty();
@@ -109,73 +94,147 @@ export class EditorPanel extends Component {
 			}
 		}
 
-		// Tab with popup hidden: trigger completion
-		if (event.raw === KEY_CODES.TAB && !this.completion.isVisible.value) {
+		if (event.raw === KEY_CODES.ALT_UP) {
+			return this.navigateSubmittedHistory(-1);
+		}
+		if (event.raw === KEY_CODES.ALT_DOWN) {
+			return this.navigateSubmittedHistory(1);
+		}
+
+		if ((event.ctrl && event.key === "j") || (event.shift && event.raw === KEY_CODES.ENTER)) {
+			this.editor.newline();
+			this.afterEditorMutation();
+			return true;
+		}
+
+		if (event.raw === KEY_CODES.ENTER) {
+			return this.submitCurrentValue();
+		}
+
+		if (event.raw === KEY_CODES.TAB) {
+			return this.handleTab();
+		}
+
+		const before = this.snapshot();
+		const consumed = this.editor.handleKey(event);
+		if (consumed) {
+			this.afterEditorMutation(before);
+		}
+		return consumed;
+	}
+
+	private handleTab(): boolean {
+		const value = this.editor.text;
+		const cursor = this.getCursorOffset();
+		const syncItems = this.engine.getCompletionsSync(value, cursor);
+		if (syncItems !== null) {
+			if (syncItems.length > 0) {
+				this.completion.show(syncItems);
+				this.markDirty();
+				return true;
+			}
+			this.editor.insert(" ".repeat(TAB_SIZE));
+			this.afterEditorMutation();
+			return true;
+		}
+
+		if (this.hasFileTrigger(value, cursor)) {
 			this.triggerCompletion();
 			return true;
 		}
 
-		if (VIM_MODAL_INPUT_ENABLED) {
-			// Vi modal input — intercepts in NORMAL mode, and Escape in INSERT mode
-			const op = this.vimMode.process(event.raw, this.input.getValue());
-			if (op.op !== "passthrough") {
-				this.markDirty();
-				return this.applyEditorOp(op);
-			}
-		}
-
-		// INSERT mode passthrough
-		return this.input.handleKey(event);
+		this.editor.insert(" ".repeat(TAB_SIZE));
+		this.afterEditorMutation();
+		return true;
 	}
 
-	/** Apply a VimMode EditorOp to the underlying InputComponent. */
-	private applyEditorOp(op: EditorOp): boolean {
-		const ke = (raw: string): KeyEvent => ({ raw, key: raw, ctrl: false, alt: false, shift: false, meta: false });
-		const moveTo = (col: number): void => {
-			this.input.handleKey(ke(KEY_CODES.CTRL_A));
-			for (let i = 0; i < col; i++) this.input.handleKey(ke(KEY_CODES.RIGHT));
+	private submitCurrentValue(): boolean {
+		const text = this.editor.text;
+		if (!text.trim()) return true;
+		const accepted = this.onSubmit(text);
+		if (!accepted) return true;
+		this.recordSubmittedDraft(text);
+		this.editor.clear();
+		this.resetHistoryNavigation();
+		this.completion.hide();
+		this.markDirty();
+		return true;
+	}
+
+	private snapshot(): { text: string; row: number; col: number } {
+		return {
+			text: this.editor.text,
+			row: this.editor.cursorRow,
+			col: this.editor.cursorCol,
 		};
-		switch (op.op) {
-			case "noop":
+	}
+
+	private afterEditorMutation(before = this.snapshot()): void {
+		const after = this.snapshot();
+		if (before.text !== after.text || before.row !== after.row || before.col !== after.col) {
+			if (this.historyIndex !== null) {
+				this.historyIndex = null;
+			}
+			this.onInputChange();
+		}
+		this.markDirty();
+	}
+
+	/**
+	 * I let operators recall recent submitted drafts with Alt+Up/Alt+Down.
+	 */
+	private navigateSubmittedHistory(direction: -1 | 1): boolean {
+		if (this.submittedHistory.length === 0) return false;
+		if (direction < 0) {
+			if (this.historyIndex === null) {
+				this.draftBeforeHistory = this.editor.text;
+				this.historyIndex = this.submittedHistory.length - 1;
+			} else if (this.historyIndex > 0) {
+				this.historyIndex -= 1;
+			}
+		} else {
+			if (this.historyIndex === null) return false;
+			if (this.historyIndex >= this.submittedHistory.length - 1) {
+				this.historyIndex = null;
+				this.editor.setText(this.draftBeforeHistory);
+				this.completion.hide();
+				this.onInputChange();
+				this.markDirty();
 				return true;
-			case "setMode":
-				moveTo(this.vimMode.cursor);
-				return true;
-			case "setCursor":
-				moveTo(op.col);
-				return true;
-			case "setText":
-				this.input.setValue(op.text);
-				moveTo(op.cursor);
-				return true;
-			case "submit":
-				this.onSubmit(this.input.getValue());
-				this.input.clear();
-				this.vimMode.reset();
-				return true;
-			default:
-				return false;
+			}
+			this.historyIndex += 1;
+		}
+
+		const nextValue = this.submittedHistory[this.historyIndex];
+		if (typeof nextValue !== "string") return false;
+		this.editor.setText(nextValue);
+		this.completion.hide();
+		this.onInputChange();
+		this.markDirty();
+		return true;
+	}
+
+	private recordSubmittedDraft(text: string): void {
+		if (this.submittedHistory.at(-1) === text) return;
+		this.submittedHistory.push(text);
+		if (this.submittedHistory.length > MAX_SUBMITTED_HISTORY) {
+			this.submittedHistory.shift();
 		}
 	}
 
-	/** Reset vim to INSERT mode (call after /clear or session change). */
-	resetVim(): void {
-		this.vimMode.reset();
+	private resetHistoryNavigation(): void {
+		this.historyIndex = null;
+		this.draftBeforeHistory = "";
 	}
 
-	/** Trigger completion based on current input. */
 	private triggerCompletion(): void {
-		const value = this.input.getValue();
-		const cursorCol = this.input.getCursorPos();
-
+		const value = this.editor.text;
+		const cursor = this.getCursorOffset();
 		this.engine
-			.getCompletions(value, cursorCol)
+			.getCompletions(value, cursor)
 			.then((items) => {
-				if (items.length > 0) {
-					this.completion.show(items);
-				} else {
-					this.completion.hide();
-				}
+				if (items.length > 0) this.completion.show(items);
+				else this.completion.hide();
 				this.markDirty();
 			})
 			.catch(() => {
@@ -184,165 +243,159 @@ export class EditorPanel extends Component {
 			});
 	}
 
-	/** Called when input text changes — auto-trigger completions for @ and / . */
-	private onInputChange(value: string): void {
-		const cursorCol = this.input.getCursorPos();
-		// Synchronous path: slash commands, /model, /provider — no I/O, instant response
-		const syncItems = this.engine.getCompletionsSync(value, cursorCol);
+	private onInputChange(): void {
+		const value = this.editor.text;
+		const cursor = this.getCursorOffset();
+		const syncItems = this.engine.getCompletionsSync(value, cursor);
 		if (syncItems !== null) {
-			// Cancel any pending async (file) completion
 			if (this.completionDebounceTimer !== null) {
 				clearTimeout(this.completionDebounceTimer);
 				this.completionDebounceTimer = null;
 			}
-			if (syncItems.length > 0) {
-				this.completion.show(syncItems);
-			} else {
-				this.completion.hide();
-			}
-			this.markDirty();
+			if (syncItems.length > 0) this.completion.show(syncItems);
+			else this.completion.hide();
 			return;
 		}
 
-		// Async path: @ file completions — debounce to avoid readdir on every keystroke
-		const isFileTrigger = value.includes("@");
-		if (isFileTrigger) {
-			if (this.completionDebounceTimer !== null) {
-				clearTimeout(this.completionDebounceTimer);
-			}
-			this.completionDebounceTimer = setTimeout(() => {
-				this.completionDebounceTimer = null;
-				this.engine
-					.getCompletions(value, cursorCol)
-					.then((items) => {
-						if (items.length > 0) {
-							this.completion.show(items);
-						} else {
-							this.completion.hide();
-						}
-						this.markDirty();
-					})
-					.catch(() => {
-						// Silently fail
-					});
-			}, 150);
-		} else if (this.completion.isVisible.value) {
-			// Text changed to something without a trigger — hide popup immediately
+		if (!this.hasFileTrigger(value, cursor)) {
 			if (this.completionDebounceTimer !== null) {
 				clearTimeout(this.completionDebounceTimer);
 				this.completionDebounceTimer = null;
 			}
-			this.completion.hide();
-			this.markDirty();
+			if (this.completion.isVisible.value) this.completion.hide();
+			return;
 		}
+
+		if (this.completionDebounceTimer !== null) clearTimeout(this.completionDebounceTimer);
+		this.completionDebounceTimer = setTimeout(() => {
+			this.completionDebounceTimer = null;
+			this.triggerCompletion();
+		}, 120);
 	}
 
-	/** Apply a confirmed completion item by replacing the input text. */
+	private hasFileTrigger(value: string, cursor: number): boolean {
+		const prefix = value.slice(0, cursor);
+		return /(^|\s)@[^\s]*$/.test(prefix);
+	}
+
+	private getCursorOffset(): number {
+		let offset = 0;
+		for (let row = 0; row < this.editor.cursorRow; row++) {
+			offset += this.editor.getLine(row).length + 1;
+		}
+		return offset + this.editor.cursorCol;
+	}
+
+	private offsetToPosition(text: string, offset: number): { row: number; col: number } {
+		const lines = text.split("\n");
+		let remaining = Math.max(0, Math.min(offset, text.length));
+		for (let row = 0; row < lines.length; row++) {
+			const lineLength = lines[row].length;
+			if (remaining <= lineLength) return { row, col: remaining };
+			remaining -= lineLength + 1;
+		}
+		const lastRow = Math.max(0, lines.length - 1);
+		return { row: lastRow, col: lines[lastRow]?.length ?? 0 };
+	}
+
 	private applyCompletion(item: CompletionItem): void {
-		const next = applyCompletionEdit(this.input.getValue(), item);
-		this.input.setValue(next.text, next.cursorCol);
+		const next = applyCompletionEdit(this.editor.text, item);
+		const cursor = this.offsetToPosition(next.text, next.cursorCol);
+		this.editor.setText(next.text, cursor);
 		this.completion.hide();
 		this.markDirty();
 	}
 
 	render(screen: Screen, rect: Rect): void {
-		// Draw separator line with vim mode indicator (e.g. " [N] ───")
-		const label = VIM_MODAL_INPUT_ENABLED ? this.vimMode.label : " [T] ";
-		const bar = label + "\u2500".repeat(Math.max(0, rect.width - label.length));
-		const labelColor = VIM_MODAL_INPUT_ENABLED && this.vimMode.mode === "NORMAL" ? 11 : 8;
-		screen.writeText(rect.y, rect.x, label, {
-			fg: labelColor,
-			bold: VIM_MODAL_INPUT_ENABLED && this.vimMode.mode === "NORMAL",
-		});
-		screen.writeText(rect.y, rect.x + label.length, bar.slice(label.length), { fg: 8, dim: true });
+		const hint =
+			this.editor.text.trim().length === 0
+				? " Enter send • Ctrl+J newline • Alt+↑ history • Tab complete "
+				: " Composer ";
+		const label = `⛩${hint}`;
+		const bar = label + "─".repeat(Math.max(0, rect.width - label.length));
+		screen.writeText(rect.y, rect.x, bar.slice(0, rect.width), { fg: 8, dim: true });
 
-		// Draw input on the line(s) below
-		if (rect.height > 1) {
-			this.input.render(screen, {
-				x: rect.x,
-				y: rect.y + 1,
-				width: rect.width,
-				height: rect.height - 1,
-			});
+		const contentHeight = Math.max(1, rect.height - 1);
+		const topRow = Math.max(0, this.editor.cursorRow - contentHeight + 1);
+		const cursorLine = this.editor.getLine(this.editor.cursorRow);
+		const horizontalOffset = Math.max(0, this.editor.cursorCol - rect.width + 3);
+
+		for (let visualRow = 0; visualRow < contentHeight; visualRow++) {
+			const bufferRow = topRow + visualRow;
+			const lineY = rect.y + 1 + visualRow;
+			if (bufferRow >= this.editor.lineCount) continue;
+			const line = this.editor.getLine(bufferRow);
+			const lineOffset = bufferRow === this.editor.cursorRow ? horizontalOffset : 0;
+			const visible = line.slice(lineOffset, lineOffset + rect.width);
+			if (visible.length > 0) {
+				screen.writeText(lineY, rect.x, visible);
+			} else if (bufferRow === 0 && this.editor.text.length === 0) {
+				screen.writeText(lineY, rect.x, "Message Takumi...", { fg: 8, dim: true });
+			}
 		}
 
-		// Draw completion popup overlay above the editor
+		const cursorRow = this.editor.cursorRow - topRow;
+		if (cursorRow >= 0 && cursorRow < contentHeight) {
+			const cursorCol = this.editor.cursorCol - horizontalOffset;
+			if (cursorCol >= 0 && cursorCol < rect.width) {
+				const lineY = rect.y + 1 + cursorRow;
+				const cursorChar =
+					cursorCol + horizontalOffset < cursorLine.length ? cursorLine[cursorCol + horizontalOffset] : " ";
+				screen.set(lineY, rect.x + cursorCol, {
+					char: cursorChar,
+					fg: 0,
+					bg: 15,
+					bold: false,
+					dim: false,
+					italic: false,
+					underline: false,
+					strikethrough: false,
+				});
+			}
+		}
+
 		if (this.completion.isVisible.value) {
 			this.renderCompletionPopup(screen, rect);
 		}
 	}
 
-	/** Render the completion popup above the editor input. */
 	private renderCompletionPopup(screen: Screen, rect: Rect): void {
 		const items = this.completion.items.value;
 		if (items.length === 0) return;
-
 		const visibleCount = Math.min(items.length, MAX_VISIBLE_ITEMS);
 		const popupWidth = Math.min(
-			Math.max(...items.map((i) => i.label.length + (i.detail ? i.detail.length + 3 : 0))) + 4,
-			rect.width - 4,
+			Math.max(...items.map((item) => item.label.length + (item.detail ? item.detail.length + 3 : 0))) + 4,
+			rect.width - 2,
 		);
-		const popupHeight = visibleCount + 2; // +2 for top/bottom border
-
-		// Position: above the editor, left-aligned with some margin
-		const popupX = rect.x + 2;
+		const popupHeight = visibleCount + 2;
+		const popupX = rect.x + 1;
 		const popupY = rect.y - popupHeight;
+		if (popupY < 0) return;
 
-		if (popupY < 0) return; // Not enough room above
+		screen.writeText(popupY, popupX, `┌${"─".repeat(popupWidth - 2)}┐`, { fg: 8 });
+		screen.writeText(popupY + popupHeight - 1, popupX, `└${"─".repeat(popupWidth - 2)}┘`, { fg: 8 });
 
 		const selectedIdx = this.completion.selectedIndex.value;
 		const scrollOff = this.completion.scrollOffset.value;
-
-		// Draw border
-		const topBorder = `\u250C${"\u2500".repeat(popupWidth - 2)}\u2510`;
-		const bottomBorder = `\u2514${"\u2500".repeat(popupWidth - 2)}\u2518`;
-
-		screen.writeText(popupY, popupX, topBorder, { fg: 8 });
-		screen.writeText(popupY + popupHeight - 1, popupX, bottomBorder, { fg: 8 });
-
-		// Draw items
 		for (let i = 0; i < visibleCount; i++) {
 			const itemIdx = scrollOff + i;
 			if (itemIdx >= items.length) break;
-
 			const item = items[itemIdx];
 			const isSelected = itemIdx === selectedIdx;
 			const row = popupY + 1 + i;
-			const innerWidth = popupWidth - 4; // 2 for borders + 2 for padding
-
-			// Build display text
+			const innerWidth = popupWidth - 4;
 			let displayText = item.label;
 			if (item.detail) {
 				const remaining = innerWidth - displayText.length - 2;
 				if (remaining > 0) {
-					const detail = item.detail.length > remaining ? `${item.detail.slice(0, remaining - 1)}\u2026` : item.detail;
+					const detail = item.detail.length > remaining ? `${item.detail.slice(0, remaining - 1)}…` : item.detail;
 					displayText += `  ${detail}`;
 				}
 			}
-
-			// Truncate to fit
-			if (displayText.length > innerWidth) {
-				displayText = `${displayText.slice(0, innerWidth - 1)}\u2026`;
-			}
-
-			// Pad to fill width
-			displayText = displayText.padEnd(innerWidth);
-
-			// Left border
-			screen.writeText(row, popupX, "\u2502", { fg: 8 });
-			// Selection indicator
-			const prefix = isSelected ? "\u25B8" : " ";
-
-			if (isSelected) {
-				screen.writeText(row, popupX + 1, prefix, { fg: 14, bold: true });
-				screen.writeText(row, popupX + 2, displayText, { fg: 0, bg: 7, bold: true });
-			} else {
-				screen.writeText(row, popupX + 1, prefix, { fg: 8 });
-				screen.writeText(row, popupX + 2, displayText, { fg: -1 });
-			}
-
-			// Right border
-			screen.writeText(row, popupX + popupWidth - 1, "\u2502", { fg: 8 });
+			displayText = displayText.padEnd(innerWidth).slice(0, innerWidth);
+			screen.writeText(row, popupX, "│ ", { fg: 8 });
+			screen.writeText(row, popupX + 2, displayText, isSelected ? { fg: 0, bg: 15 } : { fg: 7 });
+			screen.writeText(row, popupX + popupWidth - 2, " │", { fg: 8 });
 		}
 	}
 }

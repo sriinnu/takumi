@@ -390,6 +390,8 @@ Takumi currently registers **14 built-in tools** in the agent runtime:
 | `Ctrl+O` | Session list |
 | `Ctrl+Shift+C` | Toggle cluster panel |
 | `Ctrl+D` | Quit if the editor is empty |
+| `Ctrl+J` or `Shift+Enter` | Insert newline in the composer |
+| `Alt+↑` / `Alt+↓` | Recall submitted drafts / restore current draft |
 
 ### Selected slash commands
 
@@ -406,10 +408,12 @@ Takumi currently registers **14 built-in tools** in the agent runtime:
 | `/cluster`, `/validate`, `/checkpoint`, `/resume`, `/isolation` | Multi-agent operations |
 | `/budget [amount]` | Show or set session spend limit |
 | `/cost`, `/status` | Cost breakdown and session statistics |
+| `/extensions`, `/tools`, `/skills`, `/conventions`, `/packages` | Inspect live extension, tool, skill, convention, and package state |
 | `/tree [path] [depth]` | Print directory tree (filesystem) |
 | `/day`, `/vidhi`, `/facts`, `/daemon`, `/turns`, `/predict`, `/patterns` | Chitragupta surfaces |
 | `/capabilities`, `/route`, `/healthcaps`, `/integrity` | Control-plane and Scarlett diagnostics |
 | `/branch`, `/session-tree`, `/switch`, `/siblings`, `/parent` | Session tree navigation |
+| `/lane-list`, `/lane-show`, `/lane-refresh`, `/lane-focus`, `/lane-send`, `/lane-stop` | Side-lane operator controls |
 | `/steer`, `/interrupt`, `/steerq` | Mid-run steering queue controls |
 
 For the fuller reference, see [`docs/KEYBINDINGS.md`](docs/KEYBINDINGS.md).

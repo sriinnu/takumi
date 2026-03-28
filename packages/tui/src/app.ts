@@ -220,7 +220,7 @@ export class TakumiApp {
 					`Auth: ${this.startupSummary.authSource}`,
 					...(this.startupSummary.sideAgents ? [this.startupSummary.sideAgents] : []),
 					localHint,
-					`Hints: Enter submits • /provider <name> • /model <name> • /help`,
+					`Hints: Enter submits • Ctrl+J adds newline • Alt+↑ recalls drafts • /provider <name> • /model <name> • /help`,
 				].join("\n"),
 			);
 		}
@@ -686,6 +686,8 @@ export class TakumiApp {
 			resumeSession: (sessionId) => this.resumeSession(sessionId),
 			activateSession: (session, notice, reason) => this.activateSession(session, notice, reason),
 			quit: () => this.quit(),
+			getExtensionRunner: () => this.extensionRunner,
+			getConventionFiles: () => this.conventionFiles,
 			getActiveCoder: () => this.activeCoder,
 			setActiveCoder: (coder) => {
 				this.activeCoder = coder;

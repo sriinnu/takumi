@@ -141,7 +141,12 @@ export class StatusBarPanel extends Component {
 					return { text, fg, bg: 236, bold: pressure !== "normal" };
 				}
 				case "keybinds":
-					return { text: " Ctrl+C quit  Ctrl+K cmd  Ctrl+L clear ", fg: 8, bg: 236, dim: true };
+					return {
+						text: " Enter send  Ctrl+J newline  Alt+↑ history  Ctrl+K cmd  Ctrl+C quit ",
+						fg: 8,
+						bg: 236,
+						dim: true,
+					};
 				default:
 					return { text: ` [${widget}] `, fg: 7, bg: 236 };
 			}

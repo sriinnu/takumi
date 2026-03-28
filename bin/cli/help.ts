@@ -35,6 +35,7 @@ Options:
   --endpoint <url>          Custom API endpoint URL
   --json                    Emit JSON for machine-readable operational commands
   --fix                     Apply safe automatic remediation where supported
+  --startup-trace           Print an opt-in startup phase trace for CLI profiling
   -t, --thinking            Enable extended thinking
   --thinking-budget <n>     Thinking token budget (default: 10000)
   -p, --proxy <url>         Darpana proxy URL

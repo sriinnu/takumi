@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { koshaAutoDetect } from "./kosha-bridge.js";
-import type { KoshaDetectedAuth } from "./kosha-bridge.js";
 
 /** Read and JSON-parse a file, returning undefined on any error. */
 function readJsonSafe(path: string): any | undefined {
@@ -43,7 +42,7 @@ function execSafe(cmd: string): string | undefined {
 		const out = execSync(cmd, {
 			encoding: "utf-8",
 			stdio: ["ignore", "pipe", "ignore"],
-			timeout: 3000,
+			timeout: 1200,
 		}).trim();
 		return out || undefined;
 	} catch {
@@ -140,7 +139,7 @@ export function tryResolveCliToken(provider: string): string | undefined {
 export async function probeOllama(): Promise<string[]> {
 	try {
 		const res = await fetch("http://localhost:11434/api/tags", {
-			signal: AbortSignal.timeout(2000),
+			signal: AbortSignal.timeout(500),
 		});
 		if (!res.ok) return [];
 		const data = (await res.json()) as { models?: Array<{ name: string }> };
@@ -158,63 +157,19 @@ export interface AutoDetectedAuth {
 	source: string;
 }
 
-/**
- * Tries every available credential source in priority order and returns the
- * first one that yields a usable key/token. Returns null if nothing is found.
- *
- * **Primary path**: delegates to **kosha-discovery** which scans CLI tools,
- * env vars, config files, and local runtimes for every supported provider.
- *
- * **Fallback**: if kosha fails (e.g. network timeout during Ollama probe),
- * the legacy hand-rolled detection chain runs as a safety net.
- *
- * Priority (via kosha):
- *   1. CLI credential files → env vars → config → OAuth → local
- */
-export async function autoDetectAuth(): Promise<AutoDetectedAuth | null> {
-	// ── Primary: kosha-discovery ─────────────────────────────────────────────
-	try {
-		const detected = await koshaAutoDetect();
-		if (detected) {
-			return {
-				provider: detected.provider,
-				apiKey: detected.apiKey,
-				model: detected.model,
-				source: detected.source,
-			};
-		}
-	} catch {
-		// kosha failed — fall through to legacy detection
-	}
-
-	// ── Fallback: legacy detection chain ─────────────────────────────────────
-	return legacyAutoDetect();
+export interface FastProviderStatus {
+	id: string;
+	authenticated: boolean;
+	credentialSource: "env" | "cli" | "config" | "oauth" | "none";
+	models: string[];
 }
 
 /**
- * Legacy auto-detect — the original hand-rolled credential detection.
- * Kept as a fallback if kosha-discovery is unavailable or fails.
+ * I resolve direct environment credentials before I touch slower discovery
+ * surfaces so common CLI startup stays cheap.
  */
-async function legacyAutoDetect(): Promise<AutoDetectedAuth | null> {
+function detectEnvironmentAuth(): AutoDetectedAuth | null {
 	const env = process.env;
-
-	// ── 1. CLI credential files ──────────────────────────────────────────────
-	const claudeToken = tryResolveCliToken("anthropic");
-	if (claudeToken) {
-		return { provider: "anthropic", apiKey: claudeToken, source: "Claude CLI (~/.claude/)" };
-	}
-
-	const geminiCliToken = tryResolveCliToken("gemini");
-	if (geminiCliToken) {
-		return { provider: "gemini", apiKey: geminiCliToken, source: "Gemini CLI (~/.gemini/)" };
-	}
-
-	const codexToken = tryResolveCliToken("codex");
-	if (codexToken) {
-		return { provider: "openai", apiKey: codexToken, source: "Codex CLI (~/.codex/)" };
-	}
-
-	// ── 2. Environment variables ─────────────────────────────────────────────
 	if (env.ANTHROPIC_API_KEY) {
 		return { provider: "anthropic", apiKey: env.ANTHROPIC_API_KEY, source: "ANTHROPIC_API_KEY" };
 	}
@@ -257,9 +212,87 @@ async function legacyAutoDetect(): Promise<AutoDetectedAuth | null> {
 	if (env.TAKUMI_API_KEY) {
 		return { provider: "anthropic", apiKey: env.TAKUMI_API_KEY, source: "TAKUMI_API_KEY" };
 	}
+	return null;
+}
 
-	// ── 3. GitHub CLI → GitHub Models (OpenAI-compatible) ───────────────────
-	const ghToken = tryResolveCliToken("github");
+/**
+ * I resolve file-backed CLI credentials before I pay for subprocess-based
+ * discovery. This keeps common startup paths fast on machines that already
+ * have local auth files.
+ */
+function detectFileBackedCliAuth(): AutoDetectedAuth | null {
+	const claudeToken = tryResolveCliToken("anthropic");
+	if (claudeToken) {
+		return { provider: "anthropic", apiKey: claudeToken, source: "Claude CLI (~/.claude/)" };
+	}
+
+	const geminiEnvToken = readEnvFile(join(homedir(), ".gemini", ".env"), "GEMINI_API_KEY");
+	if (geminiEnvToken) {
+		return { provider: "gemini", apiKey: geminiEnvToken, source: "Gemini CLI (~/.gemini/)" };
+	}
+
+	const codexToken = tryResolveCliToken("codex");
+	if (codexToken) {
+		return { provider: "openai", apiKey: codexToken, source: "Codex CLI (~/.codex/)" };
+	}
+
+	const copilotToken = readGitHubCopilotToken();
+	if (copilotToken) {
+		return {
+			provider: "github",
+			apiKey: copilotToken,
+			model: "gpt-4.1",
+			source: "GitHub Copilot (~/.config/github-copilot/)",
+		};
+	}
+
+	return null;
+}
+
+/**
+ * I isolate GitHub Copilot token lookup so fast auth detection can use the
+ * local file path without spawning `gh`.
+ */
+function readGitHubCopilotToken(): string | undefined {
+	const home = homedir();
+	const hosts = readJsonSafe(join(home, ".config", "github-copilot", "hosts.json"));
+	if (hosts?.["github.com"]?.oauth_token) return hosts["github.com"].oauth_token;
+
+	const apps = readJsonSafe(join(home, ".config", "github-copilot", "apps.json"));
+	if (apps?.["github.com"]?.oauth_token) return apps["github.com"].oauth_token;
+	return undefined;
+}
+
+/**
+ * I add one provider snapshot only once, preserving the first successful
+ * source so the fast inventory stays stable and cheap.
+ */
+function addFastProviderStatus(
+	map: Map<string, FastProviderStatus>,
+	id: string,
+	credentialSource: FastProviderStatus["credentialSource"],
+	models: string[] = [],
+): void {
+	if (map.has(id)) return;
+	map.set(id, {
+		id,
+		authenticated: true,
+		credentialSource,
+		models,
+	});
+}
+
+/**
+ * I keep subprocess-backed auth checks behind a second tier so I only pay for
+ * them when fast env/file probes did not already settle the provider.
+ */
+function detectCommandBackedCliAuth(): AutoDetectedAuth | null {
+	const geminiCliToken = tryResolveCliToken("gemini");
+	if (geminiCliToken) {
+		return { provider: "gemini", apiKey: geminiCliToken, source: "Gemini CLI (~/.gemini/)" };
+	}
+
+	const ghToken = execSafe("gh auth token");
 	if (ghToken) {
 		return {
 			provider: "github",
@@ -267,6 +300,133 @@ async function legacyAutoDetect(): Promise<AutoDetectedAuth | null> {
 			model: "gpt-4.1",
 			source: "GitHub CLI (gh auth token → GitHub Models)",
 		};
+	}
+
+	return null;
+}
+
+/**
+ * I collect a fast provider status snapshot for CLI entrypoints that need
+ * readiness signals, not the full Kosha registry build.
+ */
+export async function collectFastProviderStatus(): Promise<FastProviderStatus[]> {
+	const providers = new Map<string, FastProviderStatus>();
+	const env = process.env;
+
+	if (env.ANTHROPIC_API_KEY || env.CLAUDE_CODE_OAUTH_TOKEN) {
+		addFastProviderStatus(providers, "anthropic", "env");
+	}
+	if (env.OPENAI_API_KEY) {
+		addFastProviderStatus(providers, "openai", "env");
+	}
+	if (env.GEMINI_API_KEY || env.GOOGLE_API_KEY) {
+		addFastProviderStatus(providers, "gemini", "env");
+	}
+	if (env.GROQ_API_KEY) {
+		addFastProviderStatus(providers, "groq", "env");
+	}
+	if (env.DEEPSEEK_API_KEY) {
+		addFastProviderStatus(providers, "deepseek", "env");
+	}
+	if (env.MISTRAL_API_KEY) {
+		addFastProviderStatus(providers, "mistral", "env");
+	}
+	if (env.TOGETHER_API_KEY) {
+		addFastProviderStatus(providers, "together", "env");
+	}
+	if (env.OPENROUTER_API_KEY) {
+		addFastProviderStatus(providers, "openrouter", "env");
+	}
+	if (env.ZAI_API_KEY || env.KIMI_API_KEY || env.MOONSHOT_API_KEY) {
+		addFastProviderStatus(providers, "zai", "env");
+	}
+	if (env.TAKUMI_API_KEY) {
+		addFastProviderStatus(providers, "anthropic", "env");
+	}
+
+	if (tryResolveCliToken("anthropic")) {
+		addFastProviderStatus(providers, "anthropic", "cli");
+	}
+	const geminiEnvToken = readEnvFile(join(homedir(), ".gemini", ".env"), "GEMINI_API_KEY");
+	if (geminiEnvToken) {
+		addFastProviderStatus(providers, "gemini", "cli");
+	}
+	if (tryResolveCliToken("codex")) {
+		addFastProviderStatus(providers, "openai", "cli");
+	}
+	if (readGitHubCopilotToken()) {
+		addFastProviderStatus(providers, "github", "oauth", ["gpt-4.1"]);
+	}
+
+	if (providers.size > 0) {
+		return [...providers.values()].sort((a, b) => a.id.localeCompare(b.id));
+	}
+
+	const commandDetected = detectCommandBackedCliAuth();
+	if (commandDetected) {
+		addFastProviderStatus(
+			providers,
+			commandDetected.provider,
+			"cli",
+			commandDetected.model ? [commandDetected.model] : [],
+		);
+		return [...providers.values()];
+	}
+
+	const ollamaModels = await probeOllama();
+	if (ollamaModels.length > 0) {
+		addFastProviderStatus(providers, "ollama", "none", ollamaModels);
+	}
+
+	return [...providers.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/**
+ * Tries every available credential source in priority order and returns the
+ * first one that yields a usable key/token. Returns null if nothing is found.
+ *
+ * **Primary path**: delegates to **kosha-discovery** which scans CLI tools,
+ * env vars, config files, and local runtimes for every supported provider.
+ *
+ * **Fallback**: if kosha fails (e.g. network timeout during Ollama probe),
+ * the legacy hand-rolled detection chain runs as a safety net.
+ *
+ * Priority (via kosha):
+ *   1. CLI credential files → env vars → config → OAuth → local
+ */
+export async function autoDetectAuth(): Promise<AutoDetectedAuth | null> {
+	const fast = detectEnvironmentAuth() ?? detectFileBackedCliAuth() ?? detectCommandBackedCliAuth();
+	if (fast) {
+		return fast;
+	}
+
+	// ── Fallback: kosha-discovery ────────────────────────────────────────────
+	try {
+		const detected = await koshaAutoDetect();
+		if (detected) {
+			return {
+				provider: detected.provider,
+				apiKey: detected.apiKey,
+				model: detected.model,
+				source: detected.source,
+			};
+		}
+	} catch {
+		// kosha failed — fall through to legacy detection
+	}
+
+	// ── Fallback: legacy detection chain ─────────────────────────────────────
+	return legacyAutoDetect();
+}
+
+/**
+ * Legacy auto-detect — the original hand-rolled credential detection.
+ * Kept as a fallback if kosha-discovery is unavailable or fails.
+ */
+async function legacyAutoDetect(): Promise<AutoDetectedAuth | null> {
+	const direct = detectEnvironmentAuth() ?? detectFileBackedCliAuth() ?? detectCommandBackedCliAuth();
+	if (direct) {
+		return direct;
 	}
 
 	// ── 4. Ollama local server ───────────────────────────────────────────────

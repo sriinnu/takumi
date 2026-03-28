@@ -2,11 +2,10 @@ import { join } from "node:path";
 import { auditSideAgentRuntime, repairPersistedSideAgentRegistry, type SideAgentRuntimeAudit } from "@takumi/agent";
 import type { TakumiConfig } from "@takumi/core";
 import { ChitraguptaBridge } from "@takumi/bridge";
-import { autoDetectAuth } from "./cli-auth.js";
+import { autoDetectAuth, collectFastProviderStatus } from "./cli-auth.js";
 import { cmdDaemon } from "./daemon.js";
 import { getDaemonStatus, type DaemonStatusSummary } from "./daemon-status.js";
 import { loadDetachedJobs } from "./detached-jobs.js";
-import { koshaProviders } from "./kosha-bridge.js";
 import { canSkipApiKey } from "./provider.js";
 import { resolveSideAgentStateDir, type SideAgentBootstrapStatus } from "./side-agent-tools.js";
 import { collectRuntimeBootstrap } from "./runtime-bootstrap.js";
@@ -103,8 +102,8 @@ export function buildDoctorReport(input: BuildDoctorReportInput): DoctorReport {
 
 	if (input.kosha.authenticatedProviders === 0) {
 		if (overall !== "fail") overall = "warn";
-		warnings.push("Kosha did not report any authenticated providers.");
-		fixes.push("Refresh CLI auth (`gh auth login`, `claude login`, or provider env vars) so Kosha can discover live credentials.");
+		warnings.push("Fast provider discovery did not find any authenticated providers.");
+		fixes.push("Refresh CLI auth (`gh auth login`, `claude login`, or provider env vars) so Takumi can resolve a live runtime path.");
 	}
 
 	if (input.telemetry.atLimit > 0) {
@@ -238,7 +237,7 @@ export function formatDoctorReport(report: DoctorReport): string {
 		`Provider / Model:  ${report.provider} / ${report.model}`,
 		`Auth:              ${report.auth.ready ? "ready" : "missing"} (${report.auth.source})`,
 		`Daemon:            ${report.daemon.healthy ? "healthy" : "degraded"}${report.daemon.pid ? ` (pid ${report.daemon.pid})` : ""}`,
-		`Kosha providers:   ${report.kosha.authenticatedProviders}/${report.kosha.totalProviders} authenticated`,
+		`Providers:         ${report.kosha.authenticatedProviders}/${report.kosha.totalProviders} authenticated`,
 		`Side agents:       ${sideAgentState} (${report.sideAgents.bootstrap.summary})`,
 		`Side-agent audit:  ${formatSideAgentAuditSummary(report.sideAgents.audit, report.sideAgents.auditError)}`,
 		`Active instances:  ${report.telemetry.activeInstances} (${report.telemetry.working} working, ${report.telemetry.waitingInput} waiting)`,
@@ -277,7 +276,7 @@ export async function collectDoctorReport(
 	const [detectedAuth, daemon, providers, jobs, telemetry, runtimeBootstrap] = await Promise.all([
 		autoDetectAuth(),
 		getDaemonStatus(),
-		koshaProviders().catch(() => []),
+		collectFastProviderStatus().catch(() => []),
 		loadDetachedJobs(),
 		new ChitraguptaBridge().telemetrySnapshot().catch(() => null),
 		collectRuntimeBootstrap(config, { cwd }),

@@ -35,6 +35,12 @@ describe("parseArgs", () => {
 		expect(args.json).toBe(true);
 	});
 
+	it("parses --startup-trace for opt-in CLI profiling", () => {
+		const args = parseArgs(["node", "takumi", "--startup-trace", "exec", "--headless", "fix bug"]);
+		expect(args.startupTrace).toBe(true);
+		expect(args.subcommand).toBe("exec");
+	});
+
 	it("parses --fix for operational subcommands", () => {
 		const args = parseArgs(["node", "takumi", "doctor", "--fix"]);
 		expect(args.subcommand).toBe("doctor");
