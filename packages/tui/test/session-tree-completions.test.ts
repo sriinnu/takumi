@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppCommandContext } from "../src/app-command-context.js";
-import { SlashCommandRegistry } from "../src/commands.js";
+import type { AppCommandContext } from "../src/commands/app-command-context.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
 import { AppState } from "../src/state.js";
 
 const treeMocks = vi.hoisted(() => ({
@@ -17,7 +17,7 @@ vi.mock("@takumi/core", async (importOriginal) => {
 	};
 });
 
-import { registerSessionTreeCommands } from "../src/app-commands-tree.js";
+import { registerSessionTreeCommands } from "../src/commands/app-commands-tree.js";
 
 /**
  * I keep a very small context here because I only care about /switch completions.

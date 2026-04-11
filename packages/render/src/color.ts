@@ -108,22 +108,38 @@ export function rgb(r: number, g: number, b: number): { fg: string; bg: string }
 
 // ── Hex parsing ───────────────────────────────────────────────────────────────
 
-/** Parse a hex color (#RGB or #RRGGBB) to [r, g, b]. */
+/** Cache for hexToRgb — theme hex values are constant, re-parsed thousands of times per frame. */
+const hexCache = new Map<string, [number, number, number]>();
+
+/** Parse a hex color (#RGB or #RRGGBB) to [r, g, b]. Cached for repeated lookups. */
 export function hexToRgb(hex: string): [number, number, number] {
+	const cached = hexCache.get(hex);
+	if (cached) return cached;
+
 	const cleaned = hex.replace(/^#/, "");
+	let result: [number, number, number];
 	if (cleaned.length === 3) {
-		const r = Number.parseInt(cleaned[0] + cleaned[0], 16);
-		const g = Number.parseInt(cleaned[1] + cleaned[1], 16);
-		const b = Number.parseInt(cleaned[2] + cleaned[2], 16);
-		return [r, g, b];
+		result = [
+			Number.parseInt(cleaned[0] + cleaned[0], 16),
+			Number.parseInt(cleaned[1] + cleaned[1], 16),
+			Number.parseInt(cleaned[2] + cleaned[2], 16),
+		];
+	} else if (cleaned.length === 6) {
+		result = [
+			Number.parseInt(cleaned.slice(0, 2), 16),
+			Number.parseInt(cleaned.slice(2, 4), 16),
+			Number.parseInt(cleaned.slice(4, 6), 16),
+		];
+	} else {
+		result = [0, 0, 0];
 	}
-	if (cleaned.length === 6) {
-		const r = Number.parseInt(cleaned.slice(0, 2), 16);
-		const g = Number.parseInt(cleaned.slice(2, 4), 16);
-		const b = Number.parseInt(cleaned.slice(4, 6), 16);
-		return [r, g, b];
-	}
-	return [0, 0, 0];
+	hexCache.set(hex, result);
+	return result;
+}
+
+/** Clear hexToRgb cache (call on theme change). */
+export function clearHexCache(): void {
+	hexCache.clear();
 }
 
 /** Convert hex string to fg/bg ANSI escapes. */

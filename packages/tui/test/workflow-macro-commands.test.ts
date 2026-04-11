@@ -6,9 +6,9 @@ vi.mock("node:child_process", () => ({
 
 import { execSync } from "node:child_process";
 import type { Message, ToolDefinition, ToolResult } from "@takumi/core";
-import { registerProductivityCommands } from "../src/app-commands-productivity.js";
-import { registerWorkflowCommands } from "../src/app-commands-workflow.js";
-import { SlashCommandRegistry } from "../src/commands.js";
+import { registerProductivityCommands } from "../src/commands/app-commands-productivity.js";
+import { registerWorkflowCommands } from "../src/commands/app-commands-workflow.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
 import { AppState } from "../src/state.js";
 
 function lastInfoText(state: AppState): string {
@@ -98,6 +98,9 @@ describe("workflow/productivity slash commands", () => {
 			"/review",
 			"/reflect",
 			"/co-plan",
+			"/team-plan",
+			"/team",
+			"/staff-plan",
 			"/question-chain",
 			"/q-chain",
 			"/questions",
@@ -257,6 +260,17 @@ describe("workflow/productivity slash commands", () => {
 		expect(submit.mock.calls[0][0]).toContain("Alt plan");
 	});
 
+	it("/team alias resolves to the staffing macro when side lanes are unavailable", async () => {
+		const { commands, submit } = createContext();
+
+		await commands.execute("/team harden release readiness");
+
+		expect(submit).toHaveBeenCalledOnce();
+		expect(submit.mock.calls[0][0]).toContain("Workflow command: /team-plan");
+		expect(submit.mock.calls[0][0]).toContain("harden release readiness");
+		expect(submit.mock.calls[0][0]).toContain("architect, builder, and verifier");
+	});
+
 	it("/plan is blocked while the coding lane is active", async () => {
 		const { commands, submit, ctx, state } = createContext();
 		ctx.getActiveCoder = vi.fn(() => ({ isActive: true }));
@@ -337,6 +351,75 @@ describe("workflow/productivity slash commands", () => {
 		expect(submit.mock.calls[0][0]).toContain("Delegated framing lane output");
 		expect(submit.mock.calls[0][0]).toContain("What can fail first?");
 		expect(submit.mock.calls[0][0]).toContain("recommended next move");
+	});
+
+	it("/team-plan delegates architect, builder, and verifier lanes when native side-agent tools are available", async () => {
+		const { commands, submit, ctx, toolDefinitions, toolExecute, state } = createContext();
+		toolDefinitions.set("takumi_agent_start", {
+			name: "takumi_agent_start",
+			description: "start",
+			inputSchema: { type: "object", properties: {} },
+			requiresPermission: true,
+			category: "execute",
+		});
+		toolDefinitions.set("takumi_agent_query", {
+			name: "takumi_agent_query",
+			description: "query",
+			inputSchema: { type: "object", properties: {} },
+			requiresPermission: false,
+			category: "interact",
+		});
+
+		let startCount = 0;
+		const lanePayloads = [
+			{ summary: "Architect lane", mission: "Split the change into clean slices" },
+			{ summary: "Builder lane", mission: "Ship the highest-value implementation order" },
+			{ summary: "Verifier lane", mission: "Define the gates before merge" },
+		];
+		toolExecute.mockImplementation(async (name, input) => {
+			if (name === "takumi_agent_start") {
+				startCount += 1;
+				return {
+					output: JSON.stringify({
+						id: `side-${startCount}`,
+						status: "running",
+						worktree: `/tmp/team-${startCount}`,
+						branch: `takumi/side-agent/team-${startCount}`,
+						tmuxWindow: `agent-team-${startCount}`,
+					}),
+					isError: false,
+				};
+			}
+			const laneId = Number(String(input.id).split("-")[1] ?? "1") - 1;
+			return {
+				output: JSON.stringify({
+					id: input.id,
+					query: input.query,
+					format: "json",
+					responseType: "structured",
+					response: lanePayloads[laneId],
+				}),
+				isError: false,
+			};
+		});
+
+		await commands.execute("/team-plan redesign session recovery");
+
+		expect(ctx.agentRunner?.executeCommandTool).toHaveBeenCalledTimes(6);
+		const startCalls = toolExecute.mock.calls.filter(([name]) => name === "takumi_agent_start");
+		expect(startCalls).toHaveLength(3);
+		expect(startCalls.map(([, input]) => input.topic)).toEqual(["architecture", "code-generation", "testing"]);
+		expect(startCalls.map(([, input]) => input.complexity)).toEqual(["STANDARD", "STANDARD", "CRITICAL"]);
+		expect(state.sideLanes.list()).toEqual([
+			expect.objectContaining({ id: "side-3", commandName: "/team-plan", responseSummary: "Verifier lane" }),
+			expect.objectContaining({ id: "side-2", commandName: "/team-plan", responseSummary: "Builder lane" }),
+			expect.objectContaining({ id: "side-1", commandName: "/team-plan", responseSummary: "Architect lane" }),
+		]);
+		expect(submit).toHaveBeenCalledOnce();
+		expect(submit.mock.calls[0][0]).toContain("Workflow command: /team-plan");
+		expect(submit.mock.calls[0][0]).toContain("Delegated architect lane output");
+		expect(submit.mock.calls[0][0]).toContain("Delegated verifier lane output");
+		expect(submit.mock.calls[0][0]).toContain("operator next steps");
 	});
 
 	it("/worktree-spin creates a native worktree before dispatching /code", async () => {

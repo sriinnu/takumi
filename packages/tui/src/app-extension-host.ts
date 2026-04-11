@@ -6,14 +6,34 @@
  */
 
 import { basename } from "node:path";
-import type { ExtensionCommandContext, ExtensionRunner, RegisteredCommand, RegisteredShortcut } from "@takumi/agent";
+import type {
+	ExtensionCommandContext,
+	ExtensionRunner,
+	LoadedExtension,
+	RegisteredCommand,
+	RegisteredShortcut,
+} from "@takumi/agent";
 import type { SessionData } from "@takumi/core";
 import { createLogger, generateSessionId } from "@takumi/core";
-import type { SlashCommandRegistry } from "./commands.js";
-import type { KeyBindingRegistry } from "./keybinds.js";
+import type { SlashCommandRegistry } from "./commands/commands.js";
+import type { KeyBindingRegistry } from "./input/keybinds.js";
+import { registerSlashCommandContribution } from "./slash-commands/pack.js";
 import type { AppState } from "./state.js";
 
 const log = createLogger("app-extension-host");
+
+type ExtensionResidency = "project" | "global" | "package" | "unknown";
+
+interface ExtensionOriginMetadata {
+	residency: ExtensionResidency;
+	packageId?: string;
+	packageName?: string;
+	packageSource?: string;
+}
+
+type HostLoadedExtension = LoadedExtension & {
+	origin?: ExtensionOriginMetadata;
+};
 
 export interface ExtensionHostRegistrationReport {
 	commandCount: number;
@@ -26,6 +46,11 @@ export interface ExtensionHostRegistrationReport {
 export interface ExtensionHostSnapshotEntry {
 	path: string;
 	resolvedPath: string;
+	commandPackId: string;
+	residency: ExtensionResidency;
+	packageId: string | null;
+	packageName: string | null;
+	packageSource: string | null;
 	label: string;
 	displayName: string;
 	manifestName: string | null;
@@ -66,6 +91,7 @@ export interface RegisterExtensionHostSurfacesOptions {
 export function registerExtensionHostSurfaces(
 	options: RegisterExtensionHostSurfacesOptions,
 ): ExtensionHostRegistrationReport {
+	const extensionLookup = buildExtensionLookup(options.extensionRunner);
 	const report: ExtensionHostRegistrationReport = {
 		commandCount: 0,
 		shortcutCount: 0,
@@ -75,11 +101,11 @@ export function registerExtensionHostSurfaces(
 	};
 
 	for (const { command, extensionPath } of options.extensionRunner.getAllCommands().values()) {
-		registerExtensionCommand(options, report, command, extensionPath);
+		registerExtensionCommand(options, report, command, extensionPath, extensionLookup.get(extensionPath));
 	}
 
 	for (const shortcut of options.extensionRunner.getAllShortcuts().values()) {
-		registerExtensionShortcut(options, report, shortcut);
+		registerExtensionShortcut(options, report, shortcut, extensionLookup.get(shortcut.extensionPath));
 	}
 
 	return report;
@@ -101,9 +127,10 @@ export function formatExtensionHostReport(report: ExtensionHostRegistrationRepor
  * remote clients can inspect the same live extension picture.
  */
 export function inspectExtensionHost(extensionRunner: ExtensionRunner): ExtensionHostSnapshot {
-	const extensions = extensionRunner._extensions
+	const extensions = getLoadedExtensions(extensionRunner)
 		.map((extension) => {
-			const label = extensionLabel(extension.path);
+			const label = extensionLabel(extension.path, extension);
+			const commandPackId = extensionPackId(extension.path, extension);
 			const manifestName = extension.manifest?.name?.trim() || null;
 			const events = [...extension.handlers.entries()]
 				.filter(([, handlers]) => handlers.length > 0)
@@ -116,6 +143,11 @@ export function inspectExtensionHost(extensionRunner: ExtensionRunner): Extensio
 			return {
 				path: extension.path,
 				resolvedPath: extension.resolvedPath,
+				commandPackId,
+				residency: extension.origin?.residency ?? "unknown",
+				packageId: extension.origin?.packageId ?? null,
+				packageName: extension.origin?.packageName ?? null,
+				packageSource: extension.origin?.packageSource ?? null,
 				label,
 				displayName: manifestName || label,
 				manifestName,
@@ -150,25 +182,31 @@ function registerExtensionCommand(
 	report: ExtensionHostRegistrationReport,
 	command: RegisteredCommand,
 	extensionPath: string,
+	extension?: HostLoadedExtension,
 ): void {
 	const requestedName = normalizeSlashCommandName(command.name);
 	if (!requestedName) {
-		report.invalidCommands.push(`${command.name} (${extensionLabel(extensionPath)})`);
+		report.invalidCommands.push(`${command.name} (${extensionLabel(extensionPath, extension)})`);
 		log.warn(`Skipping invalid extension command "${command.name}" from ${extensionPath}`);
 		return;
 	}
 
-	const resolvedName = allocateCommandName(options.commands, requestedName, extensionPath);
+	const resolvedName = allocateCommandName(options.commands, requestedName, extensionPath, extension);
 	if (resolvedName !== requestedName) {
 		report.renamedCommands.push(`${requestedName} -> ${resolvedName}`);
 	}
 
-	options.commands.register(
-		resolvedName,
-		describeExtensionCommand(command, extensionPath, requestedName, resolvedName),
-		async (args) => {
+	registerSlashCommandContribution(options.commands, {
+		name: resolvedName,
+		requestedName,
+		source: "external",
+		residency: extension?.origin?.residency,
+		packId: extensionPackId(extensionPath, extension),
+		packLabel: extensionLabel(extensionPath, extension),
+		description: describeExtensionCommand(command, extensionPath, requestedName, resolvedName, extension),
+		handler: async (args) => {
 			try {
-				const ctx = createCommandContext(options);
+				const ctx = createCommandContext(options, extensionPath);
 				await command.handler(args, ctx);
 			} catch (error) {
 				const message = (error as Error).message || String(error);
@@ -176,19 +214,20 @@ function registerExtensionCommand(
 				options.addInfoMessage(`Extension command ${resolvedName} failed: ${message}`);
 			}
 		},
-		{
-			getArgumentCompletions: command.getArgumentCompletions
-				? async (partial) => {
-						try {
-							return (await command.getArgumentCompletions?.(partial, options.extensionRunner.createContext())) ?? [];
-						} catch (error) {
-							log.warn(`Extension command completions failed for ${resolvedName}`, error);
-							return [];
-						}
+		getArgumentCompletions: command.getArgumentCompletions
+			? async (partial) => {
+					try {
+						return (
+							(await command.getArgumentCompletions?.(partial, options.extensionRunner.createContext(extensionPath))) ??
+							[]
+						);
+					} catch (error) {
+						log.warn(`Extension command completions failed for ${resolvedName}`, error);
+						return [];
 					}
-				: undefined,
-		},
-	);
+				}
+			: undefined,
+	});
 	report.commandCount += 1;
 }
 
@@ -196,9 +235,10 @@ function registerExtensionShortcut(
 	options: RegisterExtensionHostSurfacesOptions,
 	report: ExtensionHostRegistrationReport,
 	shortcut: RegisteredShortcut,
+	extension?: HostLoadedExtension,
 ): void {
 	if (options.keybinds.get(shortcut.key)) {
-		const skipped = `${shortcut.key} (${extensionLabel(shortcut.extensionPath)})`;
+		const skipped = `${shortcut.key} (${extensionLabel(shortcut.extensionPath, extension)})`;
 		report.skippedShortcuts.push(skipped);
 		log.warn(`Skipping extension shortcut ${shortcut.key} from ${shortcut.extensionPath}; key is already in use`);
 		return;
@@ -206,11 +246,11 @@ function registerExtensionShortcut(
 
 	options.keybinds.register(
 		shortcut.key,
-		describeExtensionShortcut(shortcut),
+		describeExtensionShortcut(shortcut, extension),
 		() => {
 			void runExtensionShortcut(options, shortcut);
 		},
-		{ id: buildShortcutId(shortcut) },
+		{ id: buildShortcutId(shortcut, extension) },
 	);
 	report.shortcutCount += 1;
 }
@@ -220,7 +260,7 @@ async function runExtensionShortcut(
 	shortcut: RegisteredShortcut,
 ): Promise<void> {
 	try {
-		await shortcut.handler(options.extensionRunner.createContext());
+		await shortcut.handler(options.extensionRunner.createContext(shortcut.extensionPath));
 	} catch (error) {
 		const message = (error as Error).message || String(error);
 		log.error(`Extension shortcut ${shortcut.key} failed`, error);
@@ -228,8 +268,11 @@ async function runExtensionShortcut(
 	}
 }
 
-function createCommandContext(options: RegisterExtensionHostSurfacesOptions): ExtensionCommandContext {
-	const ctx = Object.create(options.extensionRunner.createContext()) as ExtensionCommandContext;
+function createCommandContext(
+	options: RegisterExtensionHostSurfacesOptions,
+	extensionPath: string,
+): ExtensionCommandContext {
+	const ctx = Object.create(options.extensionRunner.createContext(extensionPath)) as ExtensionCommandContext;
 	ctx.waitForIdle = () => waitForIdle(options.state);
 	ctx.newSession = () => startNewSession(options);
 	ctx.switchSession = (sessionId) => switchSession(options, sessionId);
@@ -275,9 +318,14 @@ async function switchSession(
 	return { cancelled: options.state.sessionId.value !== sessionId };
 }
 
-function allocateCommandName(commands: SlashCommandRegistry, requestedName: string, extensionPath: string): string {
+function allocateCommandName(
+	commands: SlashCommandRegistry,
+	requestedName: string,
+	extensionPath: string,
+	extension?: HostLoadedExtension,
+): string {
 	if (!commands.has(requestedName)) return requestedName;
-	const suffix = extensionSlug(extensionPath);
+	const suffix = extensionSlug(extensionPath, extension);
 	let attempt = `${requestedName}.${suffix}`;
 	let counter = 2;
 	while (commands.has(attempt)) {
@@ -287,8 +335,8 @@ function allocateCommandName(commands: SlashCommandRegistry, requestedName: stri
 	return attempt;
 }
 
-function buildShortcutId(shortcut: RegisteredShortcut): string {
-	return `extension.${extensionSlug(shortcut.extensionPath)}.${shortcut.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
+function buildShortcutId(shortcut: RegisteredShortcut, extension?: HostLoadedExtension): string {
+	return `extension.${extensionSlug(shortcut.extensionPath, extension)}.${shortcut.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
 }
 
 function describeExtensionCommand(
@@ -296,15 +344,17 @@ function describeExtensionCommand(
 	extensionPath: string,
 	requestedName: string,
 	resolvedName: string,
+	extension?: HostLoadedExtension,
 ): string {
-	const base = command.description?.trim() || `Extension command from ${extensionLabel(extensionPath)}`;
-	if (requestedName === resolvedName) return `${base} [ext:${extensionLabel(extensionPath)}]`;
-	return `${base} [ext:${extensionLabel(extensionPath)}, requested ${requestedName}]`;
+	const label = extensionLabel(extensionPath, extension);
+	const base = command.description?.trim() || `Extension command from ${label}`;
+	if (requestedName === resolvedName) return `${base} [ext:${label}]`;
+	return `${base} [ext:${label}, requested ${requestedName}]`;
 }
 
-function describeExtensionShortcut(shortcut: RegisteredShortcut): string {
+function describeExtensionShortcut(shortcut: RegisteredShortcut, extension?: HostLoadedExtension): string {
 	const base = shortcut.description?.trim() || "Extension shortcut";
-	return `${base} [ext:${extensionLabel(shortcut.extensionPath)}]`;
+	return `${base} [ext:${extensionLabel(shortcut.extensionPath, extension)}]`;
 }
 
 function normalizeSlashCommandName(name: string): string | null {
@@ -314,13 +364,40 @@ function normalizeSlashCommandName(name: string): string | null {
 	return /\s/.test(normalized) ? null : normalized;
 }
 
-function extensionLabel(extensionPath: string): string {
+function getLoadedExtensions(extensionRunner: ExtensionRunner): HostLoadedExtension[] {
+	return Array.isArray(extensionRunner._extensions) ? (extensionRunner._extensions as HostLoadedExtension[]) : [];
+}
+
+function buildExtensionLookup(extensionRunner: ExtensionRunner): Map<string, HostLoadedExtension> {
+	const lookup = new Map<string, HostLoadedExtension>();
+	for (const extension of getLoadedExtensions(extensionRunner)) {
+		lookup.set(extension.path, extension);
+		lookup.set(extension.resolvedPath, extension);
+	}
+	return lookup;
+}
+
+function extensionPackId(extensionPath: string, extension?: HostLoadedExtension): string {
+	if (extension?.origin?.residency === "package" && extension.origin.packageId) {
+		return `package:${extension.origin.packageId}`;
+	}
+	return `extension:${extensionSlug(extensionPath, extension)}`;
+}
+
+function extensionLabel(extensionPath: string, extension?: HostLoadedExtension): string {
+	if (extension?.origin?.residency === "package" && extension.origin.packageName) {
+		return extension.origin.packageName;
+	}
 	return basename(extensionPath).replace(/\.[^.]+$/, "") || "extension";
 }
 
-function extensionSlug(extensionPath: string): string {
+function extensionSlug(extensionPath: string, extension?: HostLoadedExtension): string {
+	const base =
+		extension?.origin?.residency === "package"
+			? extension.origin.packageId || extension.origin.packageName
+			: extensionLabel(extensionPath, extension);
 	return (
-		extensionLabel(extensionPath)
+		(base || extensionLabel(extensionPath, extension))
 			.toLowerCase()
 			.replace(/[^a-z0-9]+/g, "-")
 			.replace(/^-+|-+$/g, "") || "extension"

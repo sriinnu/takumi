@@ -1,9 +1,9 @@
 import { KEY_CODES } from "@takumi/core";
 import { Screen } from "@takumi/render";
 import { describe, expect, it, vi } from "vitest";
-import { SlashCommandRegistry } from "../src/commands.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
 import { ExtensionUiStore } from "../src/extension-ui-store.js";
-import { KeyBindingRegistry } from "../src/keybinds.js";
+import { KeyBindingRegistry } from "../src/input/keybinds.js";
 import { DialogOverlay } from "../src/panels/dialog-overlay.js";
 import { AppState } from "../src/state.js";
 
@@ -90,6 +90,26 @@ describe("DialogOverlay", () => {
 		expect(consumed).toBe(true);
 		expect(handler).toHaveBeenCalledOnce();
 		expect(state.topDialog).toBeNull();
+	});
+
+	it("renders grouped command-palette sections with a detail block", () => {
+		const state = new AppState();
+		const commands = new SlashCommandRegistry();
+		const keybinds = new KeyBindingRegistry();
+		commands.register("/model", "Change model", vi.fn());
+		commands.register("/review", "Run review", vi.fn());
+		keybinds.register("ctrl+k", "Command palette", vi.fn(), { id: "app.command-palette.toggle" });
+		state.pushDialog("command-palette");
+
+		const overlay = new DialogOverlay({ state, commands, keybinds });
+		const screen = new Screen(100, 24);
+		overlay.render(screen, { x: 0, y: 0, width: 100, height: 24 });
+
+		const rows = Array.from({ length: 24 }, (_, row) => readRow(screen, row)).join("\n");
+		expect(rows).toContain("Command Palette");
+		expect(rows).toContain("Runtime");
+		expect(rows).toContain("Review");
+		expect(rows).toContain("Details");
 	});
 
 	it("renders extension confirm prompts ahead of normal dialogs", () => {

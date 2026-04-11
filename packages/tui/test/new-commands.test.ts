@@ -1,7 +1,7 @@
 import type { Message } from "@takumi/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { formatMessagesAsMarkdown } from "../src/app.js";
-import { SlashCommandRegistry } from "../src/commands.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
 import { AppState } from "../src/state.js";
 
 /* ── Mock fs ───────────────────────────────────────────────────────────────── */

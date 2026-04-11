@@ -2,187 +2,21 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { homedir } from "node:os";
-import type { LoadedTakumiPackage } from "@takumi/agent";
-import { discoverTakumiPackages } from "@takumi/agent";
+import {
+	buildPackageDoctorReport,
+	findPackage,
+	formatPackageDetails,
+	formatPackageDoctorReport,
+	inspectTakumiPackages,
+	toPackageListView,
+} from "@takumi/agent";
+import type { LoadedTakumiPackage, PackageInspection, PackageListView } from "@takumi/agent";
 import type { TakumiConfig } from "@takumi/core";
 
-export interface PackageListView {
-	name: string;
-	version: string;
-	source: string;
-	provenance: string;
-	rootPath: string;
-	description: string | null;
-	maintainer: string | null;
-	warnings: string[];
-	capabilitiesRequested: string[];
-	compatibility: {
-		takumi: string | null;
-		packageApi: string | null;
-	};
-	evals: {
-		coverage: string[];
-		score: number | null;
-		suite: string | null;
-	};
-	resources: {
-		extensions: number;
-		skills: number;
-		systemPrompt: boolean;
-		toolRules: boolean;
-	};
-}
+export { buildPackageDoctorReport, findPackage, formatPackageDetails, toPackageListView };
 
-export interface PackageDoctorReport {
-	total: number;
-	ready: number;
-	warning: number;
-	errors: Array<{ path: string; error: string }>;
-	packages: PackageListView[];
-}
-
-function configuredPackagePaths(config: TakumiConfig): string[] {
-	return config.packages?.map((entry) => entry.name) ?? [];
-}
-
-function loadPackages(config: TakumiConfig): ReturnType<typeof discoverTakumiPackages> {
-	return discoverTakumiPackages(configuredPackagePaths(config), process.cwd());
-}
-
-export function toPackageListView(pkg: LoadedTakumiPackage): PackageListView {
-	return {
-		name: pkg.packageName,
-		version: pkg.version ?? "0.0.0",
-		source: pkg.source,
-		provenance: pkg.governance.provenance,
-		rootPath: pkg.rootPath,
-		description: pkg.description ?? null,
-		maintainer: pkg.governance.maintainer ?? null,
-		warnings: [...pkg.warnings],
-		capabilitiesRequested: [...pkg.governance.capabilitiesRequested],
-		compatibility: {
-			takumi: pkg.governance.compatibility.takumi ?? null,
-			packageApi: pkg.governance.compatibility.packageApi ?? null,
-		},
-		evals: {
-			coverage: [...(pkg.governance.evals.coverage ?? [])],
-			score: pkg.governance.evals.score ?? null,
-			suite: pkg.governance.evals.suite ?? null,
-		},
-		resources: {
-			extensions: pkg.extensions.length,
-			skills: pkg.skillPaths.length,
-			systemPrompt: Boolean(pkg.systemPromptPath),
-			toolRules: Boolean(pkg.toolRulesPath),
-		},
-	};
-}
-
-export function buildPackageDoctorReport(result: ReturnType<typeof discoverTakumiPackages>): PackageDoctorReport {
-	const packages = result.packages.map(toPackageListView).sort((left, right) => left.name.localeCompare(right.name));
-	const warning = packages.filter((pkg) => pkg.warnings.length > 0).length;
-	return {
-		total: packages.length,
-		ready: packages.length - warning,
-		warning,
-		errors: [...result.errors],
-		packages,
-	};
-}
-
-export function formatPackageDoctorReport(report: PackageDoctorReport): string {
-	const lines = [
-		"Takumi Packages",
-		"",
-		`Discovered: ${report.total}`,
-		`Ready:      ${report.ready}`,
-		`Warnings:   ${report.warning}`,
-		`Errors:     ${report.errors.length}`,
-	];
-
-	if (report.packages.length > 0) {
-		lines.push("", "Packages:");
-		for (const pkg of report.packages) {
-			const status = pkg.warnings.length > 0 ? "warn" : "ready";
-			lines.push(
-				`  - ${pkg.name}@${pkg.version} [${status}] ${pkg.source}/${pkg.provenance} · ext ${pkg.resources.extensions} · skills ${pkg.resources.skills}`,
-			);
-			if (pkg.description) {
-				lines.push(`    ${pkg.description}`);
-			}
-			if (pkg.capabilitiesRequested.length > 0) {
-				lines.push(`    capabilities: ${pkg.capabilitiesRequested.join(", ")}`);
-			}
-			for (const warning of pkg.warnings) {
-				lines.push(`    warning: ${warning}`);
-			}
-		}
-	}
-
-	if (report.errors.length > 0) {
-		lines.push("", "Errors:");
-		for (const error of report.errors) {
-			lines.push(`  - ${error.path}: ${error.error}`);
-		}
-	}
-
-	return lines.join("\n");
-}
-
-export function findPackage(packages: LoadedTakumiPackage[], query: string): LoadedTakumiPackage | null {
-	const normalized = query.trim().toLowerCase();
-	return (
-		packages.find((pkg) => pkg.packageName.toLowerCase() === normalized) ??
-		packages.find((pkg) => pkg.packageName.split("/").pop()?.toLowerCase() === normalized) ??
-		packages.find((pkg) => pkg.rootPath.toLowerCase() === normalized) ??
-		null
-	);
-}
-
-export function formatPackageDetails(pkg: LoadedTakumiPackage): string {
-	const lines = [
-		`${pkg.packageName}${pkg.version ? `@${pkg.version}` : ""}`,
-		`Source: ${pkg.source}`,
-		`Root:   ${pkg.rootPath}`,
-	];
-	if (pkg.description) {
-		lines.push(`About:  ${pkg.description}`);
-	}
-	lines.push(`Trust:  ${pkg.governance.provenance}`);
-	if (pkg.governance.maintainer) {
-		lines.push(`Owner:  ${pkg.governance.maintainer}`);
-	}
-	lines.push(
-		`Resources: extensions=${pkg.extensions.length}, skills=${pkg.skillPaths.length}, systemPrompt=${pkg.systemPromptPath ? "yes" : "no"}, toolRules=${pkg.toolRulesPath ? "yes" : "no"}`,
-	);
-	if (pkg.governance.capabilitiesRequested.length > 0) {
-		lines.push(`Capabilities: ${pkg.governance.capabilitiesRequested.join(", ")}`);
-	}
-	if (pkg.governance.compatibility.takumi || pkg.governance.compatibility.packageApi) {
-		lines.push(
-			`Compatibility: takumi=${pkg.governance.compatibility.takumi ?? "unspecified"}, packageApi=${pkg.governance.compatibility.packageApi ?? "unspecified"}`,
-		);
-	}
-	if (pkg.governance.evals.coverage?.length || pkg.governance.evals.score || pkg.governance.evals.suite) {
-		lines.push(
-			`Evals: coverage=${(pkg.governance.evals.coverage ?? []).join(", ") || "none"}, score=${pkg.governance.evals.score ?? "n/a"}, suite=${pkg.governance.evals.suite ?? "n/a"}`,
-		);
-	}
-	if (pkg.resources.extensions.length > 0) {
-		lines.push("Declared extensions:");
-		for (const value of pkg.resources.extensions) lines.push(`  - ${value}`);
-	}
-	if (pkg.resources.skills.length > 0) {
-		lines.push("Declared skills:");
-		for (const value of pkg.resources.skills) lines.push(`  - ${value}`);
-	}
-	if (pkg.resources.systemPrompt) lines.push(`Declared system prompt: ${pkg.resources.systemPrompt}`);
-	if (pkg.resources.toolRules) lines.push(`Declared tool rules: ${pkg.resources.toolRules}`);
-	if (pkg.warnings.length > 0) {
-		lines.push("Warnings:");
-		for (const warning of pkg.warnings) lines.push(`  - ${warning}`);
-	}
-	return lines.join("\n");
+function loadPackageInspection(config: TakumiConfig): PackageInspection {
+	return inspectTakumiPackages(config);
 }
 
 function slugifyPackageName(value: string): string {
@@ -355,9 +189,9 @@ export async function cmdPackage(
 		return;
 	}
 
-	const result = loadPackages(config);
+	const inspection = loadPackageInspection(config);
 	if (action === "doctor" || action === "validate") {
-		const report = buildPackageDoctorReport(result);
+		const report = buildPackageDoctorReport(inspection);
 		if (asJson) {
 			console.log(JSON.stringify(report, null, 2));
 			return;
@@ -372,7 +206,7 @@ export async function cmdPackage(
 			console.error("Usage: takumi package inspect <name>");
 			process.exit(1);
 		}
-		const pkg = findPackage(result.packages, query);
+		const pkg = findPackage(inspection.packages, query);
 		if (!pkg) {
 			console.error(`Package not found: ${query}`);
 			process.exit(1);
@@ -381,26 +215,42 @@ export async function cmdPackage(
 			console.log(JSON.stringify(pkg, null, 2));
 			return;
 		}
-		console.log(formatPackageDetails(pkg));
+		console.log(formatPackageDetails(pkg, inspection));
 		return;
 	}
 
-	const packages = result.packages.map(toPackageListView).sort((left, right) => left.name.localeCompare(right.name));
+	const report = buildPackageDoctorReport(inspection);
+	const packages = report.packages;
 	if (asJson) {
-		console.log(JSON.stringify({ packages, errors: result.errors }, null, 2));
+		console.log(
+			JSON.stringify(
+				{
+					packages,
+					ready: report.ready,
+					degraded: report.degraded,
+					rejected: report.rejected,
+					shadowed: report.shadowed,
+					conflicts: report.conflicts,
+					rejectedEntries: report.rejectedEntries,
+					errors: report.errors,
+				},
+				null,
+				2,
+			),
+		);
 		return;
 	}
 	if (packages.length === 0) {
 		console.log("No Takumi packages discovered.");
-		if (result.errors.length > 0) {
-			for (const error of result.errors) console.log(`- ${error.path}: ${error.error}`);
+		if (report.rejectedEntries.length > 0) {
+			for (const error of report.rejectedEntries) console.log(`- ${error.path}: ${error.error}`);
 		}
 		return;
 	}
 	console.log(`\nTakumi packages (${packages.length}):\n`);
 	for (const pkg of packages) {
-		const warningSuffix = pkg.warnings.length > 0 ? ` · ${pkg.warnings.length} warning(s)` : "";
-		console.log(`  ${pkg.name}@${pkg.version} [${pkg.source}/${pkg.provenance}]${warningSuffix}`);
+		const diagnosticSuffix = pkg.diagnostics.length > 0 ? ` · ${pkg.diagnostics.length} diagnostic(s)` : "";
+		console.log(`  ${pkg.name}@${pkg.version} [${pkg.state}] ${pkg.source}/${pkg.provenance}${diagnosticSuffix}`);
 		console.log(`    Root:        ${pkg.rootPath}`);
 		console.log(`    Resources:   ext ${pkg.resources.extensions} · skills ${pkg.resources.skills} · prompt ${pkg.resources.systemPrompt ? "yes" : "no"} · rules ${pkg.resources.toolRules ? "yes" : "no"}`);
 		if (pkg.capabilitiesRequested.length > 0) {
@@ -415,10 +265,13 @@ export async function cmdPackage(
 		if (pkg.maintainer) {
 			console.log(`    Maintainer:  ${pkg.maintainer}`);
 		}
+		for (const diagnostic of pkg.diagnostics) {
+			console.log(`    Diagnostic:  ${diagnostic.message}`);
+		}
 		console.log();
 	}
-	if (result.errors.length > 0) {
-		console.log("Errors:");
-		for (const error of result.errors) console.log(`  - ${error.path}: ${error.error}`);
+	if (report.rejectedEntries.length > 0) {
+		console.log("Rejected:");
+		for (const error of report.rejectedEntries) console.log(`  - ${error.path}: ${error.error}`);
 	}
 }

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { discoverTakumiPackages } from "@takumi/agent";
+import { discoverTakumiPackages, inspectTakumiPackages } from "@takumi/agent";
 import { describe, expect, it } from "vitest";
 import {
 	buildPackageDoctorReport,
@@ -59,15 +59,18 @@ describe("package CLI helpers", () => {
 			createPackage(cwd, "review-kit");
 			createPackage(cwd, "broken-kit", true);
 
-			const result = discoverTakumiPackages([], cwd);
-			const report = buildPackageDoctorReport(result);
+			const inspection = inspectTakumiPackages({ workingDirectory: cwd, packages: [] });
+			const report = buildPackageDoctorReport(inspection);
 
 			expect(report.total).toBe(2);
-			expect(report.warning).toBe(1);
 			expect(report.ready).toBe(1);
+			expect(report.degraded).toBe(1);
+			expect(report.rejected).toBe(0);
+			expect(report.warning).toBe(1);
 			expect(report.errors).toEqual([]);
 
 			const brokenView = report.packages.find((pkg) => pkg.name === "@takumi/broken-kit");
+			expect(brokenView?.state).toBe("degraded");
 			expect(brokenView?.provenance).toBe("local");
 			expect(brokenView?.warnings).toEqual(
 				expect.arrayContaining([
@@ -85,18 +88,21 @@ describe("package CLI helpers", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "takumi-package-details-"));
 		try {
 			createPackage(cwd, "review-kit");
+			const inspection = inspectTakumiPackages({ workingDirectory: cwd, packages: [] });
 			const result = discoverTakumiPackages([], cwd);
 			const pkg = findPackage(result.packages, "review-kit");
 
 			expect(pkg?.packageName).toBe("@takumi/review-kit");
 
-			const details = formatPackageDetails(pkg!);
+			const details = formatPackageDetails(pkg!, inspection);
 			expect(details).toContain("@takumi/review-kit@0.2.0");
+			expect(details).toContain("State:  ready");
 			expect(details).toContain("Declared extensions:");
 			expect(details).toContain("Declared system prompt: ./system-prompt.md");
 			expect(details).toContain("Declared tool rules: ./tool-rules.json");
 
 			const view = toPackageListView(pkg!);
+			expect(view.state).toBe("ready");
 			expect(view.resources.extensions).toBe(1);
 			expect(view.resources.skills).toBe(1);
 			expect(view.description).toBe("Workflow review kit");

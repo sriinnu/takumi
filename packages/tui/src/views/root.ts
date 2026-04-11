@@ -12,9 +12,9 @@ import type { KeyEvent, Rect, TakumiConfig } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import type { Screen } from "@takumi/render";
 import { Component, effect } from "@takumi/render";
-import type { SlashCommandRegistry } from "../commands.js";
+import type { SlashCommandRegistry } from "../commands/commands.js";
 import type { ExtensionUiStore } from "../extension-ui-store.js";
-import type { KeyBindingRegistry } from "../keybinds.js";
+import type { KeyBindingRegistry } from "../input/keybinds.js";
 import { DialogOverlay } from "../panels/dialog-overlay.js";
 import { FilePreviewPanel } from "../panels/file-preview.js";
 import { FileTreePanel } from "../panels/file-tree.js";
@@ -104,12 +104,6 @@ export class RootView extends Component {
 		if (this.dialogOverlay.active) {
 			const consumed = this.dialogOverlay.handleKey(event);
 			if (consumed) return true;
-		}
-
-		// Ctrl+P: toggle file preview pane
-		if (event.raw === KEY_CODES.CTRL_P) {
-			this.togglePreview();
-			return true;
 		}
 
 		// If preview has focus and is visible, route keys there

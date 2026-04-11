@@ -12,6 +12,19 @@ export interface AgentState {
 	contextPercent: number | null;
 	contextPressure?: string | null;
 	bridgeConnected?: boolean;
+	sync?: {
+		canonicalSessionId: string | null;
+		status: "idle" | "pending" | "syncing" | "ready" | "failed";
+		pendingLocalTurns: number;
+		lastSyncError: string | null;
+		lastSyncedMessageId: string | null;
+		lastSyncedMessageTimestamp: number | null;
+		lastAttemptedMessageId: string | null;
+		lastAttemptedMessageTimestamp: number | null;
+		lastFailedMessageId: string | null;
+		lastFailedMessageTimestamp: number | null;
+		lastSyncedAt: number | null;
+	} | null;
 	routing?: {
 		capability: string | null;
 		authority: "engine" | "takumi-fallback";
@@ -26,6 +39,15 @@ export interface AgentState {
 		pendingCount: number;
 		tool: string | null;
 		argsSummary: string | null;
+	} | null;
+	usage?: {
+		turnCount: number;
+		totalTokens: number;
+		totalCostUsd: number;
+		ratePerMinute: number;
+		projectedUsd: number;
+		budgetFraction: number;
+		alertLevel: "none" | "info" | "warning" | "critical";
 	} | null;
 	anomaly?: {
 		severity: string;
@@ -52,6 +74,37 @@ export interface AgentState {
 			previewLines: string[];
 			truncated: boolean;
 		}>;
+	} | null;
+	tokmeter?: {
+		source: "tokmeter-core";
+		projectQuery: string;
+		refreshedAt: number;
+		matchedProjects: string[];
+		totalTokens: number;
+		totalCostUsd: number;
+		todayTokens: number;
+		todayCostUsd: number;
+		activeDays: number;
+		totalRecords: number;
+		topModels: Array<{
+			model: string;
+			provider: string;
+			totalTokens: number;
+			costUsd: number;
+			percentageOfTotal: number;
+		}>;
+		topProviders: Array<{
+			provider: string;
+			totalTokens: number;
+			costUsd: number;
+			percentageOfTotal: number;
+		}>;
+		recentDaily: Array<{
+			date: string;
+			totalTokens: number;
+			costUsd: number;
+		}>;
+		note: string | null;
 	} | null;
 	updatedAt: number;
 }
@@ -181,6 +234,7 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 	const abortRef = useRef<AbortController | null>(null);
 	const isMountedRef = useRef(true);
 	const sessionIdRef = useRef<string | null>(null);
+	const sessionDetailIdRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		return () => {
@@ -216,7 +270,10 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 			const res = await fetch(`${baseUrl}/sessions/${encodeURIComponent(sessionId)}`, { signal });
 			if (!res.ok || !isMountedRef.current) return null;
 			const data = (await res.json()) as SessionDetail;
-			if (isMountedRef.current) setSessionDetail(data);
+			if (isMountedRef.current) {
+				sessionDetailIdRef.current = data.id;
+				setSessionDetail(data);
+			}
 			return data;
 		},
 		[baseUrl],
@@ -366,6 +423,9 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 						await fetchRepoDiff(controller.signal);
 						await fetchState(pids[0], controller.signal);
 						await fetchArtifacts(controller.signal, sessionIdRef.current);
+						if (sessionDetailIdRef.current) {
+							await loadSessionDetail(sessionDetailIdRef.current, controller.signal);
+						}
 					}
 				}
 			} catch (err) {
@@ -397,6 +457,7 @@ export function useAgentStream(opts: UseAgentStreamOptions = {}) {
 		fetchRuntimes,
 		fetchState,
 		fetchSessions,
+		loadSessionDetail,
 	]);
 
 	useEffect(() => {

@@ -11,7 +11,7 @@
  */
 
 import * as esbuild from "esbuild";
-import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,20 @@ const require = createRequire(import.meta.url);
 // Ensure dist/ exists
 if (!existsSync(join(root, "dist"))) {
 	mkdirSync(join(root, "dist"), { recursive: true });
+}
+
+function removeStaleBundleArtifacts() {
+	const staleArtifacts = [
+		join(root, "dist", "takumi.cjs.map"),
+		join(root, "dist", "takumi.js.map"),
+		join(root, "dist", "takumi-telemetry-snapshot.cjs.map"),
+	];
+
+	for (const filePath of staleArtifacts) {
+		if (existsSync(filePath)) {
+			rmSync(filePath, { force: true });
+		}
+	}
 }
 
 // Copy yoga.wasm into dist/ so the bundled file can find it at runtime
@@ -94,6 +108,8 @@ const telemetryConfig = {
 	sourcemap: false,
 	logLevel: "info",
 };
+
+removeStaleBundleArtifacts();
 
 if (isWatch) {
 	const ctx = await esbuild.context(config);

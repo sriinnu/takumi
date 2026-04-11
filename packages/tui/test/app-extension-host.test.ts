@@ -1,7 +1,8 @@
+import type { LoadedExtension } from "@takumi/agent";
 import { describe, expect, it, vi } from "vitest";
 import { registerExtensionHostSurfaces } from "../src/app-extension-host.js";
-import { SlashCommandRegistry } from "../src/commands.js";
-import { KeyBindingRegistry } from "../src/keybinds.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
+import { KeyBindingRegistry } from "../src/input/keybinds.js";
 import { AppState } from "../src/state.js";
 
 function createExtensionRunner(options: {
@@ -11,6 +12,7 @@ function createExtensionRunner(options: {
 		description?: string;
 		handler?: (...args: any[]) => Promise<void>;
 	}>;
+	loadedExtensions?: LoadedExtension[];
 	shortcuts?: Array<{ key: string; extensionPath: string; description?: string; handler?: () => Promise<void> | void }>;
 }) {
 	const commandEntries =
@@ -35,42 +37,55 @@ function createExtensionRunner(options: {
 				handler: handler ?? (() => undefined),
 			},
 		]) ?? [];
+	const createContext = vi.fn((extensionPath?: string) => ({
+		extensionPath,
+		get cwd() {
+			return "/repo";
+		},
+		get model() {
+			return "gpt-4.1";
+		},
+		get sessionId() {
+			return "session-1";
+		},
+		isIdle: () => true,
+		abort: () => undefined,
+		getContextUsage: () => undefined,
+		getSystemPrompt: () => "system",
+		compact: () => undefined,
+		shutdown: () => undefined,
+		get hasUI() {
+			return false;
+		},
+		notify: () => undefined,
+		ui: {
+			confirm: async () => false,
+			pick: async () => undefined,
+			setWidget: () => undefined,
+			removeWidget: () => undefined,
+		},
+		session: {
+			getSnapshot: () => undefined,
+			getName: () => undefined,
+			setName: () => undefined,
+		},
+		storage: {
+			get: async () => undefined,
+			set: async () => undefined,
+			delete: async () => undefined,
+			keys: async () => [],
+			getSession: async () => undefined,
+			setSession: async () => undefined,
+			deleteSession: async () => undefined,
+			sessionKeys: async () => [],
+		},
+	}));
 
 	return {
+		_extensions: options.loadedExtensions ?? [],
 		getAllCommands: () => new Map(commandEntries),
 		getAllShortcuts: () => new Map(shortcutEntries),
-		createContext: () => ({
-			get cwd() {
-				return "/repo";
-			},
-			get model() {
-				return "gpt-4.1";
-			},
-			get sessionId() {
-				return "session-1";
-			},
-			isIdle: () => true,
-			abort: () => undefined,
-			getContextUsage: () => undefined,
-			getSystemPrompt: () => "system",
-			compact: () => undefined,
-			shutdown: () => undefined,
-			get hasUI() {
-				return false;
-			},
-			notify: () => undefined,
-			ui: {
-				confirm: async () => false,
-				pick: async () => undefined,
-				setWidget: () => undefined,
-				removeWidget: () => undefined,
-			},
-			session: {
-				getSnapshot: () => undefined,
-				getName: () => undefined,
-				setName: () => undefined,
-			},
-		}),
+		createContext,
 	} as any;
 }
 
@@ -103,6 +118,62 @@ describe("registerExtensionHostSurfaces", () => {
 		await commands.execute("/hello world");
 		expect(handler).toHaveBeenCalledOnce();
 		expect(handler.mock.calls[0]?.[0]).toBe("world");
+		expect(handler.mock.calls[0]?.[1]?.extensionPath).toBe("/tmp/sample-extension.ts");
+		expect(commands.get("/hello")?.source).toBe("external");
+		expect(commands.get("/hello")?.packId).toBe("extension:sample-extension");
+		expect(commands.get("/hello")?.packLabel).toBe("sample-extension");
+	});
+
+	it("uses package residency metadata for package-backed extension commands", () => {
+		const commands = new SlashCommandRegistry();
+
+		registerExtensionHostSurfaces({
+			extensionRunner: createExtensionRunner({
+				commands: [
+					{
+						name: "package-review",
+						extensionPath: "/repo/.takumi/packages/review-kit/index.mjs",
+						description: "Review package",
+					},
+				],
+				loadedExtensions: [
+					{
+						path: "/repo/.takumi/packages/review-kit/index.mjs",
+						resolvedPath: "/repo/.takumi/packages/review-kit/index.mjs",
+						origin: {
+							residency: "package",
+							packageId: "@takumi/review-kit",
+							packageName: "@takumi/review-kit",
+							packageSource: "project",
+						},
+						handlers: new Map(),
+						tools: new Map(),
+						commands: new Map(),
+						shortcuts: new Map(),
+						manifest: undefined,
+						_actions: {
+							sendUserMessage: () => undefined,
+							getSessionId: () => undefined,
+							getActiveTools: () => [],
+							setActiveTools: () => undefined,
+							exec: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+							getSessionName: () => undefined,
+							setSessionName: () => undefined,
+						},
+					},
+				],
+			}),
+			commands,
+			keybinds: new KeyBindingRegistry(),
+			state: new AppState(),
+			addInfoMessage: vi.fn(),
+			activateSession: vi.fn(async () => undefined),
+			resumeSession: vi.fn(async () => undefined),
+		});
+
+		expect(commands.get("/package-review")?.packId).toBe("package:@takumi/review-kit");
+		expect(commands.get("/package-review")?.packLabel).toBe("@takumi/review-kit");
+		expect(commands.get("/package-review")?.residency).toBe("package");
 	});
 
 	it("renames conflicting extension commands instead of clobbering built-ins", async () => {
@@ -125,6 +196,8 @@ describe("registerExtensionHostSurfaces", () => {
 			.list()
 			.find((command) => command.name !== "/help" && command.description.includes("requested /help"));
 		expect(extensionCommand?.name).toMatch(/^\/help\./);
+		expect(extensionCommand?.source).toBe("external");
+		expect(extensionCommand?.requestedName).toBe("/help");
 	});
 
 	it("registers non-conflicting extension shortcuts and skips collisions", async () => {

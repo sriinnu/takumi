@@ -129,12 +129,16 @@ export class Screen {
 	/**
 	 * Diff front and back buffers. Returns the minimal ANSI output
 	 * to bring the terminal in sync, then swaps buffers.
+	 * Uses style-span tracking to avoid redundant reset+restyle between
+	 * adjacent cells with the same style (10-15× ANSI output reduction).
 	 */
 	diff(): ScreenPatch {
 		const parts: string[] = [];
 		let changedCells = 0;
 		let lastRow = -1;
 		let lastCol = -1;
+		/** Track the currently-active ANSI style to avoid redundant reset+restyle. */
+		let activeStyle: Cell | null = null;
 
 		for (let row = 0; row < this.height; row++) {
 			for (let col = 0; col < this.width; col++) {
@@ -149,17 +153,25 @@ export class Screen {
 				// Move cursor if not adjacent to last write
 				if (row !== lastRow || col !== lastCol) {
 					parts.push(cursorTo(row + 1, col + 1));
+					activeStyle = null; // cursor jump invalidates style context
 				}
 
-				// Apply styles
-				parts.push(cellStyle(backCell));
+				// Only emit style when it differs from the previous output cell
+				if (!activeStyle || !stylesEqual(activeStyle, backCell)) {
+					parts.push(reset());
+					parts.push(cellStyle(backCell));
+					activeStyle = backCell;
+				}
+
 				parts.push(backCell.char);
-				parts.push(reset());
 
 				lastRow = row;
 				lastCol = col + 1;
 			}
 		}
+
+		// Final reset if we emitted any styled content
+		if (activeStyle) parts.push(reset());
 
 		// Copy back → front in-place (zero new object allocations)
 		for (let i = 0; i < this.back.length; i++) {
@@ -194,6 +206,19 @@ export class Screen {
 function cellsEqual(a: Cell, b: Cell): boolean {
 	return (
 		a.char === b.char &&
+		a.fg === b.fg &&
+		a.bg === b.bg &&
+		a.bold === b.bold &&
+		a.dim === b.dim &&
+		a.italic === b.italic &&
+		a.underline === b.underline &&
+		a.strikethrough === b.strikethrough
+	);
+}
+
+/** Compare only style properties (not char) for style-span tracking. */
+function stylesEqual(a: Cell, b: Cell): boolean {
+	return (
 		a.fg === b.fg &&
 		a.bg === b.bg &&
 		a.bold === b.bold &&

@@ -6,8 +6,12 @@ import { AgentEvaluator, AutonomousOrchestrator } from "@yugenlab/chitragupta/ni
 import type { MessagePayload } from "../loop.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import { AgentBus } from "./agent-bus.js";
-import { AgentProfileStore, type TaskOutcome } from "./agent-identity.js";
-import { CheckpointManager } from "./checkpoint.js";
+import { AgentProfileStore } from "./agent-identity.js";
+import {
+	CheckpointManager,
+	type ClusterCheckpointCompatibilityResult,
+	evaluateClusterCheckpointCompatibility,
+} from "./checkpoint.js";
 import { ChitraguptaBusBridge } from "./chitragupta-bus-bridge.js";
 import { createIsolationContext, type IsolationContext } from "./isolation.js";
 import { adaptTopologyAfterRejection } from "./mesh-policy.js";
@@ -18,7 +22,8 @@ import {
 	recordBanditOutcome,
 	registerStrategies,
 } from "./orchestrator-bandit.js";
-import { getProfileBiasedModel, inferRoutingCaps, lucyBiasTopology } from "./orchestrator-profile.js";
+import { getProfileBiasedModel, lucyBiasTopology } from "./orchestrator-profile.js";
+import { recordClusterAgentProfiles } from "./orchestrator-profiles.js";
 import { ClusterPhaseRunner, type PhaseContext } from "./phases.js";
 import {
 	type AgentInstance,
@@ -70,6 +75,7 @@ export class ClusterOrchestrator {
 	readonly bus: AgentBus;
 	readonly profileStore: AgentProfileStore;
 	private readonly busBridge: ChitraguptaBusBridge | null;
+	private lastResumeCompatibility: ClusterCheckpointCompatibilityResult | null = null;
 	private state: ClusterState | null = null;
 	private isolationCtx: IsolationContext | null = null;
 	private eventListeners: Array<(event: ClusterEvent) => void> = [];
@@ -128,7 +134,13 @@ export class ClusterOrchestrator {
 				return orch.tools;
 			},
 			getModelForRole: (role) =>
-				getProfileBiasedModel(role, orch.modelOverrides, orch.profileStore, orch.state?.config.taskDescription ?? ""),
+				getProfileBiasedModel(
+					role,
+					orch.state?.config.laneEnvelopes,
+					orch.modelOverrides,
+					orch.profileStore,
+					orch.state?.config.taskDescription ?? "",
+				),
 			onAgentText: (id, delta) => orch.onAgentText?.(id, delta),
 			onTokenUsage: (i, o) => {
 				orch.totalInputTokens += i;
@@ -141,7 +153,6 @@ export class ClusterOrchestrator {
 	}
 
 	async spawn(config: ClusterConfig): Promise<ClusterState> {
-		// Lucy profile bias: if we have reliable topology history, use it
 		const biasedTopology = lucyBiasTopology(config.topology, this.profileStore);
 		const finalConfig = biasedTopology !== config.topology ? { ...config, topology: biasedTopology } : config;
 		log.info(`Spawning cluster: ${finalConfig.roles.length} agents, strategy=${finalConfig.validationStrategy}`);
@@ -169,6 +180,7 @@ export class ClusterOrchestrator {
 			createdAt: now,
 			updatedAt: now,
 		};
+		this.lastResumeCompatibility = null;
 
 		for (const role of finalConfig.roles) {
 			const agent = this.createAgent(role, finalConfig.taskDescription);
@@ -294,6 +306,7 @@ export class ClusterOrchestrator {
 			this.state = null;
 			this.onMeshSizeChange?.(1);
 		}
+		this.lastResumeCompatibility = null;
 		if (this.isolationCtx) {
 			await this.isolationCtx.cleanup();
 			this.isolationCtx = null;
@@ -307,6 +320,10 @@ export class ClusterOrchestrator {
 
 	get workDir(): string {
 		return this.isolationCtx?.workDir ?? process.cwd();
+	}
+
+	getLastResumeCompatibility(): ClusterCheckpointCompatibilityResult | null {
+		return this.lastResumeCompatibility;
 	}
 
 	private createAgent(role: AgentRole, taskDescription: string): AgentInstance {
@@ -359,7 +376,6 @@ export class ClusterOrchestrator {
 				log.error("Event listener threw", err);
 			}
 		}
-		// Mirror cluster events onto the agent bus as discovery shares
 		this.bus.publish({
 			type: "discovery_share",
 			id: `cls-${Date.now()}`,
@@ -372,37 +388,36 @@ export class ClusterOrchestrator {
 
 	private recordAgentProfiles(success: boolean): void {
 		if (!this.state) return;
-		const durationMs = Date.now() - this.runStartMs;
-		const taskCaps = inferRoutingCaps(this.state.config.taskDescription);
-		this.profileStore.recordTopologyOutcome(this.state.config.topology, success);
-		const agentCount = this.state.agents.size;
-		const tokensPerAgent =
-			agentCount > 0 ? Math.round((this.totalInputTokens + this.totalOutputTokens) / agentCount) : 0;
-		for (const agent of this.state.agents.values()) {
-			const model = this.modelOverrides?.[agent.role] ?? "default";
-			const outcome: TaskOutcome = {
-				role: agent.role,
-				model,
-				success,
-				capabilities: taskCaps,
-				durationMs,
-				tokensUsed: tokensPerAgent,
-			};
-			this.profileStore.recordOutcome(outcome);
-		}
-		// save() is also called in shutdown(); skip the extra sync write here
+		recordClusterAgentProfiles({
+			state: this.state,
+			runStartMs: this.runStartMs,
+			totalInputTokens: this.totalInputTokens,
+			totalOutputTokens: this.totalOutputTokens,
+			modelOverrides: this.modelOverrides,
+			profileStore: this.profileStore,
+			success,
+		});
 	}
 
 	private async saveCheckpoint(): Promise<void> {
 		if (!this.enableCheckpoints || !this.state) return;
-		await this.checkpoints.save(CheckpointManager.fromState(this.state));
+		await this.checkpoints.save(CheckpointManager.fromState(this.state, this.orchestrationConfig));
 	}
 
 	async resume(clusterId: string): Promise<ClusterState | null> {
 		const cp = await this.checkpoints.load(clusterId);
 		if (!cp) {
+			this.lastResumeCompatibility = null;
 			log.warn(`No checkpoint found for cluster ${clusterId}`);
 			return null;
+		}
+		const compatibility = evaluateClusterCheckpointCompatibility(cp, this.orchestrationConfig);
+		this.lastResumeCompatibility = compatibility;
+		if (compatibility.blocking) {
+			throw new Error(compatibility.summary ?? `Checkpoint compatibility blocked resume for ${clusterId}.`);
+		}
+		if (compatibility.summary) {
+			log.warn(compatibility.summary);
 		}
 
 		log.info(`Resuming cluster ${clusterId} from phase ${cp.phase}`);

@@ -4,7 +4,14 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { TaskComplexity } from "../src/classifier.js";
-import { BudgetExceededError, BudgetGuard, estimateClusterCost, estimateCost, MODEL_PRICING } from "../src/cost.js";
+import {
+	BudgetExceededError,
+	BudgetGuard,
+	estimateClusterCost,
+	estimateCost,
+	estimateUsageCost,
+	MODEL_PRICING,
+} from "../src/cost.js";
 
 // ── estimateCost ──────────────────────────────────────────────────────────────
 
@@ -46,6 +53,17 @@ describe("estimateCost", () => {
 			expect(cost, `model: ${model}`).toBeGreaterThan(0);
 			expect(Number.isFinite(cost), `model: ${model}`).toBe(true);
 		}
+	});
+});
+
+describe("estimateUsageCost", () => {
+	it("applies cache-read discounts when available", () => {
+		const estimated = estimateUsageCost(
+			{ inputTokens: 1_000, outputTokens: 500, cacheReadTokens: 500 },
+			"claude-sonnet-4-20250514",
+		);
+		const expected = (1_000 * 3) / 1_000_000 + (500 * 15) / 1_000_000 - (500 * 2.7) / 1_000_000;
+		expect(estimated).toBeCloseTo(expected, 10);
 	});
 });
 
@@ -93,6 +111,11 @@ describe("BudgetGuard", () => {
 	it("starts with zero spent", () => {
 		const guard = new BudgetGuard({ limitUsd: 1.0, model: "claude-3-5-sonnet" });
 		expect(guard.spent).toBe(0);
+	});
+
+	it("can seed spend when resuming a session", () => {
+		const guard = new BudgetGuard({ limitUsd: 1.0, model: "gpt-4o", initialSpentUsd: 0.25 });
+		expect(guard.spent).toBe(0.25);
 	});
 
 	it("accumulates cost across calls", () => {
@@ -146,6 +169,20 @@ describe("BudgetGuard", () => {
 		expect(onUpdate).toHaveBeenCalledTimes(1);
 		guard.record(100_000, 50_000);
 		expect(onUpdate).toHaveBeenCalledTimes(2);
+	});
+
+	it("uses usage-aware pricing for cache-read tokens", () => {
+		const guard = new BudgetGuard({ limitUsd: 10, model: "claude-sonnet-4-20250514" });
+		guard.record(1_000, 500, 500);
+		const expected = (1_000 * 3) / 1_000_000 + (500 * 15) / 1_000_000 - (500 * 2.7) / 1_000_000;
+		expect(guard.spent).toBeCloseTo(expected, 10);
+	});
+
+	it("can update the limit without resetting spent", () => {
+		const guard = new BudgetGuard({ limitUsd: 1.0, model: "gpt-4o", initialSpentUsd: 0.25 });
+		guard.setLimitUsd(0.5);
+		expect(guard.spent).toBe(0.25);
+		expect(guard.remaining).toBeCloseTo(0.25, 10);
 	});
 
 	it("summary() returns a human-readable string", () => {

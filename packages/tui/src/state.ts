@@ -3,7 +3,14 @@
  * All UI components observe these signals and re-render when they change.
  */
 
-import { buildCognitiveState, type CognitiveState, SteeringQueue } from "@takumi/agent";
+import {
+	buildCognitiveState,
+	type CognitiveState,
+	type AlertLevel as CostAlertLevel,
+	type CostSnapshot,
+	estimateUsageCost,
+	SteeringQueue,
+} from "@takumi/agent";
 import type {
 	CapabilityDescriptor,
 	CapabilityHealthSnapshot,
@@ -13,16 +20,37 @@ import type {
 	RoutingDecision,
 	VasanaTendency,
 } from "@takumi/bridge";
-import { AlertEngine, ApprovalQueue, type Message, type PermissionDecision, type Size, type Usage } from "@takumi/core";
+import {
+	AlertEngine,
+	ApprovalQueue,
+	DEFAULT_ALERT_THRESHOLDS,
+	type HandoffFileChange,
+	type Message,
+	type PermissionDecision,
+	type SessionArtifactPromotionState,
+	type SessionControlPlaneDegradedContext,
+	type SessionControlPlaneLaneState,
+	type SessionControlPlaneSyncState,
+	type Size,
+	type Usage,
+} from "@takumi/core";
 import type { ReadonlySignal, Signal } from "@takumi/render";
 import { computed, signal } from "@takumi/render";
-import { resetRecentDirectiveHistory } from "./chitragupta-runtime-helpers.js";
+import { resetRecentDirectiveHistory } from "./chitragupta/chitragupta-runtime-helpers.js";
 import { cloneProviderModelCatalog, PROVIDER_MODELS } from "./completion.js";
+import type {
+	ContinuityAttachedPeer,
+	ContinuityAttachGrant,
+	ContinuityAuditEvent,
+	ContinuityExecutorLease,
+} from "./continuity/continuity-types.js";
 import { ValidationResultsDialog } from "./dialogs/validation-results.js";
+import { appendTrackedChange, appendTrackedRead } from "./file-tracking.js";
 import type { ScarlettIntegrityReport } from "./scarlett-runtime.js";
 import { buildScarlettIntegrityReport } from "./scarlett-runtime.js";
 import { SideLaneStore } from "./side-lane-store.js";
 import { ToolSpinner } from "./spinner.js";
+import { buildCostTelemetryText, formatUsdPerMinute } from "./state-cost.js";
 
 // ── Cluster command channel type ──────────────────────────────────────────────
 /** Commands dispatched from slash commands / dialogs to CodingAgent. */
@@ -43,22 +71,32 @@ export class AppState {
 			this.steeringPending.value = size;
 		});
 	}
-
 	// ── Conversation ──────────────────────────────────────────────────────────
 	readonly messages: Signal<Message[]> = signal<Message[]>([]);
 	readonly isStreaming: Signal<boolean> = signal(false);
 	readonly streamingText: Signal<string> = signal("");
 	readonly thinkingText: Signal<string> = signal("");
-
 	// ── Usage tracking ────────────────────────────────────────────────────────
 	readonly totalInputTokens: Signal<number> = signal(0);
 	readonly totalOutputTokens: Signal<number> = signal(0);
 	readonly totalCost: Signal<number> = signal(0);
+	readonly costSnapshot: Signal<CostSnapshot | null> = signal<CostSnapshot | null>(null);
 	readonly turnCount: Signal<number> = signal(0);
-
 	// ── Session ───────────────────────────────────────────────────────────────
 	readonly sessionId: Signal<string> = signal("");
 	readonly canonicalSessionId: Signal<string> = signal("");
+	readonly controlPlaneLanes: Signal<SessionControlPlaneLaneState[]> = signal<SessionControlPlaneLaneState[]>([]);
+	readonly chitraguptaSync: Signal<SessionControlPlaneSyncState> = signal<SessionControlPlaneSyncState>({
+		status: "idle",
+	});
+	readonly continuityGrants: Signal<ContinuityAttachGrant[]> = signal<ContinuityAttachGrant[]>([]);
+	readonly continuityPeers: Signal<ContinuityAttachedPeer[]> = signal<ContinuityAttachedPeer[]>([]);
+	readonly continuityEvents: Signal<ContinuityAuditEvent[]> = signal<ContinuityAuditEvent[]>([]);
+	readonly continuityLease: Signal<ContinuityExecutorLease | null> = signal<ContinuityExecutorLease | null>(null);
+	readonly degradedExecutionContext: Signal<SessionControlPlaneDegradedContext | null> = signal(null);
+	readonly artifactPromotion: Signal<SessionArtifactPromotionState> = signal<SessionArtifactPromotionState>({
+		status: "idle",
+	});
 	readonly model: Signal<string> = signal("claude-sonnet-4-20250514");
 	readonly provider: Signal<string> = signal("anthropic");
 	readonly sideAgentPreferredModel: Signal<string> = signal("");
@@ -66,7 +104,6 @@ export class AppState {
 		cloneProviderModelCatalog(PROVIDER_MODELS),
 	);
 	readonly theme: Signal<string> = signal("default");
-
 	// ── Thinking ──────────────────────────────────────────────────────────────
 	readonly thinking: Signal<boolean> = signal(false);
 	readonly thinkingBudget: Signal<number> = signal(10000);
@@ -105,6 +142,8 @@ export class AppState {
 	readonly collapsedTools: Signal<Set<string>> = signal(new Set<string>());
 
 	// ── File tracking ─────────────────────────────────────────────────────────
+	readonly readFiles: Signal<string[]> = signal<string[]>([]);
+	readonly fileChanges: Signal<HandoffFileChange[]> = signal<HandoffFileChange[]>([]);
 	readonly modifiedFiles: Signal<string[]> = signal<string[]>([]);
 
 	// ── File preview ─────────────────────────────────────────────────────────
@@ -286,6 +325,35 @@ export class AppState {
 		return `$${cost.toFixed(2)}`;
 	});
 
+	readonly costRatePerMinute: ReadonlySignal<number> = computed(() => this.costSnapshot.value?.ratePerMinute ?? 0);
+
+	readonly costProjectedUsd: ReadonlySignal<number> = computed(
+		() => this.costSnapshot.value?.projectedUsd ?? this.totalCost.value,
+	);
+
+	readonly costBudgetFraction: ReadonlySignal<number> = computed(() => this.costSnapshot.value?.budgetFraction ?? 0);
+
+	readonly costAlertLevel: ReadonlySignal<CostAlertLevel> = computed(
+		() => this.costSnapshot.value?.alertLevel ?? "none",
+	);
+
+	readonly hasCostSpike: ReadonlySignal<boolean> = computed(
+		() => this.costRatePerMinute.value >= DEFAULT_ALERT_THRESHOLDS.costSpikeWarningPerMin,
+	);
+
+	readonly formattedCostRate: ReadonlySignal<string> = computed(() => formatUsdPerMinute(this.costRatePerMinute.value));
+
+	readonly costTelemetryText: ReadonlySignal<string> = computed(() => {
+		return buildCostTelemetryText({
+			tokens: this.totalTokens.value,
+			formattedCost: this.formattedCost.value,
+			formattedCostRate: this.formattedCostRate.value,
+			alertLevel: this.costAlertLevel.value,
+			hasCostSpike: this.hasCostSpike.value,
+			budgetFraction: this.costBudgetFraction.value,
+		});
+	});
+
 	readonly availableProviders: ReadonlySignal<string[]> = computed(() =>
 		Object.keys(this.availableProviderModels.value).sort(),
 	);
@@ -337,6 +405,32 @@ export class AppState {
 		this.messages.value = [...this.messages.value, message];
 	}
 
+	recordFileRead(filePath: string): void {
+		this.readFiles.value = appendTrackedRead(this.readFiles.value, filePath);
+	}
+
+	recordFileChange(filePath: string, status: HandoffFileChange["status"] = "modified"): void {
+		const next = appendTrackedChange(this.fileChanges.value, filePath, status);
+		this.fileChanges.value = next;
+		this.modifiedFiles.value = next.map((entry) => entry.path);
+	}
+
+	clearFileTracking(): void {
+		this.readFiles.value = [];
+		this.fileChanges.value = [];
+		this.modifiedFiles.value = [];
+	}
+
+	getFileTrackingSnapshot(): Pick<
+		{ filesChanged: HandoffFileChange[]; filesRead: string[] },
+		"filesChanged" | "filesRead"
+	> {
+		return {
+			filesChanged: this.fileChanges.value.map((entry) => ({ ...entry })),
+			filesRead: [...this.readFiles.value],
+		};
+	}
+
 	/** Toggle the collapsed state of a tool call block. */
 	toggleToolCollapse(id: string): void {
 		const next = new Set(this.collapsedTools.value);
@@ -354,14 +448,18 @@ export class AppState {
 	}
 
 	/** Update usage counters from an API response. */
-	updateUsage(usage: Usage): void {
+	updateUsage(usage: Usage, model = this.model.value): void {
 		this.totalInputTokens.value += usage.inputTokens;
 		this.totalOutputTokens.value += usage.outputTokens;
-		// Rough cost estimation (Sonnet pricing)
-		const inputCost = (usage.inputTokens * 3) / 1_000_000;
-		const outputCost = (usage.outputTokens * 15) / 1_000_000;
-		const cacheReadDiscount = (usage.cacheReadTokens * 2.7) / 1_000_000; // 90% discount
-		this.totalCost.value += inputCost + outputCost - cacheReadDiscount;
+		this.totalCost.value += estimateUsageCost(usage, model);
+	}
+
+	setCostSnapshot(snapshot: CostSnapshot | null): void {
+		this.costSnapshot.value = snapshot;
+		if (!snapshot) return;
+		this.totalInputTokens.value = snapshot.totalInputTokens;
+		this.totalOutputTokens.value = snapshot.totalOutputTokens;
+		this.totalCost.value = snapshot.totalUsd;
 	}
 
 	setAvailableProviderModels(catalog: Record<string, string[]>): void {
@@ -380,8 +478,17 @@ export class AppState {
 		this.totalInputTokens.value = 0;
 		this.totalOutputTokens.value = 0;
 		this.totalCost.value = 0;
+		this.costSnapshot.value = null;
 		this.turnCount.value = 0;
 		this.canonicalSessionId.value = "";
+		this.controlPlaneLanes.value = [];
+		this.chitraguptaSync.value = { status: "idle" };
+		this.continuityGrants.value = [];
+		this.continuityPeers.value = [];
+		this.continuityEvents.value = [];
+		this.continuityLease.value = null;
+		this.degradedExecutionContext.value = null;
+		this.artifactPromotion.value = { status: "idle" };
 		this.sideAgentPreferredModel.value = "";
 		this.activeTool.value = null;
 		this.toolOutput.value = "";
@@ -389,7 +496,7 @@ export class AppState {
 		this.agentPhase.value = "idle";
 		this.pendingPermission.value = null;
 		this.collapsedTools.value = new Set<string>();
-		this.modifiedFiles.value = [];
+		this.clearFileTracking();
 		this.previewFile.value = "";
 		this.previewVisible.value = false;
 		this.codingPhase.value = "idle";

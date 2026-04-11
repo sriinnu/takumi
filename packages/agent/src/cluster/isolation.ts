@@ -21,9 +21,9 @@
  * ```
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { gitRoot, gitWorktreeAdd, gitWorktreeRemove, isGitRepo } from "@takumi/bridge";
 import type { DockerIsolationConfig } from "@takumi/core";
 import { createLogger } from "@takumi/core";
@@ -45,6 +45,12 @@ export interface IsolationContext {
 	readonly mode: IsolationMode;
 	/** Absolute path the cluster should treat as its working directory. */
 	readonly workDir: string;
+	/** Docker runtime details used by future container execution paths. */
+	readonly dockerConfig?: DockerIsolationConfig & {
+		hostWorkDir: string;
+		envArgs: string[];
+		containerWorkDir: string;
+	};
 	/**
 	 * Release all resources created for this context (worktrees, temp dirs,
 	 * containers, etc.). Safe to call multiple times.
@@ -70,14 +76,15 @@ export async function createIsolationContext(
 	clusterId: string,
 	docker?: DockerIsolationConfig,
 ): Promise<IsolationContext> {
+	const absoluteSourceDir = resolve(sourceDir);
 	if (mode === "worktree") {
-		return createWorktreeContext(sourceDir, clusterId);
+		return createWorktreeContext(absoluteSourceDir, clusterId);
 	}
 	if (mode === "docker") {
-		return createDockerContext(sourceDir, clusterId, docker);
+		return createDockerContext(absoluteSourceDir, clusterId, docker);
 	}
 	// "none" — trivial pass-through
-	return { mode: "none", workDir: sourceDir, cleanup: async () => {} };
+	return createPassthroughContext(absoluteSourceDir);
 }
 
 // ─── Docker isolation ─────────────────────────────────────────────────────────
@@ -98,36 +105,49 @@ async function createDockerContext(
 ): Promise<IsolationContext> {
 	if (!docker) {
 		log.warn("Docker isolation requested but no docker config provided — falling back to none");
-		return { mode: "none", workDir: sourceDir, cleanup: async () => {} };
+		return createPassthroughContext(sourceDir);
 	}
 
-	const tempBase = join(tmpdir(), `takumi-dk-${clusterId.slice(-8)}`);
-	const hostWorkDir = await mkdtemp(tempBase);
+	const sourceLayout = resolveSourceLayout(sourceDir);
+	const tempBase = join(tmpdir(), `takumi-dk-${clusterId.slice(-8)}-`);
+	const tempRootDir = await mkdtemp(tempBase);
+	const hostWorkDir = join(tempRootDir, "workspace");
+	let stagedAsWorktree = false;
 
-	// Build env-forward args from glob patterns (basic prefix matching)
-	const envArgs: string[] = [];
-	for (const [key, val] of Object.entries(process.env)) {
-		if (!key || !val) continue;
-		const matched = docker.envPassthrough.some((pattern: string) => {
-			const re = new RegExp(`^${pattern.replace("*", ".*")}$`);
-			return re.test(key);
-		});
-		if (matched) envArgs.push(`-e ${key}`);
+	try {
+		if (sourceLayout.repoRoot) {
+			const added = gitWorktreeAdd(sourceLayout.repoRoot, hostWorkDir);
+			if (!added) {
+				throw new Error("git worktree add failed while preparing docker isolation");
+			}
+			stagedAsWorktree = true;
+		} else {
+			await cp(sourceLayout.sourceRoot, hostWorkDir, { recursive: true });
+		}
+	} catch (error) {
+		await rm(tempRootDir, { recursive: true, force: true }).catch(() => {});
+		log.warn("Docker isolation staging failed — falling back to none", error);
+		return createPassthroughContext(sourceDir);
 	}
 
-	log.info(`Docker isolation ready: image=${docker.image} workDir=${hostWorkDir}`);
+	const envArgs = buildDockerEnvArgs(docker.envPassthrough);
+	const workDir = resolveNestedWorkDir(hostWorkDir, sourceLayout.relativeWorkDir);
+	const containerWorkDir = toContainerWorkDir(sourceLayout.relativeWorkDir);
+
+	log.info(`Docker isolation ready: image=${docker.image} workDir=${workDir}`);
 
 	let cleaned = false;
 	return {
 		mode: "docker",
-		workDir: hostWorkDir,
-		/** Store docker config on context so the runner can build the `docker run` command. */
-		// @ts-expect-error — extended property for docker runner
-		dockerConfig: { ...docker, hostWorkDir, envArgs },
+		workDir,
+		dockerConfig: { ...docker, hostWorkDir, envArgs, containerWorkDir },
 		async cleanup() {
 			if (cleaned) return;
 			cleaned = true;
-			await rm(hostWorkDir, { recursive: true, force: true }).catch(() => {});
+			if (stagedAsWorktree && sourceLayout.repoRoot) {
+				gitWorktreeRemove(sourceLayout.repoRoot, hostWorkDir);
+			}
+			await rm(tempRootDir, { recursive: true, force: true }).catch(() => {});
 			log.debug(`Docker temp dir cleaned up: ${hostWorkDir}`);
 		},
 	};
@@ -146,11 +166,12 @@ async function createWorktreeContext(sourceDir: string, clusterId: string): Prom
 	const repoRoot = gitRoot(sourceDir);
 	if (!repoRoot || !isGitRepo(repoRoot)) {
 		log.warn("Worktree isolation requested but no git repo found — falling back to none");
-		return { mode: "none", workDir: sourceDir, cleanup: async () => {} };
+		return createPassthroughContext(sourceDir);
 	}
+	const relativeWorkDir = getRelativeWorkDir(repoRoot, sourceDir);
 
 	// Create temp directory that will host the worktree
-	const tempBase = join(tmpdir(), `takumi-wt-${clusterId.slice(-8)}`);
+	const tempBase = join(tmpdir(), `takumi-wt-${clusterId.slice(-8)}-`);
 	const worktreePath = await mkdtemp(tempBase);
 	const added = gitWorktreeAdd(repoRoot, worktreePath);
 
@@ -158,15 +179,16 @@ async function createWorktreeContext(sourceDir: string, clusterId: string): Prom
 		// Failed to add worktree — clean up and fall back
 		await rm(worktreePath, { recursive: true, force: true });
 		log.warn("git worktree add failed — falling back to none");
-		return { mode: "none", workDir: sourceDir, cleanup: async () => {} };
+		return createPassthroughContext(sourceDir);
 	}
 
+	const workDir = resolveNestedWorkDir(worktreePath, relativeWorkDir);
 	log.info(`Worktree created at ${worktreePath} (repo: ${repoRoot})`);
 
 	let cleaned = false;
 	return {
 		mode: "worktree",
-		workDir: worktreePath,
+		workDir,
 		async cleanup() {
 			if (cleaned) return;
 			cleaned = true;
@@ -175,4 +197,60 @@ async function createWorktreeContext(sourceDir: string, clusterId: string): Prom
 			log.debug(`Worktree cleaned up: ${worktreePath}`);
 		},
 	};
+}
+
+function createPassthroughContext(sourceDir: string): IsolationContext {
+	return { mode: "none", workDir: sourceDir, cleanup: async () => {} };
+}
+
+function resolveSourceLayout(sourceDir: string): {
+	sourceRoot: string;
+	relativeWorkDir: string;
+	repoRoot: string | null;
+} {
+	const repoRoot = gitRoot(sourceDir);
+	if (repoRoot && isGitRepo(repoRoot)) {
+		return {
+			sourceRoot: repoRoot,
+			relativeWorkDir: getRelativeWorkDir(repoRoot, sourceDir),
+			repoRoot,
+		};
+	}
+	return { sourceRoot: sourceDir, relativeWorkDir: "", repoRoot: null };
+}
+
+function getRelativeWorkDir(rootDir: string, sourceDir: string): string {
+	const nestedPath = relative(rootDir, sourceDir);
+	if (!nestedPath || nestedPath === ".") {
+		return "";
+	}
+	if (nestedPath.startsWith("..") || isAbsolute(nestedPath)) {
+		return "";
+	}
+	return nestedPath;
+}
+
+function resolveNestedWorkDir(rootDir: string, relativeWorkDir: string): string {
+	return relativeWorkDir ? join(rootDir, relativeWorkDir) : rootDir;
+}
+
+function toContainerWorkDir(relativeWorkDir: string): string {
+	const suffix = relativeWorkDir.replace(/\\/g, "/");
+	return suffix ? `/workspace/${suffix}` : "/workspace";
+}
+
+function buildDockerEnvArgs(patterns: readonly string[]): string[] {
+	const envArgs: string[] = [];
+	for (const [key, val] of Object.entries(process.env)) {
+		if (!key || !val) continue;
+		if (patterns.some((pattern) => matchesEnvPattern(key, pattern))) {
+			envArgs.push(`-e ${key}`);
+		}
+	}
+	return envArgs;
+}
+
+function matchesEnvPattern(key: string, pattern: string): boolean {
+	const escapedPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+	return new RegExp(`^${escapedPattern}$`).test(key);
 }

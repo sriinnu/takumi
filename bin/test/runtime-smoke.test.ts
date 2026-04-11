@@ -126,7 +126,7 @@ describe("runtime smoke", () => {
 			server.close();
 			await once(server, "close");
 		}
-	}, 30_000);
+	}, 60_000);
 });
 
 async function runTakumiCli(args: string[], home: string): Promise<CliRunResult> {

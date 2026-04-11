@@ -13,6 +13,7 @@ export type AlertKind =
 	| "context_pressure"
 	| "cost_spike"
 	| "repeated_failure"
+	| "sync_failure"
 	| "degraded_routing"
 	| "approval_pressure"
 	| "stale_agent";

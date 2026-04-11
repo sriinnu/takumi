@@ -9,7 +9,12 @@
  */
 
 import { createLogger } from "@takumi/core";
-import { estimateCost, MODEL_PRICING, type ModelPrice } from "./cost.js";
+import {
+	estimateUsageCost as estimateUsageCostValue,
+	MODEL_PRICING,
+	type ModelPrice,
+	type UsageCostInput,
+} from "./cost.js";
 
 const log = createLogger("cost-tracker");
 
@@ -19,6 +24,8 @@ export interface TurnCost {
 	turn: number;
 	inputTokens: number;
 	outputTokens: number;
+	cacheReadTokens: number;
+	cacheWriteTokens: number;
 	costUsd: number;
 	model: string;
 	/** Epoch ms when the turn completed. */
@@ -55,6 +62,12 @@ export interface CostTrackerConfig {
 	model: string;
 	/** Budget limit in USD (Infinity for unlimited). */
 	budgetUsd: number;
+	/** Seed totals when resuming an existing session. */
+	initialInputTokens: number;
+	/** Seed totals when resuming an existing session. */
+	initialOutputTokens: number;
+	/** Seed totals when resuming an existing session. */
+	initialUsd: number;
 	/** Window size (in turns) for rate projection (default 5). */
 	rateWindow: number;
 	/** Minutes to project forward (default 10). */
@@ -67,11 +80,20 @@ export interface CostTrackerConfig {
 
 const DEFAULT_CONFIG: Omit<CostTrackerConfig, "model"> = {
 	budgetUsd: Number.POSITIVE_INFINITY,
+	initialInputTokens: 0,
+	initialOutputTokens: 0,
+	initialUsd: 0,
 	rateWindow: 5,
 	projectionMinutes: 10,
 	alertThresholds: [0.5, 0.75, 0.9],
 	onSnapshot: undefined,
 };
+
+export type { UsageCostInput } from "./cost.js";
+
+export function estimateUsageCost(usage: UsageCostInput, model: string): number {
+	return estimateUsageCostValue(usage, model);
+}
 
 // ── CostTracker ──────────────────────────────────────────────────────────────
 
@@ -85,6 +107,9 @@ export class CostTracker {
 
 	constructor(config: Pick<CostTrackerConfig, "model"> & Partial<CostTrackerConfig>) {
 		this.config = { ...DEFAULT_CONFIG, ...config } as CostTrackerConfig;
+		this.totalInputTokens = this.config.initialInputTokens;
+		this.totalOutputTokens = this.config.initialOutputTokens;
+		this.totalUsd = this.config.initialUsd;
 		this.startTime = Date.now();
 		log.debug(`CostTracker started for model=${config.model}`);
 	}
@@ -95,13 +120,21 @@ export class CostTracker {
 	 * Record token usage from a completed LLM call.
 	 * Returns the updated snapshot.
 	 */
-	record(inputTokens: number, outputTokens: number, model?: string): CostSnapshot {
+	record(
+		inputTokens: number,
+		outputTokens: number,
+		model?: string,
+		cacheReadTokens = 0,
+		cacheWriteTokens = 0,
+	): CostSnapshot {
 		const m = model ?? this.config.model;
-		const cost = estimateCost(inputTokens, outputTokens, m);
+		const cost = estimateUsageCost({ inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens }, m);
 		const turn: TurnCost = {
 			turn: this.turns.length + 1,
 			inputTokens,
 			outputTokens,
+			cacheReadTokens,
+			cacheWriteTokens,
 			costUsd: cost,
 			model: m,
 			timestamp: Date.now(),
@@ -124,6 +157,7 @@ export class CostTracker {
 		const elapsedSeconds = (Date.now() - this.startTime) / 1_000;
 		const rate = this.computeRate();
 		const fraction = Number.isFinite(this.config.budgetUsd) ? this.totalUsd / this.config.budgetUsd : 0;
+		const recordedUsd = this.turns.reduce((sum, turn) => sum + turn.costUsd, 0);
 
 		return {
 			totalUsd: this.totalUsd,
@@ -134,7 +168,7 @@ export class CostTracker {
 			projectedUsd: this.totalUsd + rate * this.config.projectionMinutes,
 			budgetFraction: fraction,
 			alertLevel: this.computeAlertLevel(fraction),
-			avgCostPerTurn: this.turns.length > 0 ? this.totalUsd / this.turns.length : 0,
+			avgCostPerTurn: this.turns.length > 0 ? recordedUsd / this.turns.length : 0,
 			elapsedSeconds,
 		};
 	}
@@ -152,6 +186,14 @@ export class CostTracker {
 	/** Total cost accumulated. */
 	get total(): number {
 		return this.totalUsd;
+	}
+
+	/** Update the active budget limit without resetting accumulated totals. */
+	setBudgetUsd(budgetUsd: number): CostSnapshot {
+		this.config.budgetUsd = budgetUsd;
+		const snap = this.snapshot();
+		this.config.onSnapshot?.(snap);
+		return snap;
 	}
 
 	/** Human-readable summary. */

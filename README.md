@@ -384,8 +384,9 @@ Takumi currently registers **14 built-in tools** in the agent runtime:
 | `Ctrl+Q` | Quit |
 | `Ctrl+C` | Cancel active run or quit |
 | `Ctrl+L` | Clear / invalidate screen |
-| `Ctrl+P` or `Ctrl+K` | Command palette |
-| `Ctrl+M` | Model picker |
+| `Ctrl+K` | Command palette |
+| `Ctrl+P` | Toggle preview |
+| `Alt+M` | Model picker |
 | `Ctrl+B` | Toggle sidebar |
 | `Ctrl+O` | Session list |
 | `Ctrl+Shift+C` | Toggle cluster panel |
@@ -450,7 +451,7 @@ Example:
     "center": ["status"],
     "right": ["metrics", "keybinds"]
   },
-  "packages": [{ "name": "./examples/packages" }],
+  "packages": [{ "path": "./examples/packages" }],
   "orchestration": {
     "enabled": true,
     "defaultMode": "multi",
@@ -564,6 +565,13 @@ See [`docs/PERFORMANCE_INPUT_LATENCY.md`](docs/PERFORMANCE_INPUT_LATENCY.md) for
 Start here:
 
 - [`docs/README.md`](docs/README.md) — user docs map and status guide
+- [`docs/tracking/README.md`](docs/tracking/README.md) — tracking docs index for roadmap vs archive material
+- [`docs/tracking/future-roadmap.md`](docs/tracking/future-roadmap.md) — maintained future roadmap by track and residency
+- [`docs/takumi-extensibility-model.md`](docs/takumi-extensibility-model.md) — hooks, extensions, skills, and core residency rules
+- [`docs/pi-mono-lessons.md`](docs/pi-mono-lessons.md) — durable lessons worth keeping from the Pi ecosystem
+- [`docs/takumi-evolution-strike-list.md`](docs/takumi-evolution-strike-list.md) — freeze/preserve/evolve guardrails during contract hardening
+- [`docs/takumi-local-operator-review.md`](docs/takumi-local-operator-review.md) — 3-agent / 4-pass review of the local TUI, CLI, tmux, and Build Window operator surface
+- [`docs/takumi-local-operator-strike-list.md`](docs/takumi-local-operator-strike-list.md) — concrete implementation slices, file map, and LOC-safe refactor order for the local operator wave
 - [`docs/KEYBINDINGS.md`](docs/KEYBINDINGS.md) — current user reference
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — current + target architecture overview
 - [`docs/review-packet.md`](docs/review-packet.md) — executive architecture/review packet for serious design discussions

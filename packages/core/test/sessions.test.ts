@@ -43,6 +43,7 @@ function makeSession(overrides: Partial<SessionData> = {}): SessionData {
 			outputTokens: 200,
 			totalCost: 0.01,
 		},
+		controlPlane: overrides.controlPlane,
 	};
 }
 
@@ -105,6 +106,146 @@ describe("saveSession / loadSession", () => {
 		expect(loaded!.tokenUsage).toEqual(session.tokenUsage);
 		expect(loaded!.createdAt).toBe(session.createdAt);
 		expect(loaded!.updatedAt).toBe(session.updatedAt);
+	});
+
+	it("preserves optional control-plane sync metadata", async () => {
+		const session = makeSession({
+			controlPlane: {
+				canonicalSessionId: "canon-123",
+				sync: {
+					lastSyncedMessageId: "msg-2",
+					lastSyncedMessageTimestamp: 1500,
+					lastSyncedAt: 1600,
+					status: "ready",
+				},
+				lanes: [
+					{
+						key: "primary",
+						role: "primary",
+						laneId: "lane-1",
+						durableKey: "durable-1",
+						snapshotAt: 1700,
+						degraded: false,
+						policy: {
+							role: "primary",
+							preferLocal: null,
+							allowCloud: true,
+							maxCostClass: "medium",
+							requireStreaming: true,
+							hardProviderFamily: null,
+							preferredProviderFamilies: ["gemini"],
+							toolAccess: "inherit",
+							privacyBoundary: "cloud-ok",
+							fallbackStrategy: "same-provider",
+							tags: ["startup"],
+						},
+						requestedPolicy: {
+							role: "primary",
+							preferLocal: true,
+							allowCloud: false,
+							maxCostClass: "low",
+							requireStreaming: true,
+							hardProviderFamily: "ollama",
+							preferredProviderFamilies: ["ollama"],
+							toolAccess: "allow",
+							privacyBoundary: "strict-local",
+							fallbackStrategy: "same-provider",
+							tags: ["requested"],
+						},
+						effectivePolicy: {
+							role: "primary",
+							preferLocal: true,
+							allowCloud: false,
+							maxCostClass: "medium",
+							requireStreaming: true,
+							hardProviderFamily: null,
+							preferredProviderFamilies: ["ollama", "gemini"],
+							toolAccess: "allow",
+							privacyBoundary: "local-preferred",
+							fallbackStrategy: "capability-only",
+							tags: ["effective"],
+						},
+						constraintsApplied: { requireStreaming: true },
+						policyHash: "policy-1",
+						policyWarnings: ["maxCostClass relaxed"],
+						authoritySource: "route.lanes.refresh",
+						verifiedAt: 1700,
+					},
+				],
+				continuity: {
+					lastUpdatedAt: 1800,
+					grants: [
+						{
+							grantId: "grant-1",
+							canonicalSessionId: "canon-123",
+							issuerRuntimeId: "runtime-a",
+							kind: "phone",
+							initialRole: "observer",
+							nonce: "nonce-1",
+							expiresAt: 2800,
+							transportRef: "https://tailnet.example/attach/grant-1",
+						},
+					],
+					attachedPeers: [
+						{
+							peerId: "peer-phone",
+							kind: "phone",
+							role: "observer",
+							attachedAt: 1750,
+							lastSeenAt: 1790,
+							replayCursor: "turn:42",
+						},
+						{
+							peerId: "peer-runtime-b",
+							kind: "runtime",
+							role: "shadow-runtime",
+							runtimeId: "runtime-b",
+							attachedAt: 1760,
+							lastSeenAt: 1795,
+							replayCursor: "turn:42",
+							shadowReady: true,
+							fingerprint: {
+								repoId: "takumi",
+								branch: "main",
+								head: "abc123",
+								dirtyHash: "clean",
+								capabilitySignature: "toolset-v1",
+								platformSignature: "macos-arm64-node22",
+								tier: "exact",
+							},
+						},
+					],
+					lease: {
+						canonicalSessionId: "canon-123",
+						epoch: 4,
+						state: "active",
+						holderRuntimeId: "runtime-a",
+						claimantRuntimeId: null,
+						lastHeartbeatAt: 1799,
+						leaseExpiresAt: 2400,
+						blockers: [],
+						reason: null,
+						witnessPeerId: null,
+					},
+					events: [
+						{
+							eventId: "evt-1",
+							kind: "grant-issued",
+							occurredAt: 1705,
+							grantId: "grant-1",
+							peerId: null,
+							peerKind: "phone",
+							role: "observer",
+							note: "Observer-only companion bootstrap issued.",
+						},
+					],
+				},
+			},
+		});
+		await saveSession(session, tmpDir);
+
+		const loaded = await loadSession(session.id, tmpDir);
+		expect(loaded?.controlPlane).toEqual(session.controlPlane);
 	});
 
 	it("overwrites an existing session on re-save", async () => {

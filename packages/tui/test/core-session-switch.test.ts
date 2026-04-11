@@ -1,7 +1,7 @@
 import type { SessionData } from "@takumi/core";
 import { describe, expect, it, vi } from "vitest";
-import { registerCoreCommands } from "../src/app-commands-core.js";
-import { SlashCommandRegistry } from "../src/commands.js";
+import { registerCoreCommands } from "../src/commands/app-commands-core.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
 import { AppState } from "../src/state.js";
 
 describe("core session switching commands", () => {
@@ -32,6 +32,37 @@ describe("core session switching commands", () => {
 
 		expect(resumeSession).toHaveBeenCalledOnce();
 		expect(resumeSession).toHaveBeenCalledWith("session-123");
+	});
+
+	it("routes /session attach through the shared app-level resumeSession handler", async () => {
+		const commands = new SlashCommandRegistry();
+		const state = new AppState();
+		const resumeSession = vi.fn(async () => undefined);
+		const addInfoMessage = vi.fn();
+
+		registerCoreCommands({
+			commands,
+			state,
+			agentRunner: null,
+			config: {} as never,
+			autoPr: false,
+			autoShip: false,
+			addInfoMessage,
+			buildSessionData: vi.fn() as never,
+			startAutoSaver: vi.fn(),
+			resumeSession,
+			quit: vi.fn().mockResolvedValue(undefined),
+			getActiveCoder: vi.fn().mockReturnValue(null),
+			setActiveCoder: vi.fn(),
+			getActiveAutocycle: vi.fn().mockReturnValue(null),
+			setActiveAutocycle: vi.fn(),
+		} as never);
+
+		await commands.execute("/session attach daemon-123");
+
+		expect(addInfoMessage).toHaveBeenCalledWith("Attaching daemon session daemon-123...");
+		expect(resumeSession).toHaveBeenCalledOnce();
+		expect(resumeSession).toHaveBeenCalledWith("daemon-123");
 	});
 
 	it("routes forked sessions through the app-level activateSession handler", async () => {
@@ -192,5 +223,136 @@ describe("core session switching commands", () => {
 		expect(state.thinking.value).toBe(true);
 		expect(state.thinkingBudget.value).toBe(24_000);
 		expect(addInfoMessage).toHaveBeenCalledWith(expect.stringContaining("Thinking level: Deep"));
+	});
+
+	it("renders grouped help output for the command cockpit", async () => {
+		const commands = new SlashCommandRegistry();
+		const state = new AppState();
+		const addInfoMessage = vi.fn();
+
+		registerCoreCommands({
+			commands,
+			state,
+			agentRunner: null,
+			config: {} as never,
+			autoPr: false,
+			autoShip: false,
+			addInfoMessage,
+			buildSessionData: vi.fn() as never,
+			startAutoSaver: vi.fn(),
+			quit: vi.fn().mockResolvedValue(undefined),
+			getActiveCoder: vi.fn().mockReturnValue(null),
+			setActiveCoder: vi.fn(),
+			getActiveAutocycle: vi.fn().mockReturnValue(null),
+			setActiveAutocycle: vi.fn(),
+		} as never);
+
+		await commands.execute("/help");
+
+		const helpText = addInfoMessage.mock.calls.at(-1)?.[0] as string;
+		expect(helpText).toContain("Available commands:");
+		expect(helpText).toContain("Runtime");
+		expect(helpText).toContain("Sessions");
+		expect(helpText).toContain("/model");
+		expect(helpText).toContain("/session");
+		expect(helpText).toContain("Ctrl+K opens the command palette.");
+	});
+
+	it("updates the live session budget via /budget", async () => {
+		const commands = new SlashCommandRegistry();
+		const state = new AppState();
+		const addInfoMessage = vi.fn();
+		const setBudgetLimit = vi.fn();
+		const config = {} as { maxCostUsd?: number };
+
+		registerCoreCommands({
+			commands,
+			state,
+			agentRunner: { setBudgetLimit } as never,
+			config: config as never,
+			autoPr: false,
+			autoShip: false,
+			addInfoMessage,
+			buildSessionData: vi.fn() as never,
+			startAutoSaver: vi.fn(),
+			quit: vi.fn().mockResolvedValue(undefined),
+			getActiveCoder: vi.fn().mockReturnValue(null),
+			setActiveCoder: vi.fn(),
+			getActiveAutocycle: vi.fn().mockReturnValue(null),
+			setActiveAutocycle: vi.fn(),
+		} as never);
+
+		await commands.execute("/budget 2.5");
+
+		expect(config.maxCostUsd).toBe(2.5);
+		expect(setBudgetLimit).toHaveBeenCalledWith(2.5);
+		expect(addInfoMessage).toHaveBeenCalledWith(expect.stringContaining("Budget limit set to $2.5000"));
+	});
+
+	it("shows a model-aware runtime cost report via /cost", async () => {
+		const commands = new SlashCommandRegistry();
+		const state = new AppState();
+		const addInfoMessage = vi.fn();
+
+		state.setCostSnapshot({
+			totalUsd: 0.024,
+			totalInputTokens: 4_000,
+			totalOutputTokens: 1_500,
+			turns: [
+				{
+					turn: 1,
+					inputTokens: 2_000,
+					outputTokens: 1_000,
+					cacheReadTokens: 500,
+					cacheWriteTokens: 0,
+					costUsd: 0.01,
+					model: "claude-sonnet-4-20250514",
+					timestamp: Date.now() - 1_000,
+				},
+				{
+					turn: 2,
+					inputTokens: 2_000,
+					outputTokens: 500,
+					cacheReadTokens: 0,
+					cacheWriteTokens: 0,
+					costUsd: 0.014,
+					model: "gpt-4o",
+					timestamp: Date.now(),
+				},
+			],
+			ratePerMinute: 0.006,
+			projectedUsd: 0.084,
+			budgetFraction: 0.24,
+			alertLevel: "info",
+			avgCostPerTurn: 0.012,
+			elapsedSeconds: 120,
+		});
+
+		registerCoreCommands({
+			commands,
+			state,
+			agentRunner: null,
+			config: { maxCostUsd: 0.1 } as never,
+			autoPr: false,
+			autoShip: false,
+			addInfoMessage,
+			buildSessionData: vi.fn() as never,
+			startAutoSaver: vi.fn(),
+			quit: vi.fn().mockResolvedValue(undefined),
+			getActiveCoder: vi.fn().mockReturnValue(null),
+			setActiveCoder: vi.fn(),
+			getActiveAutocycle: vi.fn().mockReturnValue(null),
+			setActiveAutocycle: vi.fn(),
+		} as never);
+
+		await commands.execute("/cost");
+
+		const report = addInfoMessage.mock.calls.at(-1)?.[0] as string;
+		expect(report).toContain("Cost report");
+		expect(report).toContain("By model (tracked this runtime)");
+		expect(report).toContain("claude-sonnet-4-20250514");
+		expect(report).toContain("gpt-4o");
+		expect(report).toContain("Recent priced turns");
+		expect(report).toContain("Budget");
 	});
 });

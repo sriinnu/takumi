@@ -1,12 +1,19 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { resetArtifactCounter } from "@takumi/core";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ArtifactStore, resetArtifactCounter } from "@takumi/core";
 import {
 	buildHubArtifacts,
 	dedupeFiles,
 	determineExecCapability,
+	type ExecArtifactBridge,
 	extractSelectedModel,
+	extractSelectedProvider,
 	isPolicyFailureOutput,
 	normalizeExecProviderFamily,
+	resolveExecConcreteProvider,
+	persistExecArtifacts,
 } from "../cli/one-shot-helpers.js";
 
 describe("one-shot-helpers", () => {
@@ -65,6 +72,40 @@ describe("one-shot-helpers", () => {
 		it("returns undefined for missing metadata", () => {
 			expect(extractSelectedModel(undefined)).toBeUndefined();
 			expect(extractSelectedModel({})).toBeUndefined();
+		});
+	});
+
+	describe("extractSelectedProvider", () => {
+		it("extracts provider ids from route metadata", () => {
+			expect(extractSelectedProvider({ providerId: "openrouter" })).toBe("openrouter");
+			expect(extractSelectedProvider({ provider: "google" })).toBe("gemini");
+		});
+
+		it("prefers providerId over generic provider fields", () => {
+			expect(extractSelectedProvider({ providerId: "openai", provider: "google" })).toBe("openai");
+		});
+
+		it("returns undefined when metadata does not carry a concrete provider", () => {
+			expect(extractSelectedProvider({ compatibleProvider: 42 })).toBeUndefined();
+			expect(extractSelectedProvider(undefined)).toBeUndefined();
+		});
+	});
+
+	describe("resolveExecConcreteProvider", () => {
+		it("uses explicit route metadata when compat routes already carry a concrete provider", () => {
+			expect(resolveExecConcreteProvider("openai-compat", "openrouter", "gpt-4.1", "anthropic")).toBe("openrouter");
+		});
+
+		it("falls back to the configured compat provider when the route family stays compat-only", () => {
+			expect(resolveExecConcreteProvider("openai-compat", undefined, undefined, "openrouter")).toBe("openrouter");
+		});
+
+		it("refuses to guess a concrete compat provider from the model name alone", () => {
+			expect(resolveExecConcreteProvider("openai-compat", undefined, "gpt-4.1", "anthropic")).toBeUndefined();
+		});
+
+		it("still infers concrete providers when the daemon omitted provider-family metadata entirely", () => {
+			expect(resolveExecConcreteProvider(undefined, undefined, "gpt-4.1", "anthropic")).toBe("openai");
 		});
 	});
 
@@ -244,6 +285,144 @@ describe("one-shot-helpers", () => {
 			});
 			expect(artifacts.length).toBe(1);
 			expect(artifacts[0].kind).toBe("exec_result");
+		});
+	});
+
+	describe("persistExecArtifacts", () => {
+		let homeDir: string;
+		let previousHome: string | undefined;
+		let artifactStore: ArtifactStore;
+
+		beforeEach(async () => {
+			homeDir = await mkdtemp(join(tmpdir(), "takumi-one-shot-artifacts-"));
+			previousHome = process.env.HOME;
+			process.env.HOME = homeDir;
+			artifactStore = new ArtifactStore();
+		});
+
+		afterEach(async () => {
+			process.env.HOME = previousHome;
+			await rm(homeDir, { recursive: true, force: true });
+		});
+
+		it("persists completed one-shot artifacts locally when no canonical daemon session exists", async () => {
+			const artifacts = buildHubArtifacts({
+				fullText: "Hello from degraded mode",
+				failures: [],
+				routing: {
+					capability: "coding.patch-cheap",
+					authority: "takumi-fallback",
+					enforcement: "capability-only",
+					provider: "anthropic",
+					model: "claude-3.5",
+				},
+				filesChanged: ["src/index.ts"],
+			});
+
+			await persistExecArtifacts(null, { projectPath: process.cwd() }, "run-local-1", artifacts);
+
+			const stored = await artifactStore.query({ sessionId: "run-local-1" });
+			expect(stored).toHaveLength(artifacts.length);
+			for (const artifact of stored) {
+				expect(artifact).toMatchObject({
+					runId: "run-local-1",
+					localSessionId: "run-local-1",
+					importStatus: "pending",
+					promoted: false,
+				});
+				expect(artifact.canonicalSessionId).toBeUndefined();
+			}
+		});
+
+		it("imports persisted one-shot artifacts into Chitragupta when a canonical session exists", async () => {
+			const artifacts = buildHubArtifacts({
+				fullText: "One-shot canonical output",
+				failures: [],
+				routing: {
+					capability: "coding.patch-cheap",
+					authority: "engine",
+					enforcement: "same-provider",
+					provider: "anthropic",
+					model: "claude-3.5",
+					laneId: "lane-1",
+				},
+				filesChanged: [],
+			});
+			const bridge = {
+				isConnected: true,
+				artifactImportBatch: vi.fn<ExecArtifactBridge["artifactImportBatch"]>(async (_projectPath, _consumer, inputs) => ({
+					contractVersion: 1,
+					consumer: "takumi",
+					projectPath: process.cwd(),
+					imported: inputs.map((input, index) => ({
+						localArtifactId: input.localArtifactId,
+						canonicalArtifactId: `cart-${index + 1}`,
+						contentHash: input.contentHash,
+						promoted: true as const,
+					})),
+					skipped: [],
+					failed: [],
+				})),
+				artifactListImported: vi.fn<ExecArtifactBridge["artifactListImported"]>(async (_projectPath, _consumer, canonicalSessionId) => ({
+					contractVersion: 1,
+					projectPath: process.cwd(),
+					items: artifacts.map((artifact, index) => ({
+						localArtifactId: artifact.artifactId,
+						canonicalArtifactId: `cart-${index + 1}`,
+						contentHash: artifact.contentHash,
+						promoted: true as const,
+						consumer: "takumi",
+						projectPath: process.cwd(),
+						canonicalSessionId: canonicalSessionId ?? null,
+						localSessionId: "run-canon-1",
+						runId: "run-canon-1",
+						kind: artifact.kind,
+						producer: artifact.producer,
+						summary: artifact.summary,
+						body: artifact.body ?? null,
+						path: artifact.path ?? null,
+						confidence: artifact.confidence ?? null,
+						createdAt: artifact.createdAt,
+						taskId: "run-canon-1",
+						laneId: artifact.laneId ?? null,
+						metadata: artifact.metadata ?? {},
+						importedAt: 1111,
+					})),
+				})),
+			} satisfies ExecArtifactBridge;
+
+			await persistExecArtifacts(
+				bridge,
+				{ projectPath: process.cwd(), canonicalSessionId: "canon-1" },
+				"run-canon-1",
+				artifacts,
+			);
+
+			expect(bridge.artifactImportBatch).toHaveBeenCalledWith(
+				process.cwd(),
+				"takumi",
+				expect.arrayContaining([
+					expect.objectContaining({
+						localSessionId: "run-canon-1",
+						canonicalSessionId: "canon-1",
+						runId: "run-canon-1",
+					}),
+				]),
+				"canon-1",
+			);
+
+			const stored = await artifactStore.query({ sessionId: "canon-1" });
+			expect(stored).toHaveLength(artifacts.length);
+			for (const artifact of stored) {
+				expect(artifact).toMatchObject({
+					runId: "run-canon-1",
+					localSessionId: "run-canon-1",
+					canonicalSessionId: "canon-1",
+					importStatus: "imported",
+					promoted: true,
+				});
+				expect(artifact.canonicalArtifactId).toMatch(/^cart-/);
+			}
 		});
 	});
 

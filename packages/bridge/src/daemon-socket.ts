@@ -325,9 +325,10 @@ export class DaemonSocketClient {
 		if (!apiKey) {
 			throw new Error("Missing daemon bridge token for auth.handshake");
 		}
-		const result = await this.call<{ authenticated?: boolean }>("auth.handshake", { apiKey });
+		const result = await this.call<{ authenticated?: boolean; error?: string }>("auth.handshake", { apiKey });
 		if (result?.authenticated !== true) {
-			throw new Error("Daemon bridge authentication failed");
+			const detail = typeof result?.error === "string" && result.error.trim() ? `: ${result.error.trim()}` : "";
+			throw new Error(`Daemon bridge authentication failed${detail}`);
 		}
 	}
 }

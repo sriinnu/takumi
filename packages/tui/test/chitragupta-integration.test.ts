@@ -1,6 +1,6 @@
 import type { ChitraguptaBridge, ChitraguptaSessionInfo, MemoryResult } from "@takumi/bridge";
 import { describe, expect, it, vi } from "vitest";
-import { SlashCommandRegistry } from "../src/commands.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
 import { AppState } from "../src/state.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */

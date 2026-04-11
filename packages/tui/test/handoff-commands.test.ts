@@ -4,9 +4,13 @@ import { join } from "node:path";
 import type { SessionData, TakumiConfig } from "@takumi/core";
 import { ArtifactStore } from "@takumi/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppCommandContext } from "../src/app-command-context.js";
-import { buildHandoffWorkState, parseHandoffArgs, registerHandoffCommands } from "../src/app-commands-handoff.js";
-import { SlashCommandRegistry } from "../src/commands.js";
+import type { AppCommandContext } from "../src/commands/app-command-context.js";
+import {
+	buildHandoffWorkState,
+	parseHandoffArgs,
+	registerHandoffCommands,
+} from "../src/commands/app-commands-handoff.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
 import { AppState } from "../src/state.js";
 
 vi.mock("node:child_process", () => ({
@@ -140,6 +144,8 @@ describe("handoff slash commands", () => {
 		state.model.value = "claude-sonnet-4";
 		state.provider.value = "anthropic";
 		state.turnCount.value = 2;
+		state.recordFileRead("packages/tui/src/app.ts");
+		state.recordFileChange("packages/tui/src/app-commands-handoff.ts", "modified");
 		state.messages.value = [
 			{
 				id: "u1",
@@ -167,9 +173,17 @@ describe("handoff slash commands", () => {
 		const payload = JSON.parse(artifacts[0].body ?? "{}") as {
 			handoffId?: string;
 			target?: { kind?: string; id?: string };
+			workState?: {
+				filesChanged?: Array<{ path: string; status: string }>;
+				filesRead?: string[];
+			};
 		};
 		expect(payload.target?.kind).toBe("branch");
 		expect(payload.target?.id).toBeTruthy();
+		expect(payload.workState?.filesChanged).toEqual([
+			{ path: "packages/tui/src/app-commands-handoff.ts", status: "modified" },
+		]);
+		expect(payload.workState?.filesRead).toEqual(["packages/tui/src/app.ts"]);
 
 		await commands.execute("/handoffs 5");
 		expect(lastInfo(state)).toContain("Recent handoffs:");

@@ -224,10 +224,23 @@ export class SideAgentRegistry {
 		this.counter = maxCounter;
 		this.persistChain = Promise.resolve();
 		this.lastPersistError = null;
+		if (this.debounceTimer) {
+			clearTimeout(this.debounceTimer);
+			this.debounceTimer = null;
+		}
 	}
 
 	/** Wait for any queued auto-save writes to settle. */
 	async flushPersistence(): Promise<void> {
+		// Flush any pending debounced save immediately
+		if (this.debounceTimer) {
+			clearTimeout(this.debounceTimer);
+			this.debounceTimer = null;
+			this.persistChain = this.persistChain.then(
+				() => this.persistNow(),
+				() => this.persistNow(),
+			);
+		}
 		await this.persistChain;
 		if (this.lastPersistError) {
 			throw new Error(`Failed to persist side-agent registry: ${this.lastPersistError.message}`);
@@ -268,14 +281,23 @@ export class SideAgentRegistry {
 		}
 	}
 
+	/** Debounce timer — coalesces rapid mutations into a single disk write. */
+	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 	private scheduleSave(): void {
 		if (!this.autoSave) {
 			return;
 		}
-		this.persistChain = this.persistChain.then(
-			() => this.persistNow(),
-			() => this.persistNow(),
-		);
+		// Debounce: coalesce rapid mutations (e.g. register → transition → update)
+		// into a single disk write after 100ms of quiet.
+		if (this.debounceTimer) return;
+		this.debounceTimer = setTimeout(() => {
+			this.debounceTimer = null;
+			this.persistChain = this.persistChain.then(
+				() => this.persistNow(),
+				() => this.persistNow(),
+			);
+		}, 100);
 	}
 
 	private async persistNow(): Promise<void> {

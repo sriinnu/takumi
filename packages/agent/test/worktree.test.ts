@@ -18,6 +18,8 @@ beforeAll(() => {
 	execSync("git init", { cwd: REPO_DIR });
 	execSync('git config user.email "test@test.com"', { cwd: REPO_DIR });
 	execSync('git config user.name "Test"', { cwd: REPO_DIR });
+	execSync("git config commit.gpgsign false", { cwd: REPO_DIR });
+	execSync("git config tag.gpgsign false", { cwd: REPO_DIR });
 	writeFileSync(join(REPO_DIR, "hello.ts"), "export const hello = 'world';");
 	execSync("git add . && git commit -m 'init'", { cwd: REPO_DIR });
 	// Ensure the original process cwd points to our test repo

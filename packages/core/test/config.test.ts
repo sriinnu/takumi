@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DEFAULT_CONFIG, loadConfig, PROVIDER_ENDPOINTS } from "@takumi/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -52,6 +55,8 @@ describe("loadConfig", () => {
 		expect(config.theme).toBe("default");
 		expect(config.permissions).toEqual([]);
 		expect(config.experimental).toEqual({});
+		expect(config.statusBar?.left).toEqual(["model", "mesh", "cluster"]);
+		expect(config.statusBar?.right).toEqual(["authority", "metrics", "context", "scarlett", "keybinds"]);
 	});
 
 	it("picks up ANTHROPIC_API_KEY from environment", () => {
@@ -93,6 +98,20 @@ describe("loadConfig", () => {
 		expect(config.orchestration?.modelRouting?.taskTypes?.REVIEW?.worker).toBe("gpt-4o-mini");
 	});
 
+	it("preserves startup model policy overrides", () => {
+		const config = loadConfig({
+			modelPolicy: {
+				allow: ["claude", "gpt-4.1"],
+				prefer: ["claude"],
+			},
+		});
+
+		expect(config.modelPolicy).toEqual({
+			allow: ["claude", "gpt-4.1"],
+			prefer: ["claude"],
+		});
+	});
+
 	it("parses numeric env vars correctly", () => {
 		process.env.TAKUMI_MAX_TOKENS = "8192";
 		const config = loadConfig();
@@ -132,6 +151,74 @@ describe("loadConfig", () => {
 	it("workingDirectory defaults to cwd", () => {
 		const config = loadConfig();
 		expect(config.workingDirectory).toBe(process.cwd());
+	});
+
+	it("loads config from the platform user config directory", () => {
+		const configDir = mkdtempSync(join(tmpdir(), "takumi-config-"));
+		process.env.TAKUMI_CONFIG_DIR = configDir;
+		writeFileSync(
+			join(configDir, "config.json"),
+			`${JSON.stringify({ model: "gpt-4.1-mini", theme: "midnight" }, null, "\t")}\n`,
+			"utf-8",
+		);
+
+		try {
+			const config = loadConfig();
+			expect(config.model).toBe("gpt-4.1-mini");
+			expect(config.theme).toBe("midnight");
+		} finally {
+			rmSync(configDir, { recursive: true, force: true });
+		}
+	});
+
+	it("normalizes package and plugin config entries from overrides", () => {
+		const config = loadConfig({
+			packages: [
+				{ name: " ./legacy-package ", options: { mode: "legacy" } },
+				{ path: " ./canonical-package ", name: "./ignored-package", options: { mode: "canonical" } },
+				{ path: "   ", name: "   " },
+			],
+			plugins: [
+				{ name: " ./legacy-extension.mjs " },
+				{ path: " ./canonical-extension.mjs ", name: "./ignored-extension.mjs" },
+				{ path: "   " },
+			],
+		});
+
+		expect(config.packages).toEqual([
+			{ path: "./legacy-package", options: { mode: "legacy" } },
+			{ path: "./canonical-package", options: { mode: "canonical" } },
+		]);
+		expect(config.plugins).toEqual([{ path: "./legacy-extension.mjs" }, { path: "./canonical-extension.mjs" }]);
+	});
+
+	it("lets CLI overrides replace config-file package and plugin entries before normalization", () => {
+		const configDir = mkdtempSync(join(tmpdir(), "takumi-config-override-"));
+		process.env.TAKUMI_CONFIG_DIR = configDir;
+		writeFileSync(
+			join(configDir, "config.json"),
+			`${JSON.stringify(
+				{
+					packages: [{ name: "./file-package" }],
+					plugins: [{ name: "./file-extension.mjs" }],
+				},
+				null,
+				"\t",
+			)}\n`,
+			"utf-8",
+		);
+
+		try {
+			const config = loadConfig({
+				packages: [{ path: "./cli-package" }],
+				plugins: [{ path: "./cli-extension.mjs" }],
+			});
+
+			expect(config.packages).toEqual([{ path: "./cli-package" }]);
+			expect(config.plugins).toEqual([{ path: "./cli-extension.mjs" }]);
+		} finally {
+			rmSync(configDir, { recursive: true, force: true });
+		}
 	});
 });
 

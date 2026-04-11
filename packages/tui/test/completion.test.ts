@@ -1,7 +1,7 @@
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SlashCommandRegistry } from "../src/commands.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
 import type { CompletionItem } from "../src/completion.js";
 import { applyCompletionEdit, CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "../src/completion.js";
 

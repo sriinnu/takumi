@@ -16,8 +16,8 @@ These work from any view or input mode.
 | `Ctrl+C` | Cancel / Quit | Cancels active agent run, or quits if idle |
 | `Ctrl+D` | Exit | Quits if editor is empty |
 | `Ctrl+L` | Clear screen | Invalidates screen and forces full re-render |
-| `Ctrl+P` | Command palette | Toggle fuzzy command search |
-| `Ctrl+K` | Command palette | Alias for Ctrl+P |
+| `Ctrl+K` | Command palette | Toggle fuzzy command search |
+| `Ctrl+P` | Toggle preview | Show/hide the file preview pane |
 | `Alt+M` | Model picker | Toggle model selection dialog |
 | `Ctrl+B` | Toggle sidebar | Show/hide the sidebar panel |
 | `Ctrl+O` | Session list | Open session browser |
@@ -55,11 +55,12 @@ Standard text editing keys in the input editor.
 | `Ctrl+←` / `Ctrl+→` | Move by word |
 | `Ctrl+W` | Delete word backward |
 | `Ctrl+U` | Delete to start of line |
-| `Ctrl+K` | Delete to end of line |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Shift+Z` | Redo |
 | `Backspace` | Delete character backward |
 | `Delete` | Delete character forward |
+
+`Ctrl+K` is reserved globally for the command palette in the stock Takumi keymap. If you remap that global shortcut away, the underlying editor kill-to-end behavior becomes available again.
 
 ### Slash Command Mode
 

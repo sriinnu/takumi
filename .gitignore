@@ -3,7 +3,14 @@ node_modules/
 
 # Build
 dist/
+dist-bin/
 *.tsbuildinfo
+
+# Turbo cache
+.turbo/
+
+# Temporary cloned repos / reference projects (should not be indexed)
+tmp/
 
 # Environment & Secrets
 .env
@@ -23,8 +30,6 @@ credentials.json
 .mcp.json
 .vscode/mcp.json
 settings.local.json
-docs/PI_ECOSYSTEM_ANALYSIS.md
-docs/PI_ECOSYSTEM_REVIEW_SUMMARY.md
 
 # Compiled output in src/ (should only be in dist/)
 packages/*/src/**/*.js
@@ -50,10 +55,6 @@ Thumbs.db
 # Governance and planning (local-only)
 CLAUDE.md
 AGENTS.md
-TODO.md
 TAKUMI_MASTER_SPEC.md
-PHASE_17_20_COMPLETION.md
-PHASE_20_2_COMPLETION.md
 soul/
-docs/PHASE_20_PLAN.md
 docs/arxiv-research-2025-2026.md

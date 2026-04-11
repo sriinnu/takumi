@@ -1,7 +1,7 @@
 import type { AgentEvent, ExecBootstrapSnapshot, TakumiConfig, Usage, ExecLaneSnapshot } from "@takumi/core";
+import { normalizeProviderName } from "@takumi/core";
 import {
 	EXEC_EXIT_CODES,
-	type ExecArtifact,
 	type ExecRoutingBinding,
 	type ExecSessionBinding,
 	createAgentEventEnvelope,
@@ -11,8 +11,10 @@ import {
 	createRunStartedEvent,
 	emitExecEvent,
 } from "./exec-protocol.js";
-import { createProvider } from "./provider.js";
+import { createResolvedProvider, isProviderConfigurationError, isRouteIncompatibleError } from "./provider.js";
+import { formatRouteIncompatibleFailureMessage } from "./route-failure.js";
 import { buildReflexionPrompt, loadRecentReflexions, saveReflexion } from "./reflexion-lite.js";
+import { resolveExecRouting } from "./exec-routing.js";
 import {
 	buildHubArtifacts,
 	dedupeFiles,
@@ -20,55 +22,36 @@ import {
 	ensureExecCanonicalSession,
 	isPolicyFailureOutput,
 	listChangedFiles,
+	persistExecArtifacts,
 	persistExecSession,
-	resolveExecRouting,
 } from "./one-shot-helpers.js";
-import { collectRuntimeBootstrap } from "./runtime-bootstrap.js";
+import { buildExecArtifacts } from "./one-shot-io.js";
+import { collectRuntimeBootstrap, type RuntimeBootstrapResult } from "./runtime-bootstrap.js";
 import type { StartupTrace } from "./startup-trace.js";
-
+/** Pre-built dependencies a persistent worker can reuse across dispatches. */
+export interface OneShotPrebuiltDeps {
+	tools: InstanceType<typeof import("@takumi/agent").ToolRegistry>;
+	runtimeBootstrap: RuntimeBootstrapResult;
+}
 export interface OneShotOptions {
 	runId: string;
 	headless: boolean;
 	enableChitraguptaBootstrap?: boolean;
+	runtimeRole?: "core" | "side-agent-worker";
 	startupTrace?: StartupTrace;
+	/** When supplied, skip per-dispatch bootstrap — caller manages lifecycle. */
+	prebuiltDeps?: OneShotPrebuiltDeps;
 }
-
 export interface OneShotResult {
 	runId: string;
 	exitCode: number;
 }
+export { fetchIssueContext, readStdin } from "./one-shot-io.js";
 
-export async function fetchIssueContext(issueRef: string): Promise<string> {
-	const { spawn } = await import("node:child_process");
-	return new Promise((resolve) => {
-		const ref = issueRef.replace(/^#/, "");
-		const child = spawn("gh", ["issue", "view", ref, "--json", "title,body,url"], {
-			stdio: ["ignore", "pipe", "pipe"],
-		});
-		let out = "";
-		child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
-		child.on("close", (code: number) => {
-			if (code !== 0) {
-				process.stderr.write(`[warning] Could not fetch issue "${issueRef}" — continuing without it.\n`);
-				resolve("");
-				return;
-			}
-			try {
-				const { title, body, url } = JSON.parse(out);
-				resolve(`GitHub Issue: ${title}\nURL: ${url}\n\n${body}\n\n---\n\n`);
-			} catch {
-				resolve("");
-			}
-		});
-	});
-}
-
-export async function readStdin(): Promise<string> {
-	const chunks: Buffer[] = [];
-	for await (const chunk of process.stdin) chunks.push(chunk);
-	return Buffer.concat(chunks).toString("utf-8").trim();
-}
-
+/**
+ * Run a single headless task while preserving the same Chitragupta-first route
+ * and provider resolution semantics as the interactive startup path.
+ */
 export async function runOneShot(
 	config: TakumiConfig,
 	prompt: string,
@@ -102,87 +85,133 @@ export async function runOneShot(
 	};
 	const filesBefore = await listChangedFiles(process.cwd());
 
-	if (streamFormat === "ndjson") {
-		emitExecEvent(
-			createRunStartedEvent({
-				runId,
-				cwd: process.cwd(),
-				prompt,
-				headless: options?.headless ?? false,
-				streamFormat,
-				provider: config.provider,
-				model: config.model,
-				session: sessionBinding,
-				routing: routingBinding,
-				lane: {
-					capability: routingBinding.capability,
-					authority: routingBinding.authority,
-					enforcement: routingBinding.enforcement,
-					selectedModel: routingBinding.model,
-					laneId: routingBinding.laneId,
-					degraded: routingBinding.degraded ?? false,
-				},
-			}),
-		);
-	}
+	try {
+		/** Trace-or-noop: eliminates the startupTrace branching duplication. */
+		const traced = <T>(label: string, fn: () => Promise<T>): Promise<T> =>
+			startupTrace?.measure(label, fn) ?? fn();
 
-		try {
-			const tools = new ToolRegistry();
-			registerBuiltinTools(tools);
-			const [provider, runtimeBootstrap, recentReflexions] = await Promise.all([
-				startupTrace?.measure("provider.create", () => createProvider(config, fallbackName)) ??
-					createProvider(config, fallbackName),
-				startupTrace?.measure("runtime.bootstrap", () =>
-					collectRuntimeBootstrap(config, {
-					cwd: process.cwd(),
-					tools,
-					enableChitraguptaBootstrap: Boolean(options?.enableChitraguptaBootstrap),
-					}),
-				) ??
+		const tools = options?.prebuiltDeps?.tools ?? (() => {
+			const reg = new ToolRegistry();
+			registerBuiltinTools(reg);
+			return reg;
+		})();
+
+		let runtimeBootstrap: RuntimeBootstrapResult;
+		let recentReflexions: Awaited<ReturnType<typeof loadRecentReflexions>>;
+		if (options?.prebuiltDeps?.runtimeBootstrap) {
+			runtimeBootstrap = options.prebuiltDeps.runtimeBootstrap;
+			recentReflexions = await traced("reflexion.load", () => loadRecentReflexions(5));
+		} else {
+			[runtimeBootstrap, recentReflexions] = await Promise.all([
+				traced("runtime.bootstrap", () =>
 					collectRuntimeBootstrap(config, {
 						cwd: process.cwd(),
 						tools,
 						enableChitraguptaBootstrap: Boolean(options?.enableChitraguptaBootstrap),
+						includeProviderStatus: Boolean(options?.enableChitraguptaBootstrap),
+						bootstrapMode: "exec",
+						runtimeRole: options?.runtimeRole ?? "core",
+						consumer: "takumi",
+						capability: routingBinding.capability,
 					}),
-				startupTrace?.measure("reflexion.load", () => loadRecentReflexions(5)) ?? loadRecentReflexions(5),
+				),
+				traced("reflexion.load", () => loadRecentReflexions(5)),
 			]);
-			if (runtimeBootstrap.sideAgents.degraded) {
-				failures.push(`side_agent_bootstrap: ${runtimeBootstrap.sideAgents.summary}`);
-			}
-			if (streamFormat === "text") {
-				for (const line of runtimeBootstrap.warningLines) {
-					process.stderr.write(`[warning] ${line}\n`);
-				}
-			}
-			for (const line of startupTrace?.formatLines() ?? []) {
-				process.stderr.write(`[startup] ${line}\n`);
-			}
-			const reflexionPrompt = buildReflexionPrompt(recentReflexions);
-			const bootstrapSnapshot: ExecBootstrapSnapshot = runtimeBootstrap.bootstrap;
-			bootstrapConnected = runtimeBootstrap.bootstrap.connected;
-			bootstrapBridge = runtimeBootstrap.chitragupta?.bridge ?? null;
-			const bootstrapPrompt = runtimeBootstrap.chitragupta?.memoryContext ?? "";
-			if (bootstrapBridge?.isConnected) {
-				sessionBinding = await ensureExecCanonicalSession(bootstrapBridge, prompt, config);
-				const routed = await resolveExecRouting(bootstrapBridge, sessionBinding, prompt, config, routingBinding.capability);
-				routingBinding.authority = routed.authority;
-				routingBinding.enforcement = routed.enforcement;
-				routingBinding.model = routed.model;
-				routingBinding.provider = routed.provider;
-				routingBinding.laneId = routed.laneId;
-				routingBinding.degraded = routed.degraded;
-				routedModel = routed.model ?? routedModel;
-			}
-			if (streamFormat === "ndjson") {
-				emitExecEvent(
-					createBootstrapStatusEvent({
-						runId,
-						bootstrap: bootstrapSnapshot,
-					}),
-				);
-			}
+		}
+		if (runtimeBootstrap.sideAgents.degraded) {
+			failures.push(`side_agent_bootstrap: ${runtimeBootstrap.sideAgents.summary}`);
+		}
+		const reflexionPrompt = buildReflexionPrompt(recentReflexions);
+		const bootstrapSnapshot: ExecBootstrapSnapshot = runtimeBootstrap.bootstrap;
+		bootstrapConnected = runtimeBootstrap.bootstrap.connected;
+		bootstrapBridge = runtimeBootstrap.chitragupta?.bridge ?? null;
+		const bootstrapPrompt = runtimeBootstrap.chitragupta?.memoryContext ?? "";
+		if (bootstrapBridge?.isConnected) {
+			sessionBinding = runtimeBootstrap.chitragupta?.canonicalSessionId
+				? {
+						projectPath: process.cwd(),
+						canonicalSessionId: runtimeBootstrap.chitragupta.canonicalSessionId,
+						title: prompt.slice(0, 80) || "Takumi exec",
+					}
+				: await ensureExecCanonicalSession(bootstrapBridge, prompt, config);
+			const routed = await resolveExecRouting(bootstrapBridge, sessionBinding, prompt, config, routingBinding.capability);
+			routingBinding.authority = routed.authority;
+			routingBinding.enforcement = routed.enforcement;
+			routingBinding.model = routed.model;
+			routingBinding.provider = routed.provider;
+			routingBinding.laneId = routed.laneId;
+			routingBinding.degraded = routed.degraded;
+			routedModel = routed.model ?? routedModel;
+		}
 
-			const combinedSystemPrompt = [config.systemPrompt || "", reflexionPrompt, bootstrapPrompt]
+		const requestedProvider = routingBinding.provider;
+		const providerResolution = await traced("provider.create", () =>
+			createResolvedProvider(config, {
+				fallbackName,
+				preferredProvider: requestedProvider,
+				preferredModel: routingBinding.model ?? routedModel,
+				strictPreferredRoute: routingBinding.authority === "engine",
+				bootstrapBridge: bootstrapBridge ?? undefined,
+			}),
+		);
+		const resolvedProvider = providerResolution.provider;
+		const resolvedProviderName = providerResolution.resolvedConfig.provider;
+		routedModel = providerResolution.resolvedConfig.model ?? routedModel;
+
+		if (
+			requestedProvider &&
+			(normalizeProviderName(requestedProvider) ?? requestedProvider) !== resolvedProviderName
+		) {
+			// If Takumi had to substitute the requested provider locally, mark the
+			// lane as a fallback so exec reporting stays honest for operators.
+			routingBinding.authority = "takumi-fallback";
+			routingBinding.enforcement = "capability-only";
+			routingBinding.laneId = undefined;
+			routingBinding.degraded = true;
+		}
+
+		routingBinding.provider = resolvedProviderName;
+		routingBinding.model = routedModel;
+
+		if (streamFormat === "text") {
+			for (const line of [...runtimeBootstrap.warningLines, ...providerResolution.warnings]) {
+				process.stderr.write(`[warning] ${line}\n`);
+			}
+		}
+		for (const line of startupTrace?.formatLines() ?? []) {
+			process.stderr.write(`[startup] ${line}\n`);
+		}
+		if (streamFormat === "ndjson") {
+			emitExecEvent(
+				createRunStartedEvent({
+					runId,
+					cwd: process.cwd(),
+					prompt,
+					headless: options?.headless ?? false,
+					streamFormat,
+					provider: routingBinding.provider,
+					model: routingBinding.model,
+					session: sessionBinding,
+					routing: routingBinding,
+					lane: {
+						capability: routingBinding.capability,
+						authority: routingBinding.authority,
+						enforcement: routingBinding.enforcement,
+						selectedModel: routingBinding.model,
+						laneId: routingBinding.laneId,
+						degraded: routingBinding.degraded ?? false,
+					},
+				}),
+			);
+			emitExecEvent(
+				createBootstrapStatusEvent({
+					runId,
+					bootstrap: bootstrapSnapshot,
+				}),
+			);
+		}
+
+		const combinedSystemPrompt = [config.systemPrompt || "", reflexionPrompt, bootstrapPrompt]
 			.filter(Boolean)
 			.join("\n\n");
 
@@ -194,7 +223,7 @@ export async function runOneShot(
 
 		const loop = agentLoop(prompt, [], {
 			sendMessage: (messages: any, sys: any, toolDefs: any, signal: any, innerOptions: any) =>
-				provider.sendMessage(messages, sys, toolDefs, signal, innerOptions),
+				resolvedProvider.sendMessage(messages, sys, toolDefs, signal, innerOptions),
 			model: routedModel,
 			tools,
 			systemPrompt: system,
@@ -233,6 +262,46 @@ export async function runOneShot(
 			}
 		}
 	} catch (error) {
+		if (isRouteIncompatibleError(error)) {
+			failures.push(`route_incompatible: ${(error as Error).message.slice(0, 280)}`);
+			if (streamFormat === "ndjson") {
+				emitExecEvent(
+					createRunFailedEvent({
+						runId,
+						exitCode: EXEC_EXIT_CODES.CONFIG,
+						phase: "config",
+						category: "route_incompatible",
+						error,
+						session: sessionBinding,
+						routing: routingBinding,
+					}),
+				);
+			} else {
+				process.stderr.write(`\n${formatRouteIncompatibleFailureMessage(error as Error)}\n`);
+			}
+			return { runId, exitCode: EXEC_EXIT_CODES.CONFIG };
+		}
+		if (isProviderConfigurationError(error)) {
+			failures.push(`provider_config: ${(error as Error).message.slice(0, 280)}`);
+			if (streamFormat === "ndjson") {
+				emitExecEvent(
+					createRunFailedEvent({
+						runId,
+						exitCode: EXEC_EXIT_CODES.CONFIG,
+						phase: "config",
+						error,
+						session: sessionBinding,
+						routing: routingBinding,
+					}),
+				);
+			} else {
+				// Text-mode exec still gets a human-readable config classification
+				// instead of the old startup-time API-key nag.
+				process.stderr.write(`\nConfiguration error: ${(error as Error).message}\n`);
+			}
+			return { runId, exitCode: EXEC_EXIT_CODES.CONFIG };
+		}
+
 		failures.push(`internal_error: ${(error as Error).message.slice(0, 280)}`);
 		if (streamFormat === "ndjson") {
 			emitExecEvent(
@@ -249,7 +318,8 @@ export async function runOneShot(
 		return { runId, exitCode: EXEC_EXIT_CODES.FATAL };
 	} finally {
 		try {
-			if (bootstrapBridge?.isConnected) await bootstrapBridge.disconnect();
+			// When prebuiltDeps is provided, the caller manages the bridge lifecycle.
+			if (!options?.prebuiltDeps && bootstrapBridge?.isConnected) await bootstrapBridge.disconnect();
 		} catch {
 			// best effort
 		}
@@ -310,6 +380,7 @@ export async function runOneShot(
 			degraded: routingBinding.degraded ?? false,
 		};
 		await persistExecSession(bootstrapBridge, sessionBinding, prompt, fullText, lastUsage);
+		await persistExecArtifacts(bootstrapBridge, sessionBinding, runId, hubArtifacts);
 		emitExecEvent(
 			createRunCompletedEvent({
 				runId,
@@ -369,25 +440,4 @@ export async function runOneShot(
 			failures.push(`agent_error: ${event.error.message.slice(0, 280)}`);
 		}
 	}
-}
-
-function buildExecArtifacts(fullText: string, failures: string[]): ExecArtifact[] {
-	const artifacts: ExecArtifact[] = [];
-	if (fullText.trim()) {
-		artifacts.push({
-			type: "assistant_response",
-			summary: fullText.trim().slice(0, 240),
-		});
-	}
-	if (failures.length > 0) {
-		artifacts.push({
-			type: "postmortem",
-			summary: failures.join(" | ").slice(0, 240),
-		});
-	}
-	artifacts.push({
-		type: "exec-result",
-		summary: fullText.trim() ? "One-shot execution completed" : "One-shot execution completed without assistant text",
-	});
-	return artifacts;
 }

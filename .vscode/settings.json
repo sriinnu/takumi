@@ -1,5 +1,19 @@
 {
     "chat.tools.terminal.autoApprove": {
         "pnpm": true
-    }
+    },
+    "files.exclude": {
+        "**/tmp": true,
+        "**/dist": true,
+        "**/dist-bin": true,
+        "**/node_modules": true,
+        "**/.tsbuildinfo": true
+    },
+    "search.exclude": {
+        "**/tmp": true,
+        "**/dist": true,
+        "**/dist-bin": true,
+        "**/node_modules": true
+    },
+    "typescript.tsdk": "node_modules/typescript/lib"
 }

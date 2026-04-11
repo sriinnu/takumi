@@ -4,7 +4,7 @@
  */
 
 import { execFileSync, execSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 
 export interface GitStatus {
@@ -156,7 +156,12 @@ export function gitWorktreeAdd(
 	}
 	args.push(path, commitish);
 	const result = gitExecArgs(args, repoRoot);
-	return result !== null ? path : null;
+	if (result === null) return null;
+	try {
+		return realpathSync(path);
+	} catch {
+		return path;
+	}
 }
 
 /**

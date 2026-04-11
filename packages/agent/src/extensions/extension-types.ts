@@ -8,12 +8,17 @@
  *
  * Phase 45 additions:
  * - ctx.hasUI / ctx.notify / ctx.ui / ctx.session — UI + session surfaces
- * - message_start/end, tool_execution_*, before_provider_request, user_bash
+ * - ctx.storage / sho.storage — durable extension persistence seam
+ * - message_start/end, tool_execution_*, before_provider_request, user_bash, route lifecycle hooks
  * - ExtensionAPI split to extension-api.ts; use that for the full API surface
  */
 
 import type { AgentEvent, ToolDefinition as CoreToolDef, Message, ToolResult, Usage } from "@takumi/core";
+import type { ClusterExtensionEvent } from "./cluster-events.js";
+import type { RouteLifecycleEvent } from "./extension-route-events.js";
 import type { ExtensionSession } from "./extension-session.js";
+import type { SessionReplayEvent } from "./extension-session-replay-events.js";
+import type { ExtensionStorage } from "./extension-storage.js";
 import type {
 	BeforeProviderRequestEvent,
 	MessageEndEvent,
@@ -39,9 +44,6 @@ export type {
 	ClusterValidationAttemptEvent,
 	SabhaEscalationEvent,
 } from "./cluster-events.js";
-
-import type { ClusterExtensionEvent } from "./cluster-events.js";
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Session Events
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -206,6 +208,8 @@ export type ExtensionEvent =
 	| ToolEvent
 	| ModelSelectEvent
 	| InputEvent
+	| RouteLifecycleEvent
+	| SessionReplayEvent
 	| ClusterExtensionEvent
 	| MessageStartEvent
 	| MessageEndEvent
@@ -215,8 +219,19 @@ export type ExtensionEvent =
 	| BeforeProviderRequestEvent
 	| UserBashEvent;
 
+export type {
+	AfterRouteResolutionEvent,
+	BeforeRouteRequestEvent,
+	RouteDegradedEvent,
+	RouteLifecycleEvent,
+} from "./extension-route-events.js";
 export type { ExtensionSession, SessionEntry, SessionSnapshot } from "./extension-session.js";
-// Re-export new event types so consumers can import from extension-types.ts
+export type {
+	AfterReplayImportEvent,
+	BeforeReplayImportEvent,
+	BeforeSessionRebindEvent,
+	SessionReplayEvent,
+} from "./extension-session-replay-events.js";
 export type {
 	BeforeProviderRequestEvent,
 	BeforeProviderRequestResult,
@@ -359,6 +374,13 @@ export interface ExtensionContext {
 	 * in headless or pre-session contexts.
 	 */
 	session: ExtensionSession;
+
+	/**
+	 * Durable extension storage.
+	 * Workspace keys persist for this repo; session keys follow the active
+	 * Takumi session.
+	 */
+	storage: ExtensionStorage;
 }
 
 /**
@@ -420,6 +442,8 @@ export type { ExtensionAPI } from "./extension-api.js";
 export type {
 	ExtensionError,
 	ExtensionFactory,
+	ExtensionResidency,
 	LoadExtensionsResult,
 	LoadedExtension,
+	LoadedExtensionOrigin,
 } from "./extension-loader-types.js";

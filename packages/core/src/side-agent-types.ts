@@ -36,6 +36,8 @@ export type SideAgentState =
 	| "failed"
 	| "crashed";
 
+export type SideAgentDispatchKind = "start" | "send" | "query";
+
 // ── Agent Info ────────────────────────────────────────────────────────────────
 
 export interface SideAgentInfo {
@@ -53,6 +55,17 @@ export interface SideAgentInfo {
 	pid: number | null;
 	startedAt: number;
 	updatedAt: number;
+	dispatchSequence?: number;
+	reuseCount?: number;
+	leaseOwner?: string | null;
+	leaseExpiresAt?: number | null;
+	lastHeartbeatAt?: number | null;
+	lastDispatchAt?: number | null;
+	lastDispatchKind?: SideAgentDispatchKind | null;
+	lastRunStartedAt?: number | null;
+	lastRunFinishedAt?: number | null;
+	lastRunExitCode?: number | null;
+	lastRunRequestId?: string | null;
 	error?: string;
 }
 

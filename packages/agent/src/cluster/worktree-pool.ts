@@ -10,9 +10,10 @@
  * helpers for allocation, release, and cleanup.
  */
 
-import { join, resolve, sep } from "node:path";
+import { join, sep } from "node:path";
 import { gitBranch, gitWorktreeAdd, gitWorktreeList, gitWorktreeRemove } from "@takumi/bridge";
 import { createLogger } from "@takumi/core";
+import { normalizeWorktreePath } from "./worktree-paths.js";
 
 const log = createLogger("worktree-pool");
 
@@ -82,14 +83,15 @@ export class WorktreePoolManager {
 
 		const slotId = this.nextSlotId();
 		const branch = `${BRANCH_PREFIX}/${agentId}-${slotId}`;
-		const worktreePath = join(this.repoRoot, this.baseDir, slotId);
+		const requestedWorktreePath = join(this.repoRoot, this.baseDir, slotId);
 
 		const base = baseBranch ?? gitBranch(this.repoRoot) ?? "HEAD";
-		const result = gitWorktreeAdd(this.repoRoot, worktreePath, base, { newBranch: branch });
+		const result = gitWorktreeAdd(this.repoRoot, requestedWorktreePath, base, { newBranch: branch });
 
 		if (result === null) {
-			throw new Error(`Failed to create worktree at "${worktreePath}" for agent "${agentId}".`);
+			throw new Error(`Failed to create worktree at "${requestedWorktreePath}" for agent "${agentId}".`);
 		}
+		const worktreePath = normalizeWorktreePath(result);
 
 		const slot: WorktreeSlot = {
 			id: slotId,
@@ -137,14 +139,17 @@ export class WorktreePoolManager {
 	 * accounting without touching git again.
 	 */
 	adopt(slot: WorktreeSlot): WorktreeSlot {
+		const normalizedPath = normalizeWorktreePath(slot.path);
 		const existing = this.slots.get(slot.id);
 		if (
 			existing &&
-			(existing.path !== slot.path || existing.agentId !== slot.agentId || existing.branch !== slot.branch)
+			(normalizeWorktreePath(existing.path) !== normalizedPath ||
+				existing.agentId !== slot.agentId ||
+				existing.branch !== slot.branch)
 		) {
 			throw new Error(`Worktree slot ${slot.id} is already tracked for a different side agent.`);
 		}
-		const nextSlot: WorktreeSlot = { ...slot, inUse: true };
+		const nextSlot: WorktreeSlot = { ...slot, path: normalizedPath, inUse: true };
 		this.slots.set(nextSlot.id, nextSlot);
 		this.syncSlotCounter(nextSlot.id);
 		log.info(`Adopted worktree slot ${nextSlot.id} for agent "${nextSlot.agentId ?? "unknown"}" at ${nextSlot.path}`);
@@ -213,15 +218,15 @@ export class WorktreePoolManager {
 	 */
 	findOrphans(trackedPaths?: Iterable<string>, allWorktrees?: Iterable<string>): string[] {
 		const discoveredWorktrees = allWorktrees ? [...allWorktrees] : gitWorktreeList(this.repoRoot);
-		const knownPaths = new Set<string>([...this.slots.values()].map((slot) => resolve(slot.path)));
+		const knownPaths = new Set<string>([...this.slots.values()].map((slot) => normalizeWorktreePath(slot.path)));
 		for (const path of trackedPaths ?? []) {
-			knownPaths.add(resolve(path));
+			knownPaths.add(normalizeWorktreePath(path));
 		}
-		const absoluteBase = resolve(this.repoRoot, this.baseDir);
-		return discoveredWorktrees.filter(
-			(worktreePath) =>
-				isManagedWorktreePath(resolve(worktreePath), absoluteBase) && !knownPaths.has(resolve(worktreePath)),
-		);
+		const absoluteBase = normalizeWorktreePath(join(this.repoRoot, this.baseDir));
+		return discoveredWorktrees.filter((worktreePath) => {
+			const normalizedWorktreePath = normalizeWorktreePath(worktreePath);
+			return isManagedWorktreePath(normalizedWorktreePath, absoluteBase) && !knownPaths.has(normalizedWorktreePath);
+		});
 	}
 
 	// ── Internals ───────────────────────────────────────────────────────────

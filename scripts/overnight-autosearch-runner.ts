@@ -119,7 +119,7 @@ function focusSpecFor(focus: string): FocusSpec {
 	}
 	if (focus.includes("test") || focus.includes("validation")) {
 		return {
-			anchorFiles: ["package.json", "vitest.config.ts", "TODO.md"],
+			anchorFiles: ["package.json", "vitest.config.ts", "docs/tracking/future-roadmap.md"],
 			globs: ["packages/*/test/*.test.ts", "bin/test/*.test.ts"],
 			searches: [
 				{ pattern: "describe\\(|it\\(", glob: "*.test.ts" },
@@ -129,7 +129,7 @@ function focusSpecFor(focus: string): FocusSpec {
 	}
 	if (focus.includes("docs") || focus.includes("onboarding")) {
 		return {
-			anchorFiles: ["README.md", "docs/README.md", "AGENTS.md", "TODO.md"],
+			anchorFiles: ["README.md", "docs/README.md", "AGENTS.md", "docs/tracking/README.md"],
 			globs: ["docs/**/*.md", "*.md"],
 			searches: [
 				{ pattern: "install|setup|usage|example|workflow", glob: "*.md" },
@@ -138,7 +138,7 @@ function focusSpecFor(focus: string): FocusSpec {
 		};
 	}
 	return {
-		anchorFiles: ["README.md", "TODO.md", "package.json", "AGENTS.md"],
+		anchorFiles: ["README.md", "docs/tracking/future-roadmap.md", "package.json", "AGENTS.md"],
 		globs: ["packages/*/src/*.ts", "packages/*/test/*.test.ts", "docs/**/*.md"],
 		searches: [
 			{ pattern: "TODO|FIXME|HACK|XXX", glob: "*.{ts,tsx,md}" },

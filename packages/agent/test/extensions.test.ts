@@ -1,6 +1,10 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Message } from "@takumi/core";
+import { getConfiguredPluginPaths, loadConfig } from "@takumi/core";
 import { describe, expect, it, vi } from "vitest";
-import { loadExtensionFromFactory } from "../src/extensions/extension-loader.js";
+import { discoverAndLoadExtensions, loadExtensionFromFactory } from "../src/extensions/extension-loader.js";
 import type { ExtensionAPIActions, ExtensionContextActions } from "../src/extensions/extension-runner.js";
 import { ExtensionRunner } from "../src/extensions/extension-runner.js";
 import type { ExtensionFactory, ExtensionToolDefinition, LoadedExtension } from "../src/extensions/extension-types.js";
@@ -88,6 +92,12 @@ describe("loadExtensionFromFactory", () => {
 		expect(ext.commands.get("hello")?.name).toBe("hello");
 	});
 
+	it("defaults inline factory loads to unknown residency", async () => {
+		const factory: ExtensionFactory = () => {};
+		const ext = await loadExtensionFromFactory(factory, "/tmp");
+		expect(ext.origin).toEqual({ residency: "unknown" });
+	});
+
 	it("creates extension with shortcut", async () => {
 		const factory: ExtensionFactory = (api) => {
 			api.registerShortcut("ctrl+k", {
@@ -116,6 +126,57 @@ describe("loadExtensionFromFactory", () => {
 		};
 		const ext = await loadExtensionFromFactory(factory, "/tmp");
 		expect(ext.handlers.get("turn_start")).toHaveLength(3);
+	});
+
+	it("exposes durable storage during extension setup", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "takumi-ext-"));
+		try {
+			let seenValue: string | undefined;
+			const factory: ExtensionFactory = async (api) => {
+				await api.storage.set("boot-mode", "warm");
+				seenValue = await api.storage.get<string>("boot-mode");
+			};
+
+			await loadExtensionFromFactory(factory, cwd, "/tmp/test-extension.ts");
+			expect(seenValue).toBe("warm");
+		} finally {
+			await rm(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("loads configured plugin paths through the normalized config contract", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "takumi-config-plugin-"));
+		const extensionPath = join(cwd, "config-plugin.mjs");
+		try {
+			await writeFile(
+				extensionPath,
+				[
+					"export default function extension(api) {",
+					"\tapi.registerTool({",
+					"\t\tname: 'config_plugin_tool',",
+					"\t\tdescription: 'Configured plugin tool',",
+					"\t\tinputSchema: { type: 'object', properties: {} },",
+					"\t\trequiresPermission: false,",
+					"\t\tcategory: 'read',",
+					"\t\tasync execute() { return { output: 'ok', isError: false }; }",
+					"\t});",
+					"}",
+				].join("\n"),
+				"utf-8",
+			);
+
+			const config = loadConfig({
+				workingDirectory: cwd,
+				plugins: [{ path: "   ", name: "./config-plugin.mjs" }],
+			});
+			const result = await discoverAndLoadExtensions(getConfiguredPluginPaths(config.plugins), cwd);
+
+			expect(result.errors).toEqual([]);
+			expect(result.extensions).toHaveLength(1);
+			expect(result.extensions[0]?.tools.has("config_plugin_tool")).toBe(true);
+		} finally {
+			await rm(cwd, { recursive: true, force: true });
+		}
 	});
 });
 
@@ -147,6 +208,28 @@ describe("ExtensionRunner", () => {
 			expect(ctx.isIdle()).toBe(true);
 			expect(ctx.getSystemPrompt()).toBe("You are helpful.");
 			expect(ctx.getContextUsage()).toEqual({ tokens: 100, contextWindow: 1000, percent: 10 });
+		});
+
+		it("surfaces durable storage across runtime contexts", async () => {
+			const cwd = await mkdtemp(join(tmpdir(), "takumi-ext-"));
+			try {
+				const factory: ExtensionFactory = async (api) => {
+					await api.storage.set("theme", "moonlight");
+				};
+				const ext = await loadExtensionFromFactory(factory, cwd, "/tmp/test-extension.ts");
+				const runner = boundRunner([ext]);
+				const ctx = runner.createContext(ext.path);
+
+				expect(await ctx.storage.get<string>("theme")).toBe("moonlight");
+				await ctx.storage.set("accent", "violet");
+				expect(await ctx.storage.get<string>("accent")).toBe("violet");
+
+				await ctx.storage.setSession("draft", "hello session");
+				expect(await ctx.storage.getSession<string>("draft")).toBe("hello session");
+				expect(await ctx.storage.getSession<string>("draft", "sess-2")).toBeUndefined();
+			} finally {
+				await rm(cwd, { recursive: true, force: true });
+			}
 		});
 	});
 
@@ -269,6 +352,20 @@ describe("ExtensionRunner", () => {
 				reason: "new",
 			});
 			expect(result?.cancel).toBe(true);
+		});
+
+		it("returns non-cancel metadata for compaction handlers", async () => {
+			const ext = makeExtension();
+			ext.handlers.set("session_before_compact", [async () => ({ summary: "preserve the mission state" })]);
+			const runner = boundRunner([ext]);
+			const controller = new AbortController();
+			const result = await runner.emitCancellable({
+				type: "session_before_compact",
+				messageCount: 12,
+				estimatedTokens: 32_000,
+				signal: controller.signal,
+			});
+			expect(result).toEqual({ summary: "preserve the mission state" });
 		});
 	});
 

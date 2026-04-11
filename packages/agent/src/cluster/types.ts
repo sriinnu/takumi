@@ -2,6 +2,7 @@
  * Cluster Types - Core types for multi-agent orchestration
  */
 
+import type { ExecutionLaneEnvelope } from "@takumi/bridge";
 import type { DockerIsolationConfig, MeshTopologyMode } from "@takumi/core";
 import type { MessagePayload } from "../loop.js";
 
@@ -139,6 +140,8 @@ export type ValidationStrategy = "none" | "single" | "majority" | "all_approve";
 export interface ClusterConfig {
 	/** Agent roles in this cluster */
 	roles: AgentRole[];
+	/** Executable route bindings resolved for each cluster lane, when available. */
+	laneEnvelopes?: Partial<Record<AgentRole, ExecutionLaneEnvelope>>;
 	/** How agents are coordinated */
 	topology: ClusterTopology;
 	/** How validation results are aggregated */

@@ -274,38 +274,58 @@ export class McpClient extends EventEmitter {
 		});
 	}
 
+	/**
+	 * Handle incoming data from the MCP process.
+	 * Uses chunk accumulation and indexOf-based line extraction
+	 * to avoid O(n²) string concat + full split on every chunk.
+	 */
 	private handleData(data: string): void {
-		this.buffer += data;
-		const lines = this.buffer.split("\n");
-		this.buffer = lines.pop() ?? "";
-
-		for (const line of lines) {
-			if (!line.trim()) continue;
-			try {
-				const msg = JSON.parse(line) as JsonRpcResponse | JsonRpcNotification;
-
-				// Response (has id)
-				if ("id" in msg && msg.id !== undefined) {
-					const response = msg as JsonRpcResponse;
-					const entry = this.pending.get(response.id);
-					if (entry) {
-						clearTimeout(entry.timer);
-						this.pending.delete(response.id);
-						if (response.error) {
-							entry.reject(new Error(response.error.message));
-						} else {
-							entry.resolve(response.result);
-						}
-					}
-				} else {
-					// Server-initiated notification
-					const notif = msg as JsonRpcNotification;
-					this.emit("notification", notif.method, notif.params);
-				}
-			} catch {
-				log.warn(`Failed to parse MCP message: ${line.slice(0, 200)}`);
-			}
+		// Fast path: if no existing buffer and data contains complete lines
+		if (!this.buffer && !data.includes("\n")) {
+			this.buffer = data;
+			return;
 		}
+
+		const combined = this.buffer + data;
+		let start = 0;
+		let idx = combined.indexOf("\n", start);
+
+		while (idx !== -1) {
+			const line = combined.slice(start, idx);
+			start = idx + 1;
+
+			if (line.trim()) {
+				try {
+					const msg = JSON.parse(line) as JsonRpcResponse | JsonRpcNotification;
+
+					// Response (has id)
+					if ("id" in msg && msg.id !== undefined) {
+						const response = msg as JsonRpcResponse;
+						const entry = this.pending.get(response.id);
+						if (entry) {
+							clearTimeout(entry.timer);
+							this.pending.delete(response.id);
+							if (response.error) {
+								entry.reject(new Error(response.error.message));
+							} else {
+								entry.resolve(response.result);
+							}
+						}
+					} else {
+						// Server-initiated notification
+						const notif = msg as JsonRpcNotification;
+						this.emit("notification", notif.method, notif.params);
+					}
+				} catch {
+					log.warn(`Failed to parse MCP message: ${line.slice(0, 200)}`);
+				}
+			}
+
+			idx = combined.indexOf("\n", start);
+		}
+
+		// Keep incomplete data as the new buffer
+		this.buffer = start < combined.length ? combined.slice(start) : "";
 	}
 
 	private rejectAllPending(reason: string): void {

@@ -1,6 +1,6 @@
 import { KEY_CODES } from "@takumi/core";
 import { describe, expect, it } from "vitest";
-import { parseKeyEvent } from "../src/app-input.js";
+import { parseKeyEvent } from "../src/input/app-input.js";
 
 describe("parseKeyEvent", () => {
 	it("treats Enter as return (not Ctrl+M)", () => {

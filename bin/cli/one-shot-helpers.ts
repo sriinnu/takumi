@@ -6,13 +6,39 @@
  * normalization logic.
  */
 
-import type { TakumiConfig, Usage, HubArtifact, ExecRoutingBinding, ExecSessionBinding } from "@takumi/core";
-import { createHubArtifact } from "@takumi/core";
-import { ChitraguptaObserver } from "@takumi/bridge";
+import { inferProvider } from "@takumi/agent";
+import type { ImportedArtifactInput, ImportedArtifactRecord } from "@takumi/bridge";
+import {
+	ArtifactStore,
+	createHubArtifact,
+	normalizeProviderName,
+	type ExecRoutingBinding,
+	type ExecSessionBinding,
+	type HubArtifact,
+	type TakumiConfig,
+	type Usage,
+} from "@takumi/core";
 import type { bootstrapChitraguptaForExec } from "@takumi/agent";
 
 /** Resolved Chitragupta bridge handle from bootstrapChitraguptaForExec. */
 export type ExecBridge = NonNullable<Awaited<ReturnType<typeof bootstrapChitraguptaForExec>>["bridge"]>;
+export type ExecArtifactBridge = Pick<ExecBridge, "isConnected" | "artifactImportBatch" | "artifactListImported">;
+
+const artifactStore = new ArtifactStore();
+const OPENAI_COMPAT_PROVIDERS = new Set([
+	"openai",
+	"openrouter",
+	"ollama",
+	"github",
+	"groq",
+	"deepseek",
+	"mistral",
+	"together",
+	"xai",
+	"alibaba",
+	"bedrock",
+	"zai",
+]);
 
 // ── Git helpers ───────────────────────────────────────────────────────────────
 
@@ -93,6 +119,53 @@ export function extractSelectedModel(metadata: Record<string, unknown> | undefin
 	return undefined;
 }
 
+/** Read the daemon-selected concrete provider when the route metadata already carries one. */
+export function extractSelectedProvider(metadata: Record<string, unknown> | undefined): string | undefined {
+	const candidates = [metadata?.providerId, metadata?.provider, metadata?.boundProviderId, metadata?.compatibleProvider];
+	for (const candidate of candidates) {
+		if (typeof candidate !== "string") continue;
+		const normalized = normalizeProviderName(candidate);
+		if (normalized) return normalized;
+	}
+	return undefined;
+}
+
+function mapExecProviderFamilyToConcreteProvider(
+	family: string | undefined,
+	configuredProvider: string | undefined,
+): string | undefined {
+	const normalizedFamily = normalizeProviderName(family);
+	if (!normalizedFamily) return undefined;
+	if (normalizedFamily === "openai-compat") {
+		const normalizedConfiguredProvider = normalizeProviderName(configuredProvider);
+		return normalizedConfiguredProvider && OPENAI_COMPAT_PROVIDERS.has(normalizedConfiguredProvider)
+			? normalizedConfiguredProvider
+			: undefined;
+	}
+	return normalizedFamily;
+}
+
+/** Collapse daemon provider-family hints plus exact model metadata into one concrete provider Takumi can really bind. */
+export function resolveExecConcreteProvider(
+	providerFamily: string | undefined,
+	selectedProvider: string | undefined,
+	selectedModel: string | undefined,
+	configuredProvider: string | undefined,
+): string | undefined {
+	const normalizedFamily = normalizeProviderName(providerFamily);
+	const normalizedSelectedProvider = normalizeProviderName(selectedProvider);
+	if (normalizedFamily === "openai-compat") {
+		if (normalizedSelectedProvider && OPENAI_COMPAT_PROVIDERS.has(normalizedSelectedProvider)) {
+			return normalizedSelectedProvider;
+		}
+		return mapExecProviderFamilyToConcreteProvider(providerFamily, configuredProvider);
+	}
+	if (normalizedSelectedProvider) return normalizedSelectedProvider;
+	const providerFromFamily = mapExecProviderFamilyToConcreteProvider(providerFamily, configuredProvider);
+	if (providerFromFamily) return providerFromFamily;
+	return selectedModel ? mapExecProviderFamilyToConcreteProvider(inferProvider(selectedModel), configuredProvider) : undefined;
+}
+
 // ── Policy detection ──────────────────────────────────────────────────────────
 
 export function isPolicyFailureOutput(output: string): boolean {
@@ -165,6 +238,86 @@ export function buildHubArtifacts(ctx: ExecArtifactContext): HubArtifact[] {
 	return artifacts;
 }
 
+// ── Artifact persistence / promotion ─────────────────────────────────────────
+
+/** Persist one-shot artifacts locally and promote them when a daemon session exists. */
+export async function persistExecArtifacts(
+	bridge: ExecArtifactBridge | null,
+	session: ExecSessionBinding,
+	runId: string,
+	artifacts: HubArtifact[],
+): Promise<void> {
+	if (artifacts.length === 0) return;
+
+	const storageSessionId = session.canonicalSessionId ?? runId;
+	const preparedArtifacts = artifacts.map((artifact) => ({
+		...artifact,
+		taskId: artifact.taskId ?? runId,
+		runId,
+		localSessionId: artifact.localSessionId ?? runId,
+		canonicalSessionId: session.canonicalSessionId ?? artifact.canonicalSessionId,
+		importStatus: artifact.importStatus ?? "pending",
+	}));
+
+	await Promise.all(preparedArtifacts.map((artifact) => artifactStore.save(artifact, storageSessionId)));
+
+	if (!bridge?.isConnected || !session.canonicalSessionId) return;
+
+	const batch = await bridge.artifactImportBatch(
+		session.projectPath,
+		"takumi",
+		preparedArtifacts.map(toImportedArtifactInput),
+		session.canonicalSessionId,
+	);
+	if (!batch) return;
+
+	const importedList = await bridge.artifactListImported(session.projectPath, "takumi", session.canonicalSessionId);
+	const recordsByLocalId = new Map((importedList?.items ?? []).map((record) => [record.localArtifactId, record] as const));
+	const recordsByContentHash = new Map((importedList?.items ?? []).map((record) => [record.contentHash, record] as const));
+	const artifactsById = new Map(preparedArtifacts.map((artifact) => [artifact.artifactId, artifact] as const));
+	const importedAt = Date.now();
+
+	for (const entry of batch.imported) {
+		const artifact = artifactsById.get(entry.localArtifactId);
+		if (!artifact) continue;
+		const record = recordsByLocalId.get(entry.localArtifactId);
+		await markExecArtifactImported(
+			artifact,
+			record,
+			session.canonicalSessionId,
+			importedAt,
+			entry.canonicalArtifactId,
+			entry.contentHash,
+		);
+	}
+
+	for (const entry of batch.skipped) {
+		const artifact = artifactsById.get(entry.localArtifactId);
+		if (!artifact) continue;
+		const record = recordsByLocalId.get(entry.localArtifactId) ?? recordsByContentHash.get(artifact.contentHash);
+		if (!record) continue;
+		await markExecArtifactImported(
+			artifact,
+			record,
+			session.canonicalSessionId,
+			importedAt,
+			record.canonicalArtifactId,
+			record.contentHash,
+		);
+	}
+
+	for (const entry of batch.failed) {
+		if (!entry.localArtifactId) continue;
+		await artifactStore.updateImportState(entry.localArtifactId, {
+			promoted: false,
+			canonicalSessionId: session.canonicalSessionId,
+			importStatus: "failed",
+			lastImportAt: importedAt,
+			lastImportError: entry.error,
+		});
+	}
+}
+
 // ── Session persistence ───────────────────────────────────────────────────────
 
 export async function ensureExecCanonicalSession(
@@ -188,54 +341,6 @@ export async function ensureExecCanonicalSession(
 		};
 	} catch {
 		return { projectPath: process.cwd() };
-	}
-}
-
-// ── Routing resolution ────────────────────────────────────────────────────────
-
-export async function resolveExecRouting(
-	bridge: ExecBridge,
-	session: ExecSessionBinding,
-	prompt: string,
-	config: TakumiConfig,
-	capability: string,
-): Promise<ExecRoutingBinding> {
-	try {
-		const observer = new ChitraguptaObserver(bridge as never);
-		const decision = await observer.routeResolve({
-			consumer: "takumi.exec",
-			sessionId: session.canonicalSessionId ?? "transient",
-			capability,
-			constraints: { requireStreaming: true, hardProviderFamily: normalizeExecProviderFamily(config.provider) ?? undefined },
-			context: {
-				projectPath: session.projectPath,
-				promptLength: prompt.length,
-				configuredModel: config.model,
-				configuredProvider: config.provider,
-			},
-		});
-		const selected = decision?.selected;
-		const selectedModel = extractSelectedModel(selected?.metadata);
-		const selectedProvider = normalizeExecProviderFamily(selected?.providerFamily);
-		const configuredProvider = normalizeExecProviderFamily(config.provider);
-		const canApplyModel = Boolean(selected && selectedModel && (!selectedProvider || selectedProvider === configuredProvider));
-		return {
-			capability,
-			authority: canApplyModel ? "engine" : "takumi-fallback",
-			enforcement: canApplyModel ? "same-provider" : "capability-only",
-			provider: selected?.providerFamily ?? config.provider,
-			model: canApplyModel ? selectedModel : config.model,
-			laneId: selected?.id,
-			degraded: decision?.degraded ?? false,
-		};
-	} catch {
-		return {
-			capability,
-			authority: "takumi-fallback",
-			enforcement: "capability-only",
-			provider: config.provider,
-			model: config.model,
-		};
 	}
 }
 
@@ -280,5 +385,63 @@ export async function persistExecSession(
 		});
 	} catch {
 		// best effort
+	}
+}
+
+function toImportedArtifactInput(artifact: HubArtifact): ImportedArtifactInput {
+	return {
+		localArtifactId: artifact.artifactId,
+		kind: artifact.kind,
+		producer: artifact.producer,
+		summary: artifact.summary,
+		body: artifact.body,
+		path: artifact.path,
+		confidence: artifact.confidence,
+		createdAt: artifact.createdAt,
+		taskId: artifact.taskId,
+		laneId: artifact.laneId,
+		localSessionId: artifact.localSessionId,
+		canonicalSessionId: artifact.canonicalSessionId,
+		runId: artifact.runId,
+		contentHash: artifact.contentHash,
+		metadata: artifact.metadata,
+	};
+}
+
+async function markExecArtifactImported(
+	artifact: HubArtifact,
+	record: ImportedArtifactRecord | undefined,
+	canonicalSessionId: string,
+	importedAt: number,
+	canonicalArtifactId: string,
+	contentHash: string,
+): Promise<void> {
+	await artifactStore.updateImportState(artifact.artifactId, {
+		promoted: true,
+		canonicalArtifactId,
+		canonicalSessionId,
+		localSessionId: artifact.localSessionId,
+		runId: artifact.runId,
+		contentHash,
+		importStatus: "imported",
+		lastImportAt: importedAt,
+		lastImportError: undefined,
+	});
+
+	if (record?.localSessionId && !artifact.localSessionId) {
+		await artifactStore.save(
+			{
+				...artifact,
+				localSessionId: record.localSessionId,
+				canonicalSessionId,
+				canonicalArtifactId,
+				contentHash,
+				importStatus: "imported",
+				lastImportAt: importedAt,
+				lastImportError: undefined,
+				promoted: true,
+			},
+			canonicalSessionId,
+		);
 	}
 }

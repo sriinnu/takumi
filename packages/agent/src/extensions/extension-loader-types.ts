@@ -7,7 +7,9 @@
 
 import type { AnnotatedFactory, ExtensionManifest } from "./define-extension.js";
 import type { ExtensionBridgeRegistry } from "./extension-bridge.js";
+import type { ExtensionStorage } from "./extension-storage.js";
 import type { ExtensionToolDefinition, RegisteredCommand, RegisteredShortcut } from "./extension-types.js";
+import type { TakumiPackageSource } from "./package-loader.js";
 
 // ── Extension Factory ─────────────────────────────────────────────────────────
 
@@ -26,6 +28,7 @@ export type ExtensionFactory = AnnotatedFactory;
  */
 export interface ExtensionActionSlots {
 	sendUserMessage: (content: string) => void;
+	getSessionId: () => string | undefined;
 	getActiveTools: () => string[];
 	setActiveTools: (names: string[]) => void;
 	exec: (command: string, args?: string[]) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
@@ -35,16 +38,29 @@ export interface ExtensionActionSlots {
 
 // ── Loaded State ──────────────────────────────────────────────────────────────
 
+export type ExtensionResidency = "project" | "global" | "package" | "unknown";
+
+/** Additive provenance carried from discovery into the loaded extension runtime. */
+export interface LoadedExtensionOrigin {
+	residency: ExtensionResidency;
+	packageId?: string;
+	packageName?: string;
+	packageSource?: TakumiPackageSource;
+}
+
 /** Loaded extension with all registered items. */
 export interface LoadedExtension {
 	path: string;
 	resolvedPath: string;
+	origin?: LoadedExtensionOrigin;
 	handlers: Map<string, Array<(...args: unknown[]) => unknown>>;
 	tools: Map<string, ExtensionToolDefinition>;
 	commands: Map<string, RegisteredCommand>;
 	shortcuts: Map<string, RegisteredShortcut>;
 	/** Manifest attached by defineExtension(), or undefined for raw factories. */
 	manifest: ExtensionManifest | undefined;
+	/** Durable storage assigned by the loader when available. */
+	storage?: ExtensionStorage;
 	/**
 	 * Mutable action slots. Stubs initially; bindActions() replaces them with
 	 * real implementations so `sho.exec()` etc. work inside handlers.

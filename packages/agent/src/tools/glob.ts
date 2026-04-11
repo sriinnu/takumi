@@ -1,9 +1,9 @@
 /**
  * Glob tool — find files matching glob patterns.
- * Uses Node.js built-in fs.globSync (Node 22+).
+ * Uses Node.js built-in fs.glob (Node 22+, async).
  */
 
-import { globSync } from "node:fs";
+import { glob } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ToolDefinition } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
@@ -35,12 +35,12 @@ export const globHandler: ToolHandler = async (input) => {
 
 	try {
 		const cwd = resolve(searchPath);
-		const matches = globSync(pattern, {
-			cwd,
-			withFileTypes: false,
-		}) as string[];
+		const matches: string[] = [];
+		for await (const entry of glob(pattern, { cwd, withFileTypes: false })) {
+			matches.push(entry as string);
+			if (matches.length > 500) break;
+		}
 
-		// Sort and limit results
 		const sorted = matches.sort();
 		const limited = sorted.slice(0, 500);
 
@@ -49,8 +49,8 @@ export const globHandler: ToolHandler = async (input) => {
 		}
 
 		let output = limited.map((f) => resolve(cwd, f)).join("\n");
-		if (sorted.length > 500) {
-			output += `\n... and ${sorted.length - 500} more files`;
+		if (matches.length > 500) {
+			output += `\n... and more files (results truncated at 500)`;
 		}
 
 		return { output, isError: false };

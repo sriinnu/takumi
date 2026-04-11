@@ -9,8 +9,9 @@ import type { KeyEvent, Message, Rect, TakumiConfig } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import type { Screen } from "@takumi/render";
 import { Component } from "@takumi/render";
-import type { AgentRunner } from "../agent-runner.js";
-import type { SlashCommandRegistry } from "../commands.js";
+import type { AgentRunner } from "../agent/agent-runner.js";
+import { syncPendingChitraguptaSessionTurns } from "../chitragupta/chitragupta-session-sync.js";
+import type { SlashCommandRegistry } from "../commands/commands.js";
 import { EditorPanel } from "../panels/editor.js";
 import { HeaderPanel } from "../panels/header.js";
 import { MessageListPanel } from "../panels/message-list.js";
@@ -84,10 +85,12 @@ export class ChatView extends Component {
 			role: "user",
 			content: [{ type: "text", text }],
 			timestamp: Date.now(),
+			sessionTurn: true,
 		};
 
 		this.state.addMessage(message);
 		this.state.turnCount.value++;
+		void syncPendingChitraguptaSessionTurns(this.state, this.agentRunner?.emitExtensionEvent);
 
 		// Kick off the agent loop if connected
 		if (this.agentRunner) {

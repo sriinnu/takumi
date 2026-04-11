@@ -44,6 +44,7 @@ describe("exec protocol", () => {
 				vasanaCount: 0,
 				hasHealth: false,
 				summary: "offline",
+				warnings: ["bridge token missing"],
 				sideAgents: {
 					enabled: false,
 					degraded: true,
@@ -56,6 +57,7 @@ describe("exec protocol", () => {
 
 		expect(envelope.bootstrap.error).toMatchObject({ message: "socket missing" });
 		expect(envelope.bootstrap.sideAgents).toMatchObject({ reason: "tmux_unavailable" });
+		expect(envelope.bootstrap.warnings).toEqual(["bridge token missing"]);
 	});
 
 	it("creates a stable completion envelope", () => {
@@ -95,5 +97,19 @@ describe("exec protocol", () => {
 		expect(envelope.exitCode).toBe(EXEC_EXIT_CODES.CONFIG);
 		expect(envelope.category).toBe("config");
 		expect(envelope.error.message).toBe("missing auth");
+	});
+
+	it("allows route incompatibility to override the default config category", () => {
+		const envelope = createRunFailedEvent({
+			runId: "exec-123",
+			exitCode: EXEC_EXIT_CODES.CONFIG,
+			phase: "config",
+			category: "route_incompatible",
+			error: new Error("route mismatch"),
+		});
+
+		expect(envelope.phase).toBe("config");
+		expect(envelope.category).toBe("route_incompatible");
+		expect(envelope.error.message).toBe("route mismatch");
 	});
 });

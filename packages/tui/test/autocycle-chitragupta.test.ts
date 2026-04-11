@@ -5,13 +5,13 @@ const mockEnsureCanonicalSessionBinding = vi.fn(async () => "canon-1");
 const mockGetBoundSessionId = vi.fn(() => "canon-1");
 const mockObserveExecutorEvents = vi.fn(async () => {});
 
-vi.mock("../src/chitragupta-executor-runtime.js", () => ({
+vi.mock("../src/chitragupta/chitragupta-executor-runtime.js", () => ({
 	ensureCanonicalSessionBinding: mockEnsureCanonicalSessionBinding,
 	getBoundSessionId: mockGetBoundSessionId,
 	observeExecutorEvents: mockObserveExecutorEvents,
 }));
 
-const { reportAutocycleIterationToChitragupta } = await import("../src/autocycle-chitragupta.js");
+const { reportAutocycleIterationToChitragupta } = await import("../src/autocycle/autocycle-chitragupta.js");
 
 describe("autocycle-chitragupta", () => {
 	it("reports iteration events and triggers consolidation when connected", async () => {

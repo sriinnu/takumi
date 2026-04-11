@@ -47,8 +47,8 @@ function makeError(err: unknown): { message: string; stack: string | undefined }
 // ── Fire-and-Forget ─────────────────────────────────────────────────────────
 
 export async function emitImpl(runner: ExtensionRunner, event: ExtensionEvent): Promise<void> {
-	const ctx = runner.createContext();
 	for (const ext of runner._extensions) {
+		const ctx = runner.createContext(ext);
 		const handlers = ext.handlers.get(event.type);
 		if (!handlers || handlers.length === 0) continue;
 		for (const handler of handlers) {
@@ -68,32 +68,41 @@ export async function emitCancellableImpl(
 	runner: ExtensionRunner,
 	event: ExtensionEvent & { type: "session_before_switch" | "session_before_compact" },
 ): Promise<CancellableResult | undefined> {
-	const ctx = runner.createContext();
+	let pendingResult: CancellableResult | undefined;
 	for (const ext of runner._extensions) {
+		const ctx = runner.createContext(ext);
 		const handlers = ext.handlers.get(event.type);
 		if (!handlers || handlers.length === 0) continue;
 		for (const handler of handlers) {
 			try {
 				const result = (await handler(event, ctx)) as CancellableResult | undefined;
-				if (result?.cancel) return result;
+				if (!result) continue;
+				pendingResult = { ...(pendingResult ?? {}), ...result };
+				if (result.cancel) return pendingResult;
 			} catch (err) {
 				const e = makeError(err);
 				runner.emitError({ extensionPath: ext.path, event: event.type, error: e.message, stack: e.stack });
 			}
 		}
 	}
-	return undefined;
+	if (pendingResult && Object.keys(pendingResult).length === 1 && pendingResult.cancel === false) {
+		return undefined;
+	}
+	return pendingResult;
 }
 
 // ── Context Transform ───────────────────────────────────────────────────────
 
 export async function emitContextImpl(runner: ExtensionRunner, messages: Message[]): Promise<Message[]> {
 	if (!runner.hasHandlers("context")) return messages;
-	const ctx = runner.createContext();
-	let current = structuredClone(messages);
+	// Lazy clone — only pay the cost when at least one handler will actually run.
+	// Object.freeze on the snapshot catches accidental in-place mutation.
+	let current: Message[] | null = null;
 	for (const ext of runner._extensions) {
+		const ctx = runner.createContext(ext);
 		const handlers = ext.handlers.get("context");
 		if (!handlers || handlers.length === 0) continue;
+		if (!current) current = structuredClone(messages);
 		for (const handler of handlers) {
 			try {
 				const event: ContextEvent = { type: "context", messages: current };
@@ -105,7 +114,7 @@ export async function emitContextImpl(runner: ExtensionRunner, messages: Message
 			}
 		}
 	}
-	return current;
+	return current ?? messages;
 }
 
 // ── Before Agent Start ──────────────────────────────────────────────────────
@@ -115,12 +124,12 @@ export async function emitBeforeAgentStartImpl(
 	prompt: string,
 	systemPrompt: string,
 ): Promise<{ systemPrompt?: string; injectedMessages: Array<{ content: string }> } | undefined> {
-	const ctx = runner.createContext();
 	const injectedMessages: Array<{ content: string }> = [];
 	let currentSystemPrompt = systemPrompt;
 	let modified = false;
 
 	for (const ext of runner._extensions) {
+		const ctx = runner.createContext(ext);
 		const handlers = ext.handlers.get("before_agent_start");
 		if (!handlers || handlers.length === 0) continue;
 		for (const handler of handlers) {
@@ -162,10 +171,10 @@ export async function emitToolCallImpl(
 	runner: ExtensionRunner,
 	event: ToolCallEvent,
 ): Promise<ToolCallEventResult | undefined> {
-	const ctx = runner.createContext();
 	// Dispatch to both generic "tool_call" handlers AND filtered "tool_call:<toolName>" handlers.
 	const filteredKey = `tool_call:${event.toolName}`;
 	for (const ext of runner._extensions) {
+		const ctx = runner.createContext(ext);
 		for (const key of ["tool_call", filteredKey]) {
 			const handlers = ext.handlers.get(key);
 			if (!handlers || handlers.length === 0) continue;
@@ -189,11 +198,11 @@ export async function emitToolResultImpl(
 	runner: ExtensionRunner,
 	event: ToolResultEvent,
 ): Promise<ToolResultEventResult | undefined> {
-	const ctx = runner.createContext();
 	let modified = false;
 	const current = { ...event };
 
 	for (const ext of runner._extensions) {
+		const ctx = runner.createContext(ext);
 		const handlers = ext.handlers.get("tool_result");
 		if (!handlers || handlers.length === 0) continue;
 		for (const handler of handlers) {
@@ -226,10 +235,10 @@ export async function emitInputImpl(
 	text: string,
 	source: InputSource,
 ): Promise<InputEventResult> {
-	const ctx = runner.createContext();
 	let currentText = text;
 
 	for (const ext of runner._extensions) {
+		const ctx = runner.createContext(ext);
 		const handlers = ext.handlers.get("input");
 		if (!handlers || handlers.length === 0) continue;
 		for (const handler of handlers) {

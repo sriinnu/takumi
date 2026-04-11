@@ -5,6 +5,7 @@
 import type { Message, ToolResultBlock, ToolUseBlock } from "@takumi/core";
 import { getTheme, hexToRgb, isDiffContent } from "@takumi/render";
 import type { AppState } from "../state.js";
+import { summarizeToolBlock } from "./message-list-tool-summary.js";
 import type { LineSegment, RenderedLine } from "./message-list-types.js";
 import { rgbTo256 } from "./message-list-types.js";
 
@@ -59,113 +60,78 @@ export function renderToolBlock(
 	const warningFg = rgbTo256(wr, wg, wb);
 	const [mr, mg, mb] = hexToRgb(theme.muted);
 	const mutedFg = rgbTo256(mr, mg, mb);
+	const summary = summarizeToolBlock(toolUse, toolResult);
 
 	const isRunning = toolResult === null;
 	const isError = toolResult?.isError ?? false;
-	const collapsed = isRunning ? false : !state.isToolCollapsed(toolUse.id);
-	const argSummary = getToolArgSummary(toolUse);
+	const isCollapsedView = isRunning ? false : !state.isToolCollapsed(toolUse.id);
 	const headerLineIdx = renderedLines.length;
 
-	if (collapsed) {
-		const arrow = "\u25B6";
-		const statusChar = isError ? "\u2717" : "\u2713";
-		const statusFg = isError ? errorFg : successFg;
-		const toolNamePart = toolUse.name;
-		const argPart = argSummary ? truncateArg(argSummary, Math.max(10, width - toolNamePart.length - 10)) : "";
-
-		const segments: LineSegment[] = [
-			{ text: `${arrow} `, fg: mutedFg, bg: -1, bold: false, dim: false, italic: false, underline: false },
-			{ text: toolNamePart, fg: primaryFg, bg: -1, bold: true, dim: false, italic: false, underline: false },
-			{ text: "  ", fg: -1, bg: -1, bold: false, dim: false, italic: false, underline: false },
-			{ text: argPart, fg: mutedFg, bg: -1, bold: false, dim: true, italic: false, underline: false },
-		];
-
-		const usedWidth = 2 + toolNamePart.length + 2 + argPart.length;
-		const padLen = Math.max(1, width - usedWidth - 2);
-		segments.push({
-			text: " ".repeat(padLen),
-			fg: -1,
-			bg: -1,
-			bold: false,
-			dim: false,
-			italic: false,
-			underline: false,
-		});
-		segments.push({ text: statusChar, fg: statusFg, bg: -1, bold: false, dim: false, italic: false, underline: false });
-
-		renderedLines.push({
-			text: `${arrow} ${toolNamePart}  ${argPart}${" ".repeat(padLen)}${statusChar}`,
-			fg: mutedFg,
-			bold: false,
-			dim: false,
-			segments,
-		});
+	if (isCollapsedView) {
+		renderedLines.push(
+			buildToolHeaderLine({
+				arrow: "\u25B6",
+				mutedFg,
+				primaryFg,
+				successFg,
+				errorFg,
+				warningFg,
+				toolName: toolUse.name,
+				subject: truncateArg(summary.subject, Math.max(16, Math.floor(width * 0.25))),
+				icon: summary.icon,
+				status: summary.status,
+				statusChar: summary.statusChar,
+				statusLabel: summary.statusLabel,
+				trailingSummary: summary.collapsedSummary
+					? truncateArg(summary.collapsedSummary, Math.max(18, Math.floor(width * 0.35)))
+					: "",
+			}),
+		);
 		toolBlockLineMap.set(headerLineIdx, toolUse.id);
 		return;
 	}
 
-	const arrow = isRunning ? "\u27F3" : "\u25BC";
-	const arrowFg = isRunning ? warningFg : mutedFg;
-	const toolNamePart = toolUse.name;
-	const argPart = argSummary ? truncateArg(argSummary, Math.max(10, width - toolNamePart.length - 10)) : "";
-
-	const headerSegments: LineSegment[] = [
-		{ text: `${arrow} `, fg: arrowFg, bg: -1, bold: false, dim: false, italic: false, underline: false },
-		{ text: toolNamePart, fg: primaryFg, bg: -1, bold: true, dim: false, italic: false, underline: false },
-		{ text: "  ", fg: -1, bg: -1, bold: false, dim: false, italic: false, underline: false },
-		{ text: argPart, fg: mutedFg, bg: -1, bold: false, dim: true, italic: false, underline: false },
-	];
-
-	if (!isRunning) {
-		const statusChar = isError ? "\u2717" : "\u2713";
-		const statusFg = isError ? errorFg : successFg;
-		const usedWidth = 2 + toolNamePart.length + 2 + argPart.length;
-		const padLen = Math.max(1, width - usedWidth - 2);
-		headerSegments.push({
-			text: " ".repeat(padLen),
-			fg: -1,
-			bg: -1,
-			bold: false,
-			dim: false,
-			italic: false,
-			underline: false,
-		});
-		headerSegments.push({
-			text: statusChar,
-			fg: statusFg,
-			bg: -1,
-			bold: false,
-			dim: false,
-			italic: false,
-			underline: false,
-		});
-	}
-
-	renderedLines.push({
-		text: `${arrow} ${toolNamePart}  ${argPart}`,
-		fg: mutedFg,
-		bold: false,
-		dim: false,
-		segments: headerSegments,
-	});
+	renderedLines.push(
+		buildToolHeaderLine({
+			arrow: isRunning ? "\u27F3" : "\u25BC",
+			mutedFg,
+			primaryFg,
+			successFg,
+			errorFg,
+			warningFg,
+			toolName: toolUse.name,
+			subject: truncateArg(summary.subject, Math.max(18, Math.floor(width * 0.3))),
+			icon: summary.icon,
+			status: summary.status,
+			statusChar: summary.statusChar,
+			statusLabel: summary.statusLabel,
+			trailingSummary: "",
+		}),
+	);
 	toolBlockLineMap.set(headerLineIdx, toolUse.id);
 
-	if (isRunning) {
-		pushPrefixedLine(renderedLines, "\u2502 Running...", warningFg, mutedFg);
-		return;
+	for (const detail of summary.summaryLines) {
+		pushSummaryLine(
+			renderedLines,
+			detail.label,
+			detail.value,
+			resolveSummaryTone(detail.tone, mutedFg, successFg, warningFg, errorFg),
+		);
 	}
+
+	if (isRunning) return;
 
 	for (const [key, value] of Object.entries(toolUse.input)) {
 		const strVal = typeof value === "string" ? value : JSON.stringify(value);
 		const truncated = strVal.length > 60 ? `${strVal.slice(0, 57)}...` : strVal;
-		pushPrefixedLine(renderedLines, `\u2502 ${key}: ${truncated}`, -1, mutedFg);
+		pushSummaryLine(renderedLines, key, truncated, mutedFg);
 	}
 	const sep = "\u2500".repeat(Math.min(40, width - 4));
 	pushPrefixedLine(renderedLines, `\u2502 ${sep}`, -1, mutedFg);
 
 	if (!toolResult) return;
 	if (!toolResult.content) {
-		pushPrefixedLine(renderedLines, "\u2502 (empty result)", mutedFg, mutedFg);
+		pushSummaryLine(renderedLines, "result", "empty result", mutedFg);
 		return;
 	}
 
@@ -202,6 +168,106 @@ export function renderToolBlock(
 	if (contentLines.length > MAX_EXPANDED_RESULT_LINES) {
 		pushPrefixedLine(renderedLines, `\u2502 (showing ${showLines} of ${contentLines.length} lines)`, mutedFg, mutedFg);
 	}
+}
+
+interface ToolHeaderLineInput {
+	arrow: string;
+	mutedFg: number;
+	primaryFg: number;
+	successFg: number;
+	errorFg: number;
+	warningFg: number;
+	toolName: string;
+	subject: string;
+	icon: string;
+	status: "running" | "success" | "error";
+	statusChar: string;
+	statusLabel: string;
+	trailingSummary: string;
+}
+
+function buildToolHeaderLine(input: ToolHeaderLineInput): RenderedLine {
+	const statusFg =
+		input.status === "error" ? input.errorFg : input.status === "success" ? input.successFg : input.warningFg;
+	const statusBg = input.status === "error" ? 52 : input.status === "success" ? 22 : 58;
+	const parts = [`${input.arrow} ${input.icon} ${input.toolName}`];
+	const segments: LineSegment[] = [
+		{
+			text: `${input.arrow} `,
+			fg: input.status === "running" ? input.warningFg : input.mutedFg,
+			bg: -1,
+			bold: false,
+			dim: false,
+			italic: false,
+			underline: false,
+		},
+		{ text: `${input.icon} `, fg: input.mutedFg, bg: -1, bold: false, dim: false, italic: false, underline: false },
+		{ text: input.toolName, fg: input.primaryFg, bg: -1, bold: true, dim: false, italic: false, underline: false },
+	];
+
+	if (input.subject) {
+		parts.push(input.subject);
+		segments.push({ text: "  ", fg: -1, bg: -1, bold: false, dim: false, italic: false, underline: false });
+		segments.push({
+			text: input.subject,
+			fg: input.mutedFg,
+			bg: -1,
+			bold: false,
+			dim: true,
+			italic: false,
+			underline: false,
+		});
+	}
+
+	const statusText = `[${input.statusChar} ${input.statusLabel}]`;
+	parts.push(statusText);
+	segments.push({ text: "  ", fg: -1, bg: -1, bold: false, dim: false, italic: false, underline: false });
+	segments.push({ text: statusText, fg: 15, bg: statusBg, bold: true, dim: false, italic: false, underline: false });
+
+	if (input.trailingSummary) {
+		parts.push(input.trailingSummary);
+		segments.push({ text: "  ", fg: -1, bg: -1, bold: false, dim: false, italic: false, underline: false });
+		segments.push({
+			text: input.trailingSummary,
+			fg: statusFg,
+			bg: -1,
+			bold: false,
+			dim: false,
+			italic: false,
+			underline: false,
+		});
+	}
+
+	return {
+		text: parts.join("  "),
+		fg: input.mutedFg,
+		bold: false,
+		dim: false,
+		segments,
+	};
+}
+
+function resolveSummaryTone(
+	tone: "neutral" | "success" | "warning" | "error",
+	mutedFg: number,
+	successFg: number,
+	warningFg: number,
+	errorFg: number,
+): number {
+	if (tone === "success") return successFg;
+	if (tone === "warning") return warningFg;
+	if (tone === "error") return errorFg;
+	return mutedFg;
+}
+
+function pushSummaryLine(renderedLines: RenderedLine[], label: string, value: string, valueFg: number): void {
+	const text = `\u2502 ${label}: ${value}`;
+	const segments: LineSegment[] = [
+		{ text: "\u2502 ", fg: 8, bg: -1, bold: false, dim: true, italic: false, underline: false },
+		{ text: `${label}: `, fg: 8, bg: -1, bold: true, dim: false, italic: false, underline: false },
+		{ text: value, fg: valueFg, bg: -1, bold: false, dim: false, italic: false, underline: false },
+	];
+	renderedLines.push({ text, fg: valueFg, bold: false, dim: false, segments });
 }
 
 /** Push a line with a vertical bar prefix for expanded tool content. */

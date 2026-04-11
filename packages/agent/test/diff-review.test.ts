@@ -16,9 +16,12 @@ beforeAll(() => {
 	mkdirSync(TEST_DIR, { recursive: true });
 
 	// Init a git repo with an initial commit
-	execSync("git init && git config user.email 'test@test.com' && git config user.name 'Test'", {
-		cwd: TEST_DIR,
-	});
+	execSync(
+		"git init && git config user.email 'test@test.com' && git config user.name 'Test' && git config commit.gpgsign false && git config tag.gpgsign false",
+		{
+			cwd: TEST_DIR,
+		},
+	);
 	writeFileSync(join(TEST_DIR, "index.ts"), "export const x = 1;\n");
 	execSync("git add . && git commit -m 'init'", { cwd: TEST_DIR });
 });

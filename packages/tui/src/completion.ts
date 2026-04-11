@@ -15,7 +15,7 @@ import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import type { Signal } from "@takumi/render";
 import { signal } from "@takumi/render";
-import type { SlashCommandRegistry } from "./commands.js";
+import type { SlashCommandRegistry } from "./commands/commands.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

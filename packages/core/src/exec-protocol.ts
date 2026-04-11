@@ -16,7 +16,14 @@ export const EXEC_EXIT_CODES = {
 export type ExecExitCode = (typeof EXEC_EXIT_CODES)[keyof typeof EXEC_EXIT_CODES];
 export type ExecFailurePhase = "usage" | "config" | "bootstrap" | "policy" | "agent_loop" | "internal";
 export type ExecBootstrapTransport = "daemon-socket" | "mcp-stdio" | "unavailable";
-export type ExecFailureCategory = "usage" | "config" | "bootstrap" | "agent" | "policy" | "internal";
+export type ExecFailureCategory =
+	| "usage"
+	| "config"
+	| "bootstrap"
+	| "route_incompatible"
+	| "agent"
+	| "policy"
+	| "internal";
 
 export interface ExecSessionBinding {
 	projectPath: string;
@@ -67,6 +74,13 @@ export interface ExecSideAgentBootstrapSnapshot {
 	detail?: string;
 }
 
+export interface ExecLocalFallbackSnapshot {
+	active: boolean;
+	providerCount: number;
+	currentTarget: string;
+	summary: string;
+}
+
 export interface ExecBootstrapSnapshot {
 	connected: boolean;
 	degraded: boolean;
@@ -75,7 +89,9 @@ export interface ExecBootstrapSnapshot {
 	vasanaCount: number;
 	hasHealth: boolean;
 	summary: string;
+	warnings?: string[];
 	sideAgents?: ExecSideAgentBootstrapSnapshot;
+	localFallback?: ExecLocalFallbackSnapshot;
 	error?: SerializedError;
 }
 
@@ -286,6 +302,7 @@ export function createRunFailedEvent(input: {
 	runId: string;
 	exitCode: ExecExitCode;
 	phase: ExecFailurePhase;
+	category?: ExecFailureCategory;
 	error: unknown;
 	session?: ExecSessionBinding;
 	routing?: ExecRoutingBinding;
@@ -295,7 +312,7 @@ export function createRunFailedEvent(input: {
 		success: false,
 		exitCode: input.exitCode,
 		phase: input.phase,
-		category: phaseToFailureCategory(input.phase),
+		category: input.category ?? phaseToFailureCategory(input.phase),
 		error: serializeError(input.error),
 		session: input.session,
 		routing: input.routing,

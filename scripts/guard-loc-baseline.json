@@ -1,0 +1,48 @@
+{
+	"version": 1,
+	"recordedAt": "2026-04-03",
+	"defaults": {
+		"ratchetLines": 25,
+		"ratchetEveryDays": 30
+	},
+	"entries": {
+		"packages/tui/src/app.ts": {
+			"baselineLines": 742
+		},
+		"packages/tui/src/commands/app-commands-core.ts": {
+			"baselineLines": 669
+		},
+		"apps/desktop/src/hooks/useAgentStream.ts": {
+			"baselineLines": 608
+		},
+
+		"packages/tui/src/agent/coding-agent.ts": {
+			"baselineLines": 592
+		},
+		"packages/agent/src/autocycle.ts": {
+			"baselineLines": 570
+		},
+		"packages/tui/src/state.ts": {
+			"baselineLines": 559
+		},
+		"bin/cli/provider.ts": {
+			"baselineLines": 536
+		},
+		"packages/bridge/src/chitragupta.ts": {
+			"baselineLines": 582
+		},
+		"packages/agent/src/tools/side-agent.ts": {
+			"baselineLines": 464
+		},
+		"bin/cli/cli-auth.ts": {
+			"baselineLines": 488
+		},
+
+		"packages/tui/src/completion.ts": {
+			"baselineLines": 451
+		},
+		"packages/bridge/src/chitragupta-types.ts": {
+			"baselineLines": 452
+		}
+	}
+}

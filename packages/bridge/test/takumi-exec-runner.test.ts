@@ -2,13 +2,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { EXEC_EXIT_CODES, EXEC_PROTOCOL, EXEC_PROTOCOL_VERSION } from "@takumi/core";
 import { describe, expect, it } from "vitest";
-import {
-	isTakumiExecTerminalEvent,
-	runTakumiExec,
-	type TakumiExecRequest,
-	type TakumiExecRunnerOptions,
-	TakumiExecTransportError,
-} from "../src/index.js";
+import { isTakumiExecTerminalEvent, runTakumiExec, type TakumiExecRunnerOptions } from "../src/index.js";
 
 describe("takumi exec runner", () => {
 	it("parses events and returns a completed run result", async () => {

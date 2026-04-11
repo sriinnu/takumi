@@ -17,7 +17,7 @@ To try them, point `takumi.config.json` at this directory:
 
 ```json
 {
-  "packages": [{ "name": "./examples/packages" }]
+  "packages": [{ "path": "./examples/packages" }]
 }
 ```
 

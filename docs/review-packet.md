@@ -174,7 +174,7 @@ Current reality:
 
 That is not a flaw to hide; it is a scope truth to manage. The terminal UX is a
 strength for power users, but broader adoption will require a clearer visual UX
-layer. See `docs/ui-ux-roadmap.md`.
+layer. See `docs/tracking/consolidated-remaining-items.md`.
 
 ## Reading order for reviewers
 

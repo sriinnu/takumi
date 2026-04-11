@@ -28,6 +28,7 @@ import {
 	emitToolResultImpl,
 } from "./extension-emitters.js";
 import { DEFAULT_SESSION_ACTIONS, type SessionContextActions } from "./extension-session.js";
+import { createEphemeralExtensionStorage } from "./extension-storage.js";
 import type {
 	ContextUsage,
 	ExtensionContext,
@@ -101,6 +102,8 @@ export class ExtensionRunner {
 	_contextActions: ExtensionContextActions;
 	/** @internal exposed for emitters module */
 	_apiActions: ExtensionAPIActions;
+	/** @internal fallback storage for inline/test extensions. */
+	private readonly _fallbackStorage = new Map<string, ReturnType<typeof createEphemeralExtensionStorage>>();
 	/** @internal */
 	_uiActions: UIContextActions;
 	/** @internal */
@@ -156,6 +159,7 @@ export class ExtensionRunner {
 		for (const ext of this._extensions) {
 			if (!ext._actions) continue;
 			ext._actions.sendUserMessage = apiActions.sendUserMessage;
+			ext._actions.getSessionId = contextActions.getSessionId;
 			ext._actions.getActiveTools = apiActions.getActiveTools;
 			ext._actions.setActiveTools = apiActions.setActiveTools;
 			ext._actions.exec = apiActions.exec;
@@ -183,11 +187,31 @@ export class ExtensionRunner {
 
 	// ── Context Factory ─────────────────────────────────────────────────────────
 
+	private resolveExtension(extensionRef?: LoadedExtension | string): LoadedExtension | undefined {
+		if (!extensionRef) return undefined;
+		if (typeof extensionRef !== "string") return extensionRef;
+		return this._extensions.find(
+			(extension) => extension.path === extensionRef || extension.resolvedPath === extensionRef,
+		);
+	}
+
+	private resolveStorage(extension?: LoadedExtension) {
+		if (extension?.storage) return extension.storage;
+		const key = extension?.resolvedPath ?? extension?.path ?? "<ephemeral-extension-context>";
+		let storage = this._fallbackStorage.get(key);
+		if (!storage) {
+			storage = createEphemeralExtensionStorage(() => this._contextActions.getSessionId());
+			this._fallbackStorage.set(key, storage);
+		}
+		return storage;
+	}
+
 	/** Create an ExtensionContext with values resolved lazily from actions. */
-	createContext(): ExtensionContext {
+	createContext(extensionRef?: LoadedExtension | string): ExtensionContext {
 		const ca = this._contextActions;
 		const ua = this._uiActions;
 		const sa = this._sessionActions;
+		const storage = this.resolveStorage(this.resolveExtension(extensionRef));
 		return {
 			get cwd() {
 				return ca.getCwd();
@@ -220,6 +244,7 @@ export class ExtensionRunner {
 				getName: () => sa.getName(),
 				setName: (name) => sa.setName(name),
 			},
+			storage,
 		};
 	}
 

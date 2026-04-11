@@ -11,7 +11,7 @@
  * so it stays zero-dependency within the project.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { access, readFile, writeFile } from "node:fs/promises";
 import type { ToolDefinition } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
 
@@ -42,12 +42,14 @@ export const astGrepHandler: ToolHandler = async (input) => {
 	const filePath = input.file_path as string;
 	const namePattern = input.name_pattern as string | undefined;
 
-	if (!existsSync(filePath)) {
+	try {
+		await access(filePath);
+	} catch {
 		return { output: `File not found: ${filePath}`, isError: true };
 	}
 
 	try {
-		const content = readFileSync(filePath, "utf-8");
+		const content = await readFile(filePath, "utf-8");
 		const declarations = extractDeclarations(content);
 
 		let results = declarations;
@@ -102,12 +104,14 @@ export const astPatchHandler: ToolHandler = async (input) => {
 	const declName = input.declaration_name as string;
 	const newBody = input.new_body as string;
 
-	if (!existsSync(filePath)) {
+	try {
+		await access(filePath);
+	} catch {
 		return { output: `File not found: ${filePath}`, isError: true };
 	}
 
 	try {
-		const content = readFileSync(filePath, "utf-8");
+		const content = await readFile(filePath, "utf-8");
 		const declarations = extractDeclarations(content);
 		const target = declarations.find((d) => d.name === declName);
 
@@ -125,7 +129,7 @@ export const astPatchHandler: ToolHandler = async (input) => {
 
 		const patched = [before, newBody, after].filter((s) => s.length > 0).join("\n");
 
-		writeFileSync(filePath, patched, "utf-8");
+		await writeFile(filePath, patched, "utf-8");
 
 		return {
 			output: `Patched ${target.kind} "${declName}" at lines ${target.startLine}-${target.endLine}`,

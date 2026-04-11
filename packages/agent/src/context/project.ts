@@ -7,7 +7,7 @@
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { createLogger } from "@takumi/core";
+import { createLogger, PROJECT_INSTRUCTION_FILES } from "@takumi/core";
 import { detectConventions } from "./project-conventions.js";
 import { detectFramework } from "./project-framework.js";
 
@@ -61,9 +61,6 @@ export interface ProjectContext {
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
-
-/** Instruction file names, in priority order. */
-const INSTRUCTION_FILES = ["TAKUMI.md", "CLAUDE.md", ".takumi/instructions.md", ".claude/instructions.md"];
 
 /** Project root marker files. */
 const ROOT_MARKERS = [
@@ -338,7 +335,7 @@ function getProjectName(root: string): string {
 
 /** Find and read the first matching instructions file. */
 function findInstructions(root: string): string | null {
-	for (const file of INSTRUCTION_FILES) {
+	for (const file of PROJECT_INSTRUCTION_FILES) {
 		const fullPath = join(root, file);
 		if (existsSync(fullPath)) {
 			try {

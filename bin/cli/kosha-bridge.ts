@@ -20,12 +20,17 @@
  *   expects, keeping the rest of the CLI layer unchanged.
  */
 
-import type { ModelCard, ModelRegistry, ProviderInfo } from "kosha-discovery";
+import type { ModelCard, ModelRegistry, ModelRouteInfo, ProviderInfo } from "kosha-discovery";
 
 // ─── Singleton ────────────────────────────────────────────────────────────────
 
 let _registry: ModelRegistry | null = null;
 let _initPromise: Promise<ModelRegistry> | null = null;
+
+/** I let tests and strict operators disable local-runtime discovery explicitly. */
+function isLocalProviderDiscoveryDisabled(): boolean {
+	return process.env.TAKUMI_DISABLE_LOCAL_PROVIDER_DISCOVERY === "1";
+}
 
 /**
  * Return the shared Kosha ModelRegistry, creating it on the first call.
@@ -111,7 +116,7 @@ export async function koshaAutoDetect(): Promise<KoshaDetectedAuth | null> {
 	const priority: Record<string, number> = { cli: 0, env: 1, config: 2, oauth: 3, none: 4 };
 
 	const authenticated = providers
-		.filter((p) => p.authenticated || p.id === "ollama")
+		.filter((p) => p.authenticated || (!isLocalProviderDiscoveryDisabled() && p.id === "ollama"))
 		.sort((a, b) => {
 			const aPri = priority[a.credentialSource ?? "none"] ?? 5;
 			const bPri = priority[b.credentialSource ?? "none"] ?? 5;
@@ -145,10 +150,8 @@ export async function koshaAutoDetect(): Promise<KoshaDetectedAuth | null> {
 	};
 }
 
-/**
- * Map kosha provider IDs to Takumi's internal provider names.
- */
-function mapKoshaProvider(koshaId: string): string {
+/** Map Kosha provider IDs to Takumi's internal provider names. */
+export function mapKoshaProvider(koshaId: string): string {
 	const mapping: Record<string, string> = {
 		anthropic: "anthropic",
 		openai: "openai",
@@ -278,4 +281,16 @@ export async function koshaResolveAlias(alias: string): Promise<string> {
 export async function koshaModel(idOrAlias: string): Promise<ModelCard | undefined> {
 	const kosha = await getKosha();
 	return kosha.model(idOrAlias);
+}
+
+/**
+ * Get all serving routes for a resolved model.
+ *
+ * Accepts either a canonical model ID or a Kosha alias.
+ */
+export async function koshaModelRouteInfo(idOrAlias: string): Promise<ModelRouteInfo[]> {
+	const kosha = await getKosha();
+	const model = kosha.model(idOrAlias);
+	if (!model) return [];
+	return kosha.modelRouteInfo(model.id);
 }

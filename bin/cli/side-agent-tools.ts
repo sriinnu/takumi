@@ -38,6 +38,7 @@ export interface SideAgentBootstrapStatus {
 		| "enabled"
 		| "unsupported_tools"
 		| "not_git_repo"
+		| "worker_runtime"
 		| "tmux_disabled"
 		| "max_concurrent_disabled"
 		| "tmux_unavailable"

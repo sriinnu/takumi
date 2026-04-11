@@ -57,6 +57,18 @@ describe("side-agent-registry-io", () => {
 		expect(normalized.record.reasons).toContain("incomplete_live_metadata");
 	});
 
+	it("treats Windows-style worktree paths as recoverable metadata", () => {
+		const normalized = normalizeLoadedAgent(
+			makeRawAgent({
+				slotId: null,
+				worktreePath: "C:\\repo\\.takumi\\worktrees\\wt-0001",
+			}),
+		);
+
+		expect(normalized.agent?.state).toBe("running");
+		expect(normalized.record.incompleteLive).toBe(false);
+	});
+
 	it("retains per-row diagnostics while only keeping unique agents in the runtime snapshot", async () => {
 		const registryBaseDir = await createRegistry([
 			makeRawAgent({ id: "side-1", description: "" }),

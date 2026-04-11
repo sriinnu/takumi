@@ -1,4 +1,4 @@
-import { createArtifactId, createHubArtifact, resetArtifactCounter } from "@takumi/core";
+import { createArtifactContentHash, createArtifactId, createHubArtifact, resetArtifactCounter } from "@takumi/core";
 import { beforeEach, describe, expect, it } from "vitest";
 
 describe("artifact-types", () => {
@@ -43,6 +43,7 @@ describe("artifact-types", () => {
 			expect(artifact.producer).toBe("takumi.exec");
 			expect(artifact.summary).toBe("Test artifact");
 			expect(artifact.promoted).toBe(false);
+			expect(artifact.contentHash).toMatch(/^[a-f0-9]{64}$/);
 			expect(artifact.createdAt).toBeTruthy();
 		});
 
@@ -66,7 +67,14 @@ describe("artifact-types", () => {
 				path: "src/index.ts",
 				confidence: 0.95,
 				taskId: "task-1",
+				runId: "run-1",
 				laneId: "lane-abc",
+				localSessionId: "local-session",
+				canonicalSessionId: "canon-session",
+				importStatus: "failed",
+				lastImportAt: 1234,
+				lastImportError: "boom",
+				canonicalArtifactId: "cart-123",
 				metadata: { checks: 3 },
 			});
 
@@ -74,7 +82,14 @@ describe("artifact-types", () => {
 			expect(artifact.path).toBe("src/index.ts");
 			expect(artifact.confidence).toBe(0.95);
 			expect(artifact.taskId).toBe("task-1");
+			expect(artifact.runId).toBe("run-1");
 			expect(artifact.laneId).toBe("lane-abc");
+			expect(artifact.localSessionId).toBe("local-session");
+			expect(artifact.canonicalSessionId).toBe("canon-session");
+			expect(artifact.importStatus).toBe("failed");
+			expect(artifact.lastImportAt).toBe(1234);
+			expect(artifact.lastImportError).toBe("boom");
+			expect(artifact.canonicalArtifactId).toBe("cart-123");
 			expect(artifact.metadata).toEqual({ checks: 3 });
 		});
 
@@ -89,7 +104,12 @@ describe("artifact-types", () => {
 			expect(artifact.path).toBeUndefined();
 			expect(artifact.confidence).toBeUndefined();
 			expect(artifact.taskId).toBeUndefined();
+			expect(artifact.runId).toBeUndefined();
 			expect(artifact.laneId).toBeUndefined();
+			expect(artifact.localSessionId).toBeUndefined();
+			expect(artifact.canonicalSessionId).toBeUndefined();
+			expect(artifact.importStatus).toBeUndefined();
+			expect(artifact.canonicalArtifactId).toBeUndefined();
 			expect(artifact.metadata).toBeUndefined();
 		});
 
@@ -208,6 +228,33 @@ describe("artifact-types", () => {
 				metadata: { checks: 3, passed: true, failureReasons: ["a"] },
 			});
 			expect(artifact.metadata).toEqual({ checks: 3, passed: true, failureReasons: ["a"] });
+		});
+	});
+
+	describe("createArtifactContentHash", () => {
+		it("returns the same digest for the same artifact content", () => {
+			const first = createArtifactContentHash({
+				kind: "summary",
+				producer: "takumi.exec",
+				summary: "Stable summary",
+				body: "Stable body",
+				path: "src/index.ts",
+				createdAt: "2026-04-03T09:00:00.000Z",
+				taskId: "task-1",
+				laneId: "lane-1",
+			});
+			const second = createArtifactContentHash({
+				kind: "summary",
+				producer: "takumi.exec",
+				summary: "Stable summary",
+				body: "Stable body",
+				path: "src/index.ts",
+				createdAt: "2026-04-03T09:00:00.000Z",
+				taskId: "task-1",
+				laneId: "lane-1",
+			});
+
+			expect(first).toBe(second);
 		});
 	});
 

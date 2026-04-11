@@ -2,7 +2,7 @@
  * Edit file tool — performs exact string replacement in a file.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { access, readFile, writeFile } from "node:fs/promises";
 import type { ToolDefinition } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
 
@@ -40,7 +40,9 @@ export const editHandler: ToolHandler = async (input) => {
 		return { output: "Error: file_path, old_string, and new_string are required", isError: true };
 	}
 
-	if (!existsSync(filePath)) {
+	try {
+		await access(filePath);
+	} catch {
 		return { output: `Error: File not found: ${filePath}`, isError: true };
 	}
 
@@ -49,7 +51,7 @@ export const editHandler: ToolHandler = async (input) => {
 	}
 
 	try {
-		const content = readFileSync(filePath, "utf-8");
+		const content = await readFile(filePath, "utf-8");
 
 		// Count occurrences
 		let count = 0;
@@ -84,7 +86,7 @@ export const editHandler: ToolHandler = async (input) => {
 			newContent = content.slice(0, idx) + newString + content.slice(idx + oldString.length);
 		}
 
-		writeFileSync(filePath, newContent, "utf-8");
+		await writeFile(filePath, newContent, "utf-8");
 
 		const replacements = replaceAll ? count : 1;
 		return {

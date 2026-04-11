@@ -1,13 +1,14 @@
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SlashCommandRegistry } from "../src/commands.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
 import { CommandPalette } from "../src/dialogs/command-palette.js";
+import { formatGroupedCommandHelp } from "../src/dialogs/command-palette-groups.js";
 import { FilePicker } from "../src/dialogs/file-picker.js";
 import { ModelPicker } from "../src/dialogs/model-picker.js";
 import { PermissionDialog } from "../src/dialogs/permission.js";
 import { SessionList } from "../src/dialogs/session-list.js";
-import { KeyBindingRegistry } from "../src/keybinds.js";
+import { KeyBindingRegistry } from "../src/input/keybinds.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -123,6 +124,57 @@ describe("CommandPalette", () => {
 			const keybindItems = items.filter((i) => i.type === "keybind");
 			expect(keybindItems.length).toBe(2);
 			expect(keybindItems.map((k) => k.name)).toContain("ctrl+k");
+		});
+
+		it("groups commands and shortcuts by operator intent", () => {
+			palette.open();
+			const groups = palette.getGroups();
+
+			expect(groups.map((group) => group.label)).toEqual(["Runtime", "Diagnostics"]);
+			expect(groups[0]?.items.map((item) => item.name)).toEqual(["/clear", "/help", "/model", "ctrl+k"]);
+		});
+
+		it("shows external command origin metadata and groups discovered commands under Extensions", () => {
+			commands.register("/plugin-run", "Run external plugin action", vi.fn(), {
+				metadata: {
+					source: "external",
+					packId: "extension:sample-extension",
+					packLabel: "sample-extension",
+					requestedName: "/plugin-run",
+				},
+			});
+
+			palette.open();
+			const item = palette.getItems().find((entry) => entry.name === "/plugin-run");
+			const groups = palette.getGroups();
+
+			expect(item?.originLabel).toBe("external:sample-extension");
+			expect(groups.find((group) => group.label === "Extensions")?.items.map((entry) => entry.name)).toContain(
+				"/plugin-run",
+			);
+
+			const helpText = formatGroupedCommandHelp(palette.getItems().filter((entry) => entry.type === "command"));
+			expect(helpText).toContain("[external:sample-extension]");
+		});
+
+		it("formats residency-aware origin metadata for package-backed external commands", () => {
+			commands.register("/package-review", "Run package review", vi.fn(), {
+				metadata: {
+					source: "external",
+					packId: "package:@takumi/review-kit",
+					packLabel: "@takumi/review-kit",
+					requestedName: "/package-review",
+					residency: "package",
+				},
+			});
+
+			palette.open();
+			const item = palette.getItems().find((entry) => entry.name === "/package-review");
+
+			expect(item?.originLabel).toBe("external:package:@takumi/review-kit");
+
+			const helpText = formatGroupedCommandHelp(palette.getItems().filter((entry) => entry.type === "command"));
+			expect(helpText).toContain("[external:package:@takumi/review-kit]");
 		});
 	});
 
@@ -256,6 +308,20 @@ describe("CommandPalette", () => {
 
 			palette.handleKey(enterKey());
 			expect(executed).toHaveBeenCalledWith(expect.objectContaining({ name: "/model", type: "command" }));
+		});
+
+		it("promotes recently executed items into a dedicated recent section", () => {
+			palette.open();
+			palette.handleKey(charKey("m"));
+			palette.handleKey(charKey("o"));
+			palette.handleKey(charKey("d"));
+			palette.handleKey(enterKey());
+
+			palette.open();
+			const groups = palette.getGroups();
+
+			expect(groups[0]?.label).toBe("Recent");
+			expect(groups[0]?.items.map((item) => item.name)).toEqual(["/model"]);
 		});
 	});
 

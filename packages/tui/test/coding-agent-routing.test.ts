@@ -1,7 +1,7 @@
 import { AgentRole } from "@takumi/agent";
 import type { ChitraguptaObserver, RoutingDecision } from "@takumi/bridge";
 import { describe, expect, it, vi } from "vitest";
-import { resolveRoutingOverrides } from "../src/coding-agent-routing.js";
+import { resolveRoutingOverrides } from "../src/agent/coding-agent-routing.js";
 
 function makeDecision(overrides: Partial<RoutingDecision> = {}): RoutingDecision {
 	return {
@@ -50,6 +50,7 @@ describe("resolveRoutingOverrides", () => {
 	});
 
 	it("applies same-provider engine-selected models to matching roles", async () => {
+		const routeEvents: Array<Record<string, unknown>> = [];
 		const observer = {
 			routeResolve: vi
 				.fn()
@@ -79,6 +80,9 @@ describe("resolveRoutingOverrides", () => {
 			observer,
 			sessionId: "s1",
 			currentModel: "claude-sonnet-4-20250514",
+			emitRouteEvent: (event) => {
+				routeEvents.push(event as Record<string, unknown>);
+			},
 		});
 
 		expect((observer.routeResolve as ReturnType<typeof vi.fn>).mock.calls[0][0].constraints).toMatchObject({
@@ -96,6 +100,9 @@ describe("resolveRoutingOverrides", () => {
 		expect(result.laneEnvelopes[AgentRole.WORKER]?.selectedCapabilityId).toBe("llm.anthropic.sonnet");
 		expect(result.decisions).toHaveLength(2);
 		expect(result.notes).toContain("Engine route coding.patch-cheap → llm.anthropic.sonnet");
+		expect(routeEvents.filter((event) => event.type === "before_route_request")).toHaveLength(2);
+		expect(routeEvents.filter((event) => event.type === "after_route_resolution")).toHaveLength(2);
+		expect(routeEvents.some((event) => event.type === "route_degraded")).toBe(false);
 	});
 
 	it("keeps routing notes but skips cross-provider overrides", async () => {

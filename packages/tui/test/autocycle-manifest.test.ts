@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAutocycleManifestMarkdown, resolveAutocycleManifestPath } from "../src/autocycle-manifest.js";
+import { buildAutocycleManifestMarkdown, resolveAutocycleManifestPath } from "../src/autocycle/autocycle-manifest.js";
 
 describe("autocycle manifest helpers", () => {
 	it("builds a markdown manifest with objective and metric details", () => {

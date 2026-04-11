@@ -4,11 +4,32 @@
  */
 
 import { createLogger, TELEMETRY_DIR } from "@takumi/core";
+import type {
+	BridgeBootstrapRequest,
+	DaemonBridgeBootstrapResult,
+	DaemonBridgeLaneRefreshRequest,
+	DaemonBridgeLaneSnapshotRequest,
+	DaemonBridgeLaneSnapshotResult,
+	ProviderCredentialResolution,
+} from "./chitragupta-bootstrap-types.js";
+import {
+	buildEmptyHandoverSummary,
+	type DaemonHandoverSummary,
+	mapDaemonHandoverSummary,
+	type ToolCallResult,
+} from "./chitragupta-bridge-helpers.js";
+import {
+	daemonBootstrap,
+	daemonRouteLanesGet,
+	daemonRouteLanesRefresh,
+	resolveProviderCredential,
+} from "./chitragupta-control-plane.js";
 import * as ops from "./chitragupta-ops.js";
 import * as queries from "./chitragupta-queries.js";
 import type {
 	AgentTelemetry,
 	AkashaTrace,
+	ArtifactImportBatchResult,
 	ChitraguptaBridgeOptions,
 	ChitraguptaHealth,
 	ChitraguptaProjectInfo,
@@ -18,6 +39,8 @@ import type {
 	DaySearchResult,
 	ExtractedFact,
 	HandoverSummary,
+	ImportedArtifactInput,
+	ImportedArtifactListResult,
 	MemoryResult,
 	MemoryScope,
 	SessionCreateOptions,
@@ -32,19 +55,33 @@ import type {
 	VidhiInfo,
 	VidhiMatch,
 } from "./chitragupta-types.js";
+import type {
+	VerticalAuthExchangeOptions,
+	VerticalAuthIntrospectResult,
+	VerticalAuthIssuedTokenResult,
+	VerticalAuthListResult,
+	VerticalAuthRevokeResult,
+	VerticalAuthRotateOptions,
+	VerticalAuthTokenOptions,
+} from "./chitragupta-vertical-auth.js";
+import {
+	verticalAuthExchange,
+	verticalAuthIntrospect,
+	verticalAuthIssue,
+	verticalAuthList,
+	verticalAuthRevoke,
+	verticalAuthRotate,
+} from "./chitragupta-vertical-auth.js";
+import type { VerticalRegistryAuthContract, VerticalRegistryContract } from "./chitragupta-vertical-contract-types.js";
+import {
+	describeVerticalRuntimeContract,
+	type VerticalRuntimeContractSurface,
+} from "./chitragupta-vertical-runtime.js";
 import { DaemonSocketClient, probeSocket, resolveSocketPath } from "./daemon-socket.js";
 import { McpClient, type McpClientOptions } from "./mcp-client.js";
 import { telemetryCleanup, telemetryHeartbeat, telemetrySnapshot } from "./telemetry.js";
 
 const log = createLogger("chitragupta-bridge");
-
-// ── MCP tool response wrappers ───────────────────────────────────────────────
-
-interface ToolCallResult {
-	content?: Array<{ type: string; text?: string }>;
-}
-
-// ── ChitraguptaBridge ────────────────────────────────────────────────────────
 
 export class ChitraguptaBridge {
 	private client: McpClient;
@@ -83,11 +120,7 @@ export class ChitraguptaBridge {
 		});
 	}
 
-	/**
-	 * Connect to Chitragupta.
-	 * Tries daemon socket first (zero cold-start if daemon is running), then
-	 * falls back to spawning the chitragupta-mcp subprocess via stdio.
-	 */
+	/** Connect to Chitragupta through the daemon socket first, then MCP stdio. */
 	async connect(): Promise<void> {
 		// socketPath === "" means socket mode explicitly disabled
 		const socketPath = this.options.socketPath !== "" ? (this.options.socketPath ?? resolveSocketPath()) : null;
@@ -189,24 +222,132 @@ export class ChitraguptaBridge {
 		);
 	}
 
+	/** Resolve the canonical daemon bootstrap envelope in socket mode. */
+	async bootstrap(request: BridgeBootstrapRequest): Promise<DaemonBridgeBootstrapResult | null> {
+		if (!this._socketMode) return null;
+		return daemonBootstrap(this._socket, request);
+	}
+
+	/** Fetch the daemon-owned durable lane snapshot for one canonical session. */
+	async routeLanesGet(request: DaemonBridgeLaneSnapshotRequest): Promise<DaemonBridgeLaneSnapshotResult | null> {
+		if (!this._socketMode) return null;
+		return daemonRouteLanesGet(this._socket, request);
+	}
+
+	/** Refresh the daemon-owned durable lane snapshot for one canonical session. */
+	async routeLanesRefresh(request: DaemonBridgeLaneRefreshRequest): Promise<DaemonBridgeLaneSnapshotResult | null> {
+		if (!this._socketMode) return null;
+		return daemonRouteLanesRefresh(this._socket, request);
+	}
+
+	/** Ask Chitragupta for the routed provider credential before local fallback. */
+	async requestProviderCredential(providerId?: string): Promise<ProviderCredentialResolution | null> {
+		if (!this._socketMode) return null;
+		return resolveProviderCredential(this._socket, providerId);
+	}
+
+	/** Read the daemon-owned vertical capability registry for runtime consumers. */
+	async verticalRegistry(): Promise<VerticalRegistryContract | null> {
+		return this._socketMode && this._socket?.isConnected
+			? this._socket.call<VerticalRegistryContract>("vertical.registry", {})
+			: null;
+	}
+
+	/** Read the daemon-owned cross-vertical auth contract block. */
+	async verticalAuthDescribe(): Promise<VerticalRegistryAuthContract | null> {
+		return this._socketMode && this._socket?.isConnected
+			? this._socket.call<VerticalRegistryAuthContract>("vertical.auth.describe", {})
+			: null;
+	}
+
+	/** Issue one long-lived verifier token for a vertical runtime. */
+	async verticalAuthIssue(
+		verticalId: string,
+		options: VerticalAuthTokenOptions = {},
+	): Promise<VerticalAuthIssuedTokenResult | null> {
+		return this._socketMode ? verticalAuthIssue(this._socket, verticalId, options) : null;
+	}
+
+	/** Exchange the current verifier token for one shorter-lived binding token. */
+	async verticalAuthExchange(options: VerticalAuthExchangeOptions = {}): Promise<VerticalAuthIssuedTokenResult | null> {
+		return this._socketMode ? verticalAuthExchange(this._socket, options) : null;
+	}
+
+	/** Rotate one existing verifier token. */
+	async verticalAuthRotate(
+		keyId: string,
+		options: VerticalAuthRotateOptions = {},
+	): Promise<VerticalAuthIssuedTokenResult | null> {
+		return this._socketMode ? verticalAuthRotate(this._socket, keyId, options) : null;
+	}
+
+	/** List masked verifier and binding tokens for one vertical or all verticals. */
+	async verticalAuthList(verticalId?: string): Promise<VerticalAuthListResult | null> {
+		return this._socketMode ? verticalAuthList(this._socket, verticalId) : null;
+	}
+
+	/** Introspect one masked verifier or binding token by key id. */
+	async verticalAuthIntrospect(keyId: string): Promise<VerticalAuthIntrospectResult | null> {
+		return this._socketMode ? verticalAuthIntrospect(this._socket, keyId) : null;
+	}
+
+	/** Revoke one masked verifier or binding token by key id. */
+	async verticalAuthRevoke(keyId: string): Promise<VerticalAuthRevokeResult | null> {
+		return this._socketMode ? verticalAuthRevoke(this._socket, keyId) : null;
+	}
+
+	/** Resolve one actionable runtime contract view for a vertical consumer. */
+	async verticalRuntimeContract(verticalId: string): Promise<VerticalRuntimeContractSurface | null> {
+		return describeVerticalRuntimeContract(this._socket, this._socketMode, verticalId);
+	}
+
+	/** Import one batch of degraded-local artifacts into the daemon-owned ledger. */
+	async artifactImportBatch(
+		projectPath: string,
+		consumer: string,
+		artifacts: ImportedArtifactInput[],
+		canonicalSessionId?: string,
+	): Promise<ArtifactImportBatchResult | null> {
+		return this._socketMode && this._socket?.isConnected
+			? this._socket.call<ArtifactImportBatchResult>("artifact.import_batch", {
+					projectPath,
+					consumer,
+					canonicalSessionId,
+					artifacts,
+				})
+			: null;
+	}
+
+	/** List already imported artifacts for one project and canonical session. */
+	async artifactListImported(
+		projectPath: string,
+		consumer?: string,
+		canonicalSessionId?: string,
+	): Promise<ImportedArtifactListResult | null> {
+		return this._socketMode && this._socket?.isConnected
+			? this._socket.call<ImportedArtifactListResult>("artifact.list_imported", {
+					projectPath,
+					consumer,
+					canonicalSessionId,
+				})
+			: null;
+	}
+
 	/** Get a work-state handover summary for context continuity. */
 	async handover(): Promise<HandoverSummary> {
-		if (this._socketMode) {
-			// Daemon doesn't expose a handover method — return empty summary
-			log.debug("Handover not available in socket mode — returning empty summary");
-			return { originalRequest: "", filesModified: [], filesRead: [], decisions: [], errors: [], recentContext: "" };
+		if (this._socketMode && this._socket?.isConnected) {
+			try {
+				const summary = await this._socket.call<DaemonHandoverSummary>("session.handover", {
+					project: this.options.projectPath ?? process.cwd(),
+				});
+				return mapDaemonHandoverSummary(summary);
+			} catch (err) {
+				log.debug(`session.handover not available: ${(err as Error).message}`);
+				return buildEmptyHandoverSummary();
+			}
 		}
 		const raw = await this.callTool("chitragupta_handover", {});
-		return (
-			this.parseResults<HandoverSummary>(raw) ?? {
-				originalRequest: "",
-				filesModified: [],
-				filesRead: [],
-				decisions: [],
-				errors: [],
-				recentContext: "",
-			}
-		);
+		return this.parseResults<HandoverSummary>(raw) ?? buildEmptyHandoverSummary();
 	}
 
 	/** Deposit a knowledge trace into the Akasha shared field. */
@@ -245,36 +386,19 @@ export class ChitraguptaBridge {
 		return this.parseResults<AkashaTrace[]>(raw) ?? [];
 	}
 
-	/**
-	 * Retrieve crystallized behavioral tendencies (Vasanas) from Chitragupta's
-	 * smriti layer. These represent stable patterns observed across sessions.
-	 */
+	/** Retrieve crystallized behavioral tendencies (Vasanas) from Chitragupta. */
 	async vasanaTendencies(limit?: number): Promise<VasanaTendency[]> {
-		if (this._socketMode) {
-			// Daemon lacks a dedicated vasana RPC — approximate from pattern.query
-			if (this._socket?.isConnected) {
-				try {
-					const result = await this._socket.call<{
-						patterns: Array<{ type: string; pattern?: string; confidence: number; occurrences?: number }>;
-					}>("pattern.query", { minConfidence: 0.6, limit: limit ?? 10 });
-					return (result.patterns ?? []).map((p) => {
-						const conf = typeof p.confidence === "number" && !Number.isNaN(p.confidence) ? p.confidence : 0;
-						const occ = typeof p.occurrences === "number" && p.occurrences > 0 ? p.occurrences : 1;
-						return {
-							tendency: p.pattern ?? p.type,
-							valence: "neutral" as const,
-							description: `Detected pattern: ${p.type}`,
-							strength: conf,
-							stability: Math.min(1, occ / 20),
-							predictiveAccuracy: conf * 0.8,
-							reinforcementCount: occ,
-						};
-					});
-				} catch {
-					return [];
-				}
+		if (this._socketMode && this._socket?.isConnected) {
+			try {
+				const result = await this._socket.call<{ tendencies?: VasanaTendency[] }>("vasana.tendencies", {
+					project: this.options.projectPath ?? process.cwd(),
+					limit: limit ?? 10,
+				});
+				return Array.isArray(result.tendencies) ? result.tendencies : [];
+			} catch (err) {
+				log.debug(`vasana.tendencies not available: ${(err as Error).message}`);
+				return [];
 			}
-			return [];
 		}
 		const params: Record<string, unknown> = {};
 		if (limit !== undefined) params.limit = limit;
@@ -282,11 +406,7 @@ export class ChitraguptaBridge {
 		return this.parseResults<VasanaTendency[]>(raw) ?? [];
 	}
 
-	/**
-	 * Fetch an aggregate health snapshot from Chitragupta (Pancha-Kosha scoring,
-	 * memory usage, active sessions, per-package grades).
-	 * In socket mode returns a stub derived from daemon process stats.
-	 */
+	/** Fetch one aggregate health snapshot from Chitragupta. */
 	async healthStatus(): Promise<ChitraguptaHealth | null> {
 		return queries.healthStatus(this._socket, this._socketMode, this.callTool.bind(this), this.parseResults.bind(this));
 	}
@@ -312,8 +432,6 @@ export class ChitraguptaBridge {
 	async factExtract(text: string, projectPath?: string): Promise<ExtractedFact[]> {
 		return ops.factExtract(this._socket, this._socketMode, this.callTool.bind(this), text, projectPath);
 	}
-
-	// ── Phase 16: Session Write & Turn Tracking ─────────────────────────────
 
 	/** Create a new session. */
 	async sessionCreate(opts: SessionCreateOptions): Promise<SessionCreateResult> {
@@ -355,8 +473,6 @@ export class ChitraguptaBridge {
 		return this._socket;
 	}
 
-	// ── Phase 17: Session Query & Turn Listing ────────────────────────────
-
 	/** List all dates that have sessions. */
 	async sessionDates(project?: string): Promise<string[]> {
 		return ops.sessionDates(this._socket, this._socketMode, this.callTool.bind(this), project);
@@ -393,8 +509,6 @@ export class ChitraguptaBridge {
 		return ops.turnSince(this._socket, this._socketMode, this.callTool.bind(this), timestamp, sessionId);
 	}
 
-	// ── Phase 18: Advanced Memory Features ───────────────────────────────
-
 	/** List available memory scopes. */
 	async memoryScopes(): Promise<MemoryScope[]> {
 		return ops.memoryScopes(this._socket, this._socketMode, this.callTool.bind(this));
@@ -404,8 +518,6 @@ export class ChitraguptaBridge {
 	async daemonStatus(): Promise<DaemonStatus | null> {
 		return ops.daemonStatus(this._socket, this._socketMode, this.callTool.bind(this));
 	}
-
-	// ── Phase 20.2: Telemetry Heartbeat Emission ─────────────────────────
 
 	/**
 	 * Emit telemetry heartbeat to local JSON file.
@@ -440,8 +552,6 @@ export class ChitraguptaBridge {
 	async telemetrySnapshot(staleMs = 10000, telemetryDir = TELEMETRY_DIR): Promise<TelemetrySnapshot> {
 		return await telemetrySnapshot(staleMs, telemetryDir);
 	}
-
-	// ── Internal helpers ──────────────────────────────────────────────────
 
 	private async callTool(name: string, args: Record<string, unknown>): Promise<ToolCallResult> {
 		return this.client.call<ToolCallResult>("tools/call", {

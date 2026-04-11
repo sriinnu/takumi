@@ -1,6 +1,17 @@
 import type { TakumiConfig } from "@takumi/core";
 import { koshaProviderModels, koshaProviders } from "./kosha-bridge.js";
 
+export interface ChooseProviderAndModelOptions {
+	preferredProvider?: string;
+	preferredModel?: string;
+	showIntro?: boolean;
+}
+
+export interface ChooseProviderAndModelResult {
+	provider: string;
+	model: string;
+}
+
 /**
  * I drive the first-run provider picker with a cheap static fallback and a
  * richer Kosha-backed view when discovery is available.
@@ -8,10 +19,13 @@ import { koshaProviderModels, koshaProviders } from "./kosha-bridge.js";
 export async function chooseProviderAndModel(
 	config: TakumiConfig,
 	providerModels: Record<string, string[]>,
-): Promise<void> {
+	options: ChooseProviderAndModelOptions = {},
+): Promise<ChooseProviderAndModelResult | null> {
 	const p = await import("@clack/prompts");
 
-	p.intro("\x1b[1;36mTakumi AI Coding Agent\x1b[0m");
+	if (options.showIntro !== false) {
+		p.intro("\x1b[1;36mTakumi AI Coding Agent\x1b[0m");
+	}
 
 	let dynamicProviders: Record<string, string[]> = {};
 	try {
@@ -37,12 +51,12 @@ export async function chooseProviderAndModel(
 	const providerChoice = await p.select({
 		message: "Select AI Provider",
 		options: buildProviderOptions(allProviders, koshaProviderStatus),
-		initialValue: config.provider || "anthropic",
+		initialValue: options.preferredProvider || config.provider || "anthropic",
 	});
 
 	if (p.isCancel(providerChoice)) {
-		p.outro("Cancelled.");
-		process.exit(0);
+		p.outro("Startup cancelled.");
+		return null;
 	}
 
 	const selectedProvider = providerChoice as string;
@@ -53,18 +67,21 @@ export async function chooseProviderAndModel(
 		const modelChoice = await p.select({
 			message: "Select Model",
 			options: models.map((model) => ({ value: model, label: model })),
-			initialValue: models.includes(config.model) ? config.model : models[0],
+			initialValue: resolveInitialModel(models, options.preferredModel, config.model),
 		});
 		if (p.isCancel(modelChoice)) {
-			p.outro("Cancelled.");
-			process.exit(0);
+			p.outro("Startup cancelled.");
+			return null;
 		}
 		selectedModel = modelChoice as string;
 	} else {
-		const modelInput = await p.text({ message: "Enter Model Name", initialValue: config.model });
+		const modelInput = await p.text({
+			message: "Enter Model Name",
+			initialValue: options.preferredModel || config.model,
+		});
 		if (p.isCancel(modelInput)) {
-			p.outro("Cancelled.");
-			process.exit(0);
+			p.outro("Startup cancelled.");
+			return null;
 		}
 		selectedModel = modelInput as string;
 	}
@@ -72,6 +89,7 @@ export async function chooseProviderAndModel(
 	config.provider = selectedProvider;
 	config.model = selectedModel;
 	p.outro(`Starting with \x1b[32m${selectedProvider}\x1b[0m / \x1b[32m${selectedModel}\x1b[0m...`);
+	return { provider: selectedProvider, model: selectedModel };
 }
 
 /** I map Kosha provider IDs to Takumi provider names. */
@@ -131,4 +149,14 @@ function buildProviderOptions(
 	}
 
 	return [...authenticated, ...unauthenticated];
+}
+
+function resolveInitialModel(models: string[], preferredModel: string | undefined, configuredModel: string): string {
+	if (preferredModel && models.includes(preferredModel)) {
+		return preferredModel;
+	}
+	if (models.includes(configuredModel)) {
+		return configuredModel;
+	}
+	return models[0];
 }

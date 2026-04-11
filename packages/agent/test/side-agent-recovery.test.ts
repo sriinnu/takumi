@@ -1,6 +1,14 @@
 import type { SideAgentInfo } from "@takumi/core";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("node:fs", async () => {
+	const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+	return {
+		...actual,
+		realpathSync: vi.fn((path: string) => path.replace("/symlink-repo", "/real-repo")),
+	};
+});
+
 vi.mock("@takumi/bridge", () => ({
 	gitWorktreeList: vi.fn(() => []),
 	gitBranch: vi.fn(() => "takumi/side-agent/side-1-wt-0001"),
@@ -73,6 +81,39 @@ describe("reconcilePersistedSideAgents", () => {
 			}),
 		);
 		expect(agents.get("side-1")?.state).toBe("running");
+	});
+
+	it("recovers lanes when persisted worktree paths differ only by canonicalization", async () => {
+		const agents = new SideAgentRegistry();
+		agents.register(makeAgent({ worktreePath: "/symlink-repo/.takumi/worktrees/wt-0001" }));
+		vi.mocked(gitWorktreeList).mockReturnValue(["/real-repo/.takumi/worktrees/wt-0001"]);
+		vi.mocked(gitBranch).mockReturnValue("takumi/side-agent/side-1-wt-0001");
+		const pool = {
+			adopt: vi.fn(),
+		};
+		const tmux = {
+			adoptWindow: vi.fn(async () => ({
+				sessionName: "takumi-side-agents",
+				windowId: "@1",
+				windowName: "agent-side-1",
+				paneId: "%0",
+			})),
+		};
+
+		const summary = await reconcilePersistedSideAgents({
+			agents,
+			pool: pool as never,
+			tmux: tmux as never,
+			repoRoot: "/symlink-repo",
+		});
+
+		expect(summary).toEqual({ adopted: ["side-1"], cleaned: [], crashed: [], cleanupFailed: [] });
+		expect(pool.adopt).toHaveBeenCalledWith(
+			expect.objectContaining({
+				path: "/real-repo/.takumi/worktrees/wt-0001",
+			}),
+		);
+		expect(agents.get("side-1")?.worktreePath).toBe("/real-repo/.takumi/worktrees/wt-0001");
 	});
 
 	it("crashes startup-state lanes because they cannot be reattached safely", async () => {

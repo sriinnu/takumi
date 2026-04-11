@@ -2,7 +2,13 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { loadMergedEnv } from "@takumi/core";
 import { koshaAutoDetect } from "./kosha-bridge.js";
+
+/** I let tests and strict operators disable local runtime discovery explicitly. */
+function isLocalProviderDiscoveryDisabled(): boolean {
+	return process.env.TAKUMI_DISABLE_LOCAL_PROVIDER_DISCOVERY === "1";
+}
 
 /** Read and JSON-parse a file, returning undefined on any error. */
 function readJsonSafe(path: string): any | undefined {
@@ -137,6 +143,7 @@ export function tryResolveCliToken(provider: string): string | undefined {
  * Returns the list of installed model names, or an empty array if not running.
  */
 export async function probeOllama(): Promise<string[]> {
+	if (isLocalProviderDiscoveryDisabled()) return [];
 	try {
 		const res = await fetch("http://localhost:11434/api/tags", {
 			signal: AbortSignal.timeout(500),
@@ -169,7 +176,7 @@ export interface FastProviderStatus {
  * surfaces so common CLI startup stays cheap.
  */
 function detectEnvironmentAuth(): AutoDetectedAuth | null {
-	const env = process.env;
+	const env = loadMergedEnv();
 	if (env.ANTHROPIC_API_KEY) {
 		return { provider: "anthropic", apiKey: env.ANTHROPIC_API_KEY, source: "ANTHROPIC_API_KEY" };
 	}
@@ -179,6 +186,9 @@ function detectEnvironmentAuth(): AutoDetectedAuth | null {
 	if (env.OPENAI_API_KEY) {
 		return { provider: "openai", apiKey: env.OPENAI_API_KEY, source: "OPENAI_API_KEY" };
 	}
+	if (env.GITHUB_TOKEN) {
+		return { provider: "github", apiKey: env.GITHUB_TOKEN, model: "gpt-4.1", source: "GITHUB_TOKEN" };
+	}
 	if (env.GEMINI_API_KEY) {
 		return { provider: "gemini", apiKey: env.GEMINI_API_KEY, source: "GEMINI_API_KEY" };
 	}
@@ -187,6 +197,12 @@ function detectEnvironmentAuth(): AutoDetectedAuth | null {
 	}
 	if (env.GROQ_API_KEY) {
 		return { provider: "groq", apiKey: env.GROQ_API_KEY, source: "GROQ_API_KEY" };
+	}
+	if (env.XAI_API_KEY) {
+		return { provider: "xai", apiKey: env.XAI_API_KEY, source: "XAI_API_KEY" };
+	}
+	if (env.GROK_API_KEY) {
+		return { provider: "xai", apiKey: env.GROK_API_KEY, source: "GROK_API_KEY" };
 	}
 	if (env.DEEPSEEK_API_KEY) {
 		return { provider: "deepseek", apiKey: env.DEEPSEEK_API_KEY, source: "DEEPSEEK_API_KEY" };
@@ -199,6 +215,18 @@ function detectEnvironmentAuth(): AutoDetectedAuth | null {
 	}
 	if (env.OPENROUTER_API_KEY) {
 		return { provider: "openrouter", apiKey: env.OPENROUTER_API_KEY, source: "OPENROUTER_API_KEY" };
+	}
+	if (env.ALIBABA_API_KEY) {
+		return { provider: "alibaba", apiKey: env.ALIBABA_API_KEY, source: "ALIBABA_API_KEY" };
+	}
+	if (env.DASHSCOPE_API_KEY) {
+		return { provider: "alibaba", apiKey: env.DASHSCOPE_API_KEY, source: "DASHSCOPE_API_KEY" };
+	}
+	if (env.BEDROCK_API_KEY) {
+		return { provider: "bedrock", apiKey: env.BEDROCK_API_KEY, source: "BEDROCK_API_KEY" };
+	}
+	if (env.AWS_BEARER_TOKEN) {
+		return { provider: "bedrock", apiKey: env.AWS_BEARER_TOKEN, source: "AWS_BEARER_TOKEN" };
 	}
 	if (env.ZAI_API_KEY) {
 		return { provider: "zai", apiKey: env.ZAI_API_KEY, source: "ZAI_API_KEY" };
@@ -311,7 +339,7 @@ function detectCommandBackedCliAuth(): AutoDetectedAuth | null {
  */
 export async function collectFastProviderStatus(): Promise<FastProviderStatus[]> {
 	const providers = new Map<string, FastProviderStatus>();
-	const env = process.env;
+	const env = loadMergedEnv();
 
 	if (env.ANTHROPIC_API_KEY || env.CLAUDE_CODE_OAUTH_TOKEN) {
 		addFastProviderStatus(providers, "anthropic", "env");
@@ -319,11 +347,17 @@ export async function collectFastProviderStatus(): Promise<FastProviderStatus[]>
 	if (env.OPENAI_API_KEY) {
 		addFastProviderStatus(providers, "openai", "env");
 	}
+	if (env.GITHUB_TOKEN) {
+		addFastProviderStatus(providers, "github", "env", ["gpt-4.1"]);
+	}
 	if (env.GEMINI_API_KEY || env.GOOGLE_API_KEY) {
 		addFastProviderStatus(providers, "gemini", "env");
 	}
 	if (env.GROQ_API_KEY) {
 		addFastProviderStatus(providers, "groq", "env");
+	}
+	if (env.XAI_API_KEY || env.GROK_API_KEY) {
+		addFastProviderStatus(providers, "xai", "env");
 	}
 	if (env.DEEPSEEK_API_KEY) {
 		addFastProviderStatus(providers, "deepseek", "env");
@@ -336,6 +370,12 @@ export async function collectFastProviderStatus(): Promise<FastProviderStatus[]>
 	}
 	if (env.OPENROUTER_API_KEY) {
 		addFastProviderStatus(providers, "openrouter", "env");
+	}
+	if (env.ALIBABA_API_KEY || env.DASHSCOPE_API_KEY) {
+		addFastProviderStatus(providers, "alibaba", "env");
+	}
+	if (env.BEDROCK_API_KEY || env.AWS_BEARER_TOKEN) {
+		addFastProviderStatus(providers, "bedrock", "env");
 	}
 	if (env.ZAI_API_KEY || env.KIMI_API_KEY || env.MOONSHOT_API_KEY) {
 		addFastProviderStatus(providers, "zai", "env");
@@ -430,6 +470,7 @@ async function legacyAutoDetect(): Promise<AutoDetectedAuth | null> {
 	}
 
 	// ── 4. Ollama local server ───────────────────────────────────────────────
+	if (isLocalProviderDiscoveryDisabled()) return null;
 	const ollamaModels = await probeOllama();
 	if (ollamaModels.length > 0) {
 		const preferred =

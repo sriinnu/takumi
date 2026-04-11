@@ -21,6 +21,7 @@ import {
 	type SideAgentToolDeps,
 } from "../src/tools/side-agent.js";
 import { inferTopicDomain } from "../src/tools/side-agent-routing.js";
+import { SIDE_AGENT_READY_MARKER } from "../src/tools/side-agent-worker-protocol.js";
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 
@@ -72,7 +73,9 @@ function createMockDeps(): SideAgentToolDeps {
 				paneId: "%0",
 			})),
 			sendKeys: vi.fn(async () => {}),
-			captureOutput: vi.fn(async () => "line 1\nline 2\nline 3"),
+			captureOutput: vi.fn(
+				async (agentId: string) => `[${SIDE_AGENT_READY_MARKER} id=${agentId} ts=1]\nline 1\nline 2\nline 3`,
+			),
 			isWindowAlive: vi.fn(async () => true),
 			killWindow: vi.fn(async () => {}),
 		} as unknown as SideAgentToolDeps["tmux"],
@@ -100,11 +103,14 @@ function createMockDeps(): SideAgentToolDeps {
 				agent.updatedAt = Date.now();
 				return { ...agent };
 			}),
-			transition: vi.fn((id: string, newState: SideAgentState) => {
+			transition: vi.fn((id: string, newState: SideAgentState, error?: string) => {
 				const a = agents.get(id);
 				if (a) {
 					const from = a.state;
 					a.state = newState;
+					if (error !== undefined) {
+						a.error = error;
+					}
 					a.updatedAt = Date.now();
 					for (const listener of listeners) {
 						listener({ type: "agent_state_changed", id, from, to: newState });
@@ -123,6 +129,12 @@ function createMockDeps(): SideAgentToolDeps {
 
 function parse(result: ToolResult): Record<string, unknown> {
 	return JSON.parse(result.output) as Record<string, unknown>;
+}
+
+function seedAgent(deps: SideAgentToolDeps, overrides: Partial<SideAgentInfo> = {}): SideAgentInfo {
+	const agent = makeAgent(overrides);
+	(deps.agents.register as ReturnType<typeof vi.fn>)(agent);
+	return agent;
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -144,16 +156,31 @@ describe("takumi_agent_start", () => {
 		expect(deps.pool.allocate).toHaveBeenCalledWith("side-1");
 		expect(deps.agents.register).toHaveBeenCalled();
 		expect(deps.tmux.createWindow).toHaveBeenCalledWith("side-1", "/tmp/worktrees/wt-0001");
+		expect(deps.tmux.sendKeys).toHaveBeenNthCalledWith(
+			1,
+			"side-1",
+			expect.stringContaining("bin/cli/side-agent-worker.ts"),
+		);
+		expect(deps.tmux.sendKeys).toHaveBeenNthCalledWith(
+			2,
+			"side-1",
+			expect.stringContaining("[TAKUMI_SIDE_AGENT_DISPATCH id=side-1 seq=1 kind=start]"),
+		);
 		expect(deps.agents.transition).toHaveBeenCalledWith("side-1", "running");
 	});
 
-	it("sends an initial prompt when provided", async () => {
+	it("dispatches the initial task envelope when provided", async () => {
 		const deps = createMockDeps();
 		const handler = createAgentStartHandler(deps);
 
 		await handler({ description: "Plan auth refactor", initialPrompt: "produce a plan" });
 
-		expect(deps.tmux.sendKeys).toHaveBeenCalledWith("side-1", "produce a plan");
+		expect(deps.tmux.sendKeys).toHaveBeenNthCalledWith(
+			2,
+			"side-1",
+			expect.stringContaining("Primary task: Plan auth refactor"),
+		);
+		expect(deps.tmux.sendKeys).toHaveBeenNthCalledWith(2, "side-1", expect.stringContaining("produce a plan"));
 	});
 
 	it("rolls back the slot and registry entry when tmux window creation fails", async () => {
@@ -180,6 +207,57 @@ describe("takumi_agent_start", () => {
 		expect(result.output).toContain("pane write failed");
 		expect(deps.pool.release).toHaveBeenCalledWith("wt-0001");
 		expect(deps.agents.remove).toHaveBeenCalledWith("side-1");
+	});
+
+	it("keeps a failed registry row when worktree rollback cleanup fails", async () => {
+		const deps = createMockDeps();
+		(deps.tmux.createWindow as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("tmux unavailable"));
+		(deps.pool.release as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("worktree busy"));
+		const handler = createAgentStartHandler(deps);
+
+		const result = await handler({ description: "Investigate lane failure" });
+
+		expect(result.isError).toBe(true);
+		expect(result.output).toContain("tmux unavailable");
+		expect(result.output).toContain("Cleanup also failed: worktree cleanup failed: worktree busy");
+		expect(deps.agents.remove).not.toHaveBeenCalled();
+		expect(deps.agents.transition).toHaveBeenCalledWith(
+			"side-1",
+			"failed",
+			expect.stringContaining("Residual cleanup failed after startup error."),
+		);
+		expect(deps.agents.get("side-1")).toMatchObject({
+			state: "failed",
+			slotId: "wt-0001",
+			worktreePath: "/tmp/worktrees/wt-0001",
+			tmuxWindow: null,
+			error: expect.stringContaining("worktree busy"),
+		});
+	});
+
+	it("preserves tmux metadata when window rollback cleanup fails", async () => {
+		const deps = createMockDeps();
+		(deps.tmux.sendKeys as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("pane write failed"));
+		(deps.tmux.killWindow as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("tmux stuck"));
+		const handler = createAgentStartHandler(deps);
+
+		const result = await handler({ description: "Investigate lane failure", initialPrompt: "hello" });
+
+		expect(result.isError).toBe(true);
+		expect(result.output).toContain("pane write failed");
+		expect(result.output).toContain("Cleanup also failed: tmux cleanup failed: tmux stuck");
+		expect(deps.pool.release).toHaveBeenCalledWith("wt-0001");
+		expect(deps.agents.remove).not.toHaveBeenCalled();
+		expect(deps.agents.get("side-1")).toMatchObject({
+			state: "failed",
+			slotId: null,
+			worktreePath: null,
+			tmuxWindow: "agent-side-1",
+			tmuxSessionName: "takumi-agents-test",
+			tmuxWindowId: "@1",
+			tmuxPaneId: "%0",
+			error: expect.stringContaining("tmux stuck"),
+		});
 	});
 
 	it("fails when pool is at capacity", async () => {
@@ -322,9 +400,7 @@ describe("inferTopicDomain", () => {
 describe("takumi_agent_check", () => {
 	it("returns status and output for known agent", async () => {
 		const deps = createMockDeps();
-		// Pre-populate agent
-		const agent = makeAgent();
-		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(agent);
+		seedAgent(deps);
 
 		const handler = createAgentCheckHandler(deps);
 		const result = await handler({ id: "side-1" });
@@ -388,6 +464,29 @@ describe("takumi_agent_check", () => {
 		const data = parse(result);
 		expect(data.state).toBe("crashed");
 		expect(data.recentOutput).toBe("<tmux window missing>");
+	});
+
+	it("keeps pre-tmux startup lanes pending instead of crashing them", async () => {
+		const deps = createMockDeps();
+		const pendingAgent = makeAgent({
+			id: "side-1",
+			state: "spawning_tmux",
+			tmuxWindow: null,
+			tmuxSessionName: null,
+			tmuxWindowId: null,
+			tmuxPaneId: null,
+		});
+		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(pendingAgent);
+		(deps.tmux.isWindowAlive as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+		const handler = createAgentCheckHandler(deps);
+		const result = await handler({ id: "side-1" });
+
+		expect(result.isError).toBe(false);
+		expect(deps.agents.transition).not.toHaveBeenCalled();
+		const data = parse(result);
+		expect(data.state).toBe("spawning_tmux");
+		expect(data.recentOutput).toBe("<tmux window pending>");
 	});
 });
 
@@ -461,12 +560,27 @@ describe("takumi_agent_wait_any", () => {
 		expect(result.isError).toBe(true);
 		expect(result.output).toContain("aborted");
 	});
+
+	it("returns immediately for a pre-aborted signal", async () => {
+		const deps = createMockDeps();
+		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "running" }));
+
+		const controller = new AbortController();
+		controller.abort();
+
+		const handler = createAgentWaitAnyHandler(deps);
+		const result = await handler({ ids: ["side-1"] }, controller.signal);
+
+		expect(result.isError).toBe(true);
+		expect(result.output).toContain("aborted");
+		expect(deps.agents.on).not.toHaveBeenCalled();
+	});
 });
 
 describe("takumi_agent_send", () => {
-	it("sends keys to tmux window for running agent", async () => {
+	it("queues a dispatch envelope for a running agent", async () => {
 		const deps = createMockDeps();
-		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "running" }));
+		seedAgent(deps, { state: "running" });
 
 		const handler = createAgentSendHandler(deps);
 		const result = await handler({ id: "side-1", prompt: "run the tests" });
@@ -474,18 +588,23 @@ describe("takumi_agent_send", () => {
 		expect(result.isError).toBe(false);
 		const data = parse(result);
 		expect(data.sent).toBe(true);
-		expect(deps.tmux.sendKeys).toHaveBeenCalledWith("side-1", "run the tests");
+		expect(deps.tmux.sendKeys).toHaveBeenCalledWith(
+			"side-1",
+			expect.stringContaining("[TAKUMI_SIDE_AGENT_DISPATCH id=side-1 seq=1 kind=send]"),
+		);
+		expect(deps.tmux.sendKeys).toHaveBeenCalledWith("side-1", expect.stringContaining("run the tests"));
 	});
 
-	it("sends keys to waiting_user agent", async () => {
+	it("queues a dispatch envelope for a waiting_user agent", async () => {
 		const deps = createMockDeps();
-		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "waiting_user" }));
+		seedAgent(deps, { state: "waiting_user" });
 
 		const handler = createAgentSendHandler(deps);
 		const result = await handler({ id: "side-1", prompt: "yes" });
 
 		expect(result.isError).toBe(false);
-		expect(deps.tmux.sendKeys).toHaveBeenCalledWith("side-1", "yes");
+		expect(deps.tmux.sendKeys).toHaveBeenCalledWith("side-1", expect.stringContaining("kind=send"));
+		expect(deps.tmux.sendKeys).toHaveBeenCalledWith("side-1", expect.stringContaining("yes"));
 	});
 
 	it("fails for non-running agent", async () => {
@@ -511,6 +630,23 @@ describe("takumi_agent_send", () => {
 		expect(result.isError).toBe(true);
 		expect(result.output).toContain('unknown agent "nope"');
 	});
+
+	it("marks the lane crashed when its tmux window is missing", async () => {
+		const deps = createMockDeps();
+		seedAgent(deps, { state: "running" });
+		(deps.tmux.isWindowAlive as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+		const handler = createAgentSendHandler(deps);
+		const result = await handler({ id: "side-1", prompt: "hello" });
+
+		expect(result.isError).toBe(true);
+		expect(result.output).toContain("tmux window is missing");
+		expect(deps.agents.transition).toHaveBeenCalledWith(
+			"side-1",
+			"crashed",
+			"Side-agent tmux window is no longer alive.",
+		);
+	});
 });
 
 describe("takumi_agent_stop", () => {
@@ -531,6 +667,8 @@ describe("takumi_agent_stop", () => {
 		const data = parse(result);
 		expect(data.state).toBe("stopped");
 		expect(data.reason).toBe("Stopped by operator");
+		expect(data.closedWindow).toBe(true);
+		expect(data.releasedWorktree).toBe(true);
 		expect(deps.tmux.killWindow).toHaveBeenCalledWith("side-1");
 		expect(deps.pool.release).toHaveBeenCalledWith("wt-0001");
 		expect(deps.agents.transition).toHaveBeenCalledWith("side-1", "stopped", "Stopped by operator");
@@ -599,6 +737,8 @@ describe("takumi_agent_stop", () => {
 			expect.objectContaining({ error: expect.stringContaining("worktree locked") }),
 		);
 		const data = parse(result);
+		expect(data.closedWindow).toBe(true);
+		expect(data.releasedWorktree).toBe(false);
 		expect(data.cleanupErrors).toEqual([expect.stringContaining("worktree locked")]);
 	});
 });
@@ -606,7 +746,7 @@ describe("takumi_agent_stop", () => {
 describe("takumi_agent_query", () => {
 	it("returns structured result when agent responds with JSON", async () => {
 		const deps = createMockDeps();
-		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "running" }));
+		seedAgent(deps, { state: "running" });
 		(deps.tmux.sendKeys as ReturnType<typeof vi.fn>).mockImplementation(async (_id: string, prompt: string) => {
 			const requestId = /STRUCTURED_QUERY id=([^\s\]]+)/.exec(prompt)?.[1] ?? "unknown";
 			(deps.tmux.captureOutput as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -628,7 +768,7 @@ describe("takumi_agent_query", () => {
 
 	it("uses default format 'json' when not specified", async () => {
 		const deps = createMockDeps();
-		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "running" }));
+		seedAgent(deps, { state: "running" });
 		(deps.tmux.sendKeys as ReturnType<typeof vi.fn>).mockImplementation(async (_id: string, prompt: string) => {
 			const requestId = /STRUCTURED_QUERY id=([^\s\]]+)/.exec(prompt)?.[1] ?? "unknown";
 			(deps.tmux.captureOutput as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -646,7 +786,7 @@ describe("takumi_agent_query", () => {
 
 	it("accepts waiting_user agent state", async () => {
 		const deps = createMockDeps();
-		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "waiting_user" }));
+		seedAgent(deps, { state: "waiting_user" });
 		(deps.tmux.sendKeys as ReturnType<typeof vi.fn>).mockImplementation(async (_id: string, prompt: string) => {
 			const requestId = /STRUCTURED_QUERY id=([^\s\]]+)/.exec(prompt)?.[1] ?? "unknown";
 			(deps.tmux.captureOutput as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -698,7 +838,7 @@ describe("takumi_agent_query", () => {
 
 	it("respects abort signal before first poll", async () => {
 		const deps = createMockDeps();
-		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "running" }));
+		seedAgent(deps, { state: "running" });
 		(deps.tmux.captureOutput as ReturnType<typeof vi.fn>).mockResolvedValue("no json here");
 
 		const controller = new AbortController();
@@ -714,7 +854,7 @@ describe("takumi_agent_query", () => {
 	it("falls back to raw output on timeout", async () => {
 		vi.useFakeTimers();
 		const deps = createMockDeps();
-		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "running" }));
+		seedAgent(deps, { state: "running" });
 		(deps.tmux.captureOutput as ReturnType<typeof vi.fn>).mockResolvedValue("raw output, no json block");
 
 		const handler = createAgentQueryHandler(deps);
@@ -734,7 +874,7 @@ describe("takumi_agent_query", () => {
 
 	it("handles tmux capture failure mid-poll gracefully", async () => {
 		const deps = createMockDeps();
-		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "running" }));
+		seedAgent(deps, { state: "running" });
 
 		let callCount = 0;
 		(deps.tmux.sendKeys as ReturnType<typeof vi.fn>).mockImplementation(async (_id: string, prompt: string) => {
@@ -757,7 +897,7 @@ describe("takumi_agent_query", () => {
 
 	it("ignores stale JSON blocks from earlier structured queries", async () => {
 		const deps = createMockDeps();
-		(deps.agents.get as ReturnType<typeof vi.fn>).mockReturnValue(makeAgent({ state: "running" }));
+		seedAgent(deps, { state: "running" });
 		(deps.tmux.sendKeys as ReturnType<typeof vi.fn>).mockImplementation(async (_id: string, prompt: string) => {
 			const requestId = /STRUCTURED_QUERY id=([^\s\]]+)/.exec(prompt)?.[1] ?? "unknown";
 			(deps.tmux.captureOutput as ReturnType<typeof vi.fn>).mockResolvedValue(

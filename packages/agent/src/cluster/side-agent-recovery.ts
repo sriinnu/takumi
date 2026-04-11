@@ -5,11 +5,11 @@
  * reconcile persisted lanes before any operator command touches them.
  */
 
-import { basename } from "node:path";
 import { gitBranch, gitWorktreeList } from "@takumi/bridge";
 import type { SideAgentInfo, SideAgentState } from "@takumi/core";
 import type { SideAgentRegistry } from "./side-agent-registry.js";
 import type { TmuxOrchestrator } from "./tmux-orchestrator.js";
+import { createNormalizedWorktreePathSet, normalizeWorktreePath } from "./worktree-paths.js";
 import type { WorktreePoolManager } from "./worktree-pool.js";
 
 const RECOVERABLE_STATES: ReadonlySet<SideAgentState> = new Set([
@@ -36,7 +36,7 @@ export async function reconcilePersistedSideAgents(options: {
 	repoRoot: string;
 }): Promise<SideAgentRecoverySummary> {
 	const summary: SideAgentRecoverySummary = { adopted: [], cleaned: [], crashed: [], cleanupFailed: [] };
-	const knownWorktrees = new Set(gitWorktreeList(options.repoRoot));
+	const knownWorktrees = createNormalizedWorktreePathSet(gitWorktreeList(options.repoRoot));
 
 	for (const agent of options.agents.getAll()) {
 		if (!TERMINAL_STATES.has(agent.state)) {
@@ -84,10 +84,11 @@ async function recoverPersistedAgent(
 	if (!slotId || !agent.worktreePath || !tmuxLocator) {
 		return "Side-agent metadata is incomplete and could not be reattached after restart.";
 	}
-	if (!knownWorktrees.has(agent.worktreePath)) {
+	const normalizedWorktreePath = normalizeWorktreePath(agent.worktreePath);
+	if (!knownWorktrees.has(normalizedWorktreePath)) {
 		return "Side-agent worktree is missing and could not be reattached after restart.";
 	}
-	const currentBranch = gitBranch(agent.worktreePath);
+	const currentBranch = gitBranch(normalizedWorktreePath);
 	if (!currentBranch || currentBranch !== agent.branch) {
 		return `Side-agent worktree branch drifted to "${currentBranch ?? "<unknown>"}" and could not be reattached safely.`;
 	}
@@ -105,7 +106,7 @@ async function recoverPersistedAgent(
 	try {
 		options.pool.adopt({
 			id: slotId,
-			path: agent.worktreePath,
+			path: normalizedWorktreePath,
 			branch: agent.branch,
 			inUse: true,
 			agentId: agent.id,
@@ -126,6 +127,7 @@ async function recoverPersistedAgent(
 	if (isTmuxWindow(adoptedWindow)) {
 		options.agents.update(agent.id, {
 			slotId,
+			worktreePath: normalizedWorktreePath,
 			tmuxWindow: adoptedWindow.windowName,
 			tmuxSessionName: adoptedWindow.sessionName,
 			tmuxWindowId: adoptedWindow.windowId,
@@ -169,18 +171,19 @@ async function cleanupTerminalAgent(
 	const slotId = agent.slotId ?? deriveSlotId(agent.worktreePath);
 	if (slotId || agent.worktreePath) {
 		touched = true;
-		if (slotId && agent.worktreePath && knownWorktrees.has(agent.worktreePath)) {
+		const normalizedWorktreePath = agent.worktreePath ? normalizeWorktreePath(agent.worktreePath) : null;
+		if (slotId && agent.worktreePath && normalizedWorktreePath && knownWorktrees.has(normalizedWorktreePath)) {
 			try {
 				options.pool.adopt({
 					id: slotId,
-					path: agent.worktreePath,
+					path: normalizedWorktreePath,
 					branch: agent.branch,
 					inUse: true,
 					agentId: agent.id,
 					createdAt: agent.startedAt,
 				});
 				await options.pool.release(slotId);
-				knownWorktrees.delete(agent.worktreePath);
+				knownWorktrees.delete(normalizedWorktreePath);
 				patch.slotId = null;
 				patch.worktreePath = null;
 			} catch (error) {
@@ -231,8 +234,8 @@ function deriveSlotId(worktreePath: string | null): string | null {
 	if (!worktreePath) {
 		return null;
 	}
-	const derived = basename(worktreePath.trim());
-	return /^wt-\d+$/.test(derived) ? derived : null;
+	const match = /(?:^|[\\/])(wt-\d+)$/.exec(worktreePath.trim());
+	return match?.[1] ?? null;
 }
 
 function appendError(existing: string | undefined, message: string): string {

@@ -2,10 +2,11 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { createLogger } from "@takumi/core";
+import { discoverManifestPackageRoots } from "./package-loader-project.js";
 
 const log = createLogger("package-loader");
 
-export type TakumiPackageSource = "project" | "global" | "configured";
+export type TakumiPackageSource = "workspace" | "dependency" | "project" | "global" | "configured";
 
 export type TakumiPackageProvenance = "builtin" | "verified" | "community" | "local";
 
@@ -122,7 +123,7 @@ function inferProvenance(value: unknown, source: TakumiPackageSource): TakumiPac
 	if (value === "builtin" || value === "verified" || value === "community" || value === "local") {
 		return value;
 	}
-	return source === "global" ? "community" : "local";
+	return source === "global" || source === "dependency" ? "community" : "local";
 }
 
 function addGovernanceWarnings(
@@ -294,6 +295,12 @@ function tryLoadPackage(
 export function discoverTakumiPackages(configuredPaths: string[], cwd: string): LoadTakumiPackagesResult {
 	const result: LoadTakumiPackagesResult = { packages: [], errors: [] };
 	const seen = new Set<string>();
+
+	// Workspace and dependency manifests are the Pi-style pluggable path: install
+	// a Takumi-aware package and let normal startup discover it automatically.
+	for (const discovered of discoverManifestPackageRoots(cwd)) {
+		tryLoadPackage(result, seen, discovered.rootPath, discovered.source, false);
+	}
 
 	for (const rootPath of discoverPackageRoots(localPackagesDir(cwd))) {
 		tryLoadPackage(result, seen, rootPath, "project", false);

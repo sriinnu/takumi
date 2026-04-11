@@ -111,7 +111,7 @@ export {
 	estimateTotalPayloadTokens,
 	shouldCompact,
 } from "./context/compact.js";
-export type { ExperienceArchive, ToolRuntimeSnapshot } from "./context/experience-memory.js";
+export type { ExperienceArchive, ExperienceRecall, ToolRuntimeSnapshot } from "./context/experience-memory.js";
 export { ExperienceMemory } from "./context/experience-memory.js";
 // Codebase indexer (Phase 10 — RAG)
 export type { CodebaseIndex, FileEntry, IndexedSymbol, IndexStats } from "./context/indexer.js";
@@ -144,12 +144,24 @@ export { SmartContextWindow } from "./context/smart-context.js";
 export type { SoulData } from "./context/soul.js";
 export { formatSoulPrompt, loadSoul } from "./context/soul.js";
 export { buildStrategyPrompt } from "./context/strategy-guide.js";
+export type {
+	HistoryCompactionPlan,
+	HistoryCompactionResult,
+	OptimizedPromptWindow,
+	PromptContextSection,
+} from "./context/window-optimizer.js";
+export {
+	buildHistoryCompactionPlan,
+	estimateTurnHistoryTokens,
+	maybeCompactHistory,
+	optimizePromptWindow,
+} from "./context/window-optimizer.js";
 // LLM cost estimation + budget enforcement (Phase 11)
 export type { BudgetGuardOptions, CostEstimate } from "./cost.js";
 export { BudgetExceededError, BudgetGuard, estimateClusterCost, estimateCost, MODEL_PRICING } from "./cost.js";
 // Phase 38 — Streaming Cost Tracker
-export type { AlertLevel, CostSnapshot, CostTrackerConfig, TurnCost } from "./cost-tracker.js";
-export { CostTracker } from "./cost-tracker.js";
+export type { AlertLevel, CostSnapshot, CostTrackerConfig, TurnCost, UsageCostInput } from "./cost-tracker.js";
+export { CostTracker, estimateUsageCost } from "./cost-tracker.js";
 export type { ErrorCategory } from "./errors.js";
 // Error types and categorization
 export {
@@ -161,149 +173,7 @@ export {
 } from "./errors.js";
 export type { ExecBootstrapOptions, ExecBootstrapResult } from "./exec-bootstrap.js";
 export { bootstrapChitraguptaForExec } from "./exec-bootstrap.js";
-// Phase 45 — Convention file loader
-export type { ConventionFiles, ToolRule } from "./extensions/convention-loader.js";
-export { loadConventionFiles } from "./extensions/convention-loader.js";
-// Phase 45 — defineExtension() named factory helper
-export type {
-	AnnotatedFactory,
-	ExtensionManifest,
-} from "./extensions/define-extension.js";
-export {
-	defineExtension,
-	EXTENSION_MANIFEST_SYMBOL,
-	getExtensionManifest,
-} from "./extensions/define-extension.js";
-// Phase 45 — Extension bridge (typed inter-extension event bus)
-export type {
-	BridgeHandler,
-	BridgePayload,
-	ExtensionBridge,
-	ExtensionBridgeEvents,
-} from "./extensions/extension-bridge.js";
-export { ExtensionBridgeRegistry } from "./extensions/extension-bridge.js";
-// Phase 52 — Extension Health Monitor
-export type {
-	ExtensionHealthConfig,
-	ExtensionHealthSnapshot,
-	HealthEvent,
-	HealthTransition,
-	HealthTransitionListener,
-} from "./extensions/extension-health.js";
-export { ExtensionHealthMonitor } from "./extensions/extension-health.js";
-export {
-	discoverAndLoadExtensions,
-	loadExtensionFromFactory,
-	loadExtensions,
-} from "./extensions/extension-loader.js";
-export type {
-	ExtensionAPIActions,
-	ExtensionCommandActions,
-	ExtensionContextActions,
-	ExtensionErrorListener,
-	SessionContextActions,
-	UIContextActions,
-} from "./extensions/extension-runner.js";
-export { ExtensionRunner } from "./extensions/extension-runner.js";
-// Phase 45 — Per-tool typed events and type guards
-export type {
-	BashToolCallEvent,
-	EditToolCallEvent,
-	GlobToolCallEvent,
-	GrepToolCallEvent,
-	ReadToolCallEvent,
-	WriteToolCallEvent,
-} from "./extensions/extension-tool-events.js";
-export { isToolCallForTool } from "./extensions/extension-tool-events.js";
-// Phase 42-44 — Extension System
-export type {
-	AgentEndEvent,
-	AgentLoopEvent,
-	AgentProfileUpdatedEvent,
-	AgentStartEvent,
-	BeforeAgentStartEvent,
-	BeforeAgentStartEventResult,
-	BeforeProviderRequestEvent,
-	BeforeProviderRequestResult,
-	ClusterBudgetEvent,
-	ClusterEndEvent,
-	ClusterExtensionEvent,
-	ClusterTopologyAdaptEvent,
-	ClusterValidationAttemptEvent,
-	ContextEvent,
-	ContextEventResult,
-	ContextUsage,
-	ExtensionAPI,
-	ExtensionCommandContext,
-	ExtensionContext,
-	ExtensionError,
-	ExtensionEvent,
-	ExtensionEventType,
-	ExtensionFactory,
-	ExtensionHandler,
-	ExtensionSession,
-	ExtensionToolDefinition,
-	ExtensionUI,
-	InputEvent,
-	InputEventResult,
-	InputSource,
-	LoadExtensionsResult,
-	LoadedExtension,
-	MessageEndEvent,
-	MessageStartEvent,
-	MessageUpdateEvent,
-	ModelSelectEvent,
-	NotifyLevel,
-	PickItem,
-	RegisteredCommand,
-	RegisteredShortcut,
-	SabhaEscalationEvent,
-	SessionBeforeCompactEvent,
-	SessionBeforeCompactResult,
-	SessionBeforeSwitchEvent,
-	SessionBeforeSwitchResult,
-	SessionCompactEvent,
-	SessionEntry,
-	SessionEvent,
-	SessionShutdownEvent,
-	SessionSnapshot,
-	SessionStartEvent,
-	SessionSwitchEvent,
-	ToolCallEvent,
-	ToolCallEventResult,
-	ToolEvent,
-	ToolExecutionEndEvent,
-	ToolExecutionStartEvent,
-	ToolExecutionUpdateEvent,
-	ToolResultEvent,
-	ToolResultEventResult,
-	TurnEndEvent,
-	TurnStartEvent,
-	UserBashEvent,
-	UserBashResult,
-	WidgetRenderer,
-} from "./extensions/extension-types.js";
-export type {
-	LoadedTakumiPackage,
-	LoadTakumiPackagesResult,
-	TakumiPackageResources,
-	TakumiPackageSource,
-} from "./extensions/package-loader.js";
-export { discoverTakumiPackages } from "./extensions/package-loader.js";
-// Phase 53 — Extension Self-Authoring
-export type {
-	AuthorResult,
-	ExtensionCommandSpec,
-	ExtensionEventSpec,
-	ExtensionSpec,
-	ExtensionToolSpec,
-	GeneratedManifest,
-	ValidationIssue,
-	ValidationResult as ExtensionValidationResult,
-} from "./extensions/self-author.js";
-export { generateExtensionSource, SelfAuthor, validateExtensionSource } from "./extensions/self-author.js";
-export type { LoadedSkill, LoadedSkillsResult, SkillRoot, SkillSource } from "./extensions/skills-loader.js";
-export { buildSkillsPrompt, loadSkills, selectSkillsForPrompt } from "./extensions/skills-loader.js";
+export * from "./extensions/public.js";
 // Phase 26 — Guardian daemon
 export type { GuardianConfig, GuardianEvent, GuardianSuggestion } from "./guardian.js";
 export { Guardian } from "./guardian.js";
@@ -379,7 +249,12 @@ export { parseSSEStream } from "./stream.js";
 export type { RoutingOverridePlan } from "./task-routing.js";
 export { resolveRoutingOverrides as resolveTaskRoutingOverrides } from "./task-routing.js";
 // Telemetry helpers (Phase 20)
-export { calculateContextPressure, estimateMessagesTokens, renderLastAssistantHtml } from "./telemetry.js";
+export {
+	calculateContextPressure,
+	calculateContextPressureFromTokens,
+	estimateMessagesTokens,
+	renderLastAssistantHtml,
+} from "./telemetry.js";
 export { akashaDepositDefinition, akashaTracesDefinition, createAkashaHandlers } from "./tools/akasha.js";
 export { askDefinition, createAskHandler } from "./tools/ask.js";
 // Phase 28 — AST-aware patching
@@ -411,28 +286,7 @@ export type { ToolHandler } from "./tools/registry.js";
 export { ToolRegistry } from "./tools/registry.js";
 export type { RankedTool, ToolSelectionOptions } from "./tools/selection.js";
 export { rankToolDefinitions, selectToolDefinitions } from "./tools/selection.js";
-export type { SideAgentToolDeps } from "./tools/side-agent.js";
-export {
-	agentCheckDefinition,
-	agentQueryDefinition,
-	agentSendDefinition,
-	agentStartDefinition,
-	agentStopDefinition,
-	agentWaitAnyDefinition,
-	createAgentCheckHandler,
-	createAgentQueryHandler,
-	createAgentSendHandler,
-	createAgentStartHandler,
-	createAgentStopHandler,
-	createAgentWaitAnyHandler,
-	registerSideAgentTools,
-} from "./tools/side-agent.js";
-export type { SideAgentBusDeps } from "./tools/side-agent-bus.js";
-export {
-	agentBusPublishDefinition,
-	createAgentBusPublishHandler,
-	registerSideAgentBusTools,
-} from "./tools/side-agent-bus.js";
+export * from "./tools/side-agent-exports.js";
 // Phase 40 — Tool Result Cache
 export type { CacheEntry as ToolCacheEntry, ToolCacheConfig, ToolCacheStats } from "./tools/tool-cache.js";
 export { ToolResultCache } from "./tools/tool-cache.js";

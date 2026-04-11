@@ -6,6 +6,7 @@ import {
 	type SideAgentRegistrySnapshot,
 } from "./side-agent-registry-io.js";
 import { TmuxOrchestrator, type TmuxWindow, type TmuxWindowLocator } from "./tmux-orchestrator.js";
+import { createNormalizedWorktreePathSet, normalizeWorktreePath } from "./worktree-paths.js";
 import { WorktreePoolManager } from "./worktree-pool.js";
 
 export type SideAgentAuditSeverity = "warn" | "fail";
@@ -79,7 +80,7 @@ export async function auditSideAgentRuntime(options: {
 	const activeAgents = retainedRecords.filter(isPersistedLiveRecord).length;
 	const terminalAgents = retainedRecords.length - activeAgents;
 	const allWorktrees = gitWorktreeList(options.repoRoot);
-	const knownWorktrees = new Set(allWorktrees);
+	const knownWorktrees = createNormalizedWorktreePathSet(allWorktrees);
 	const pool = new WorktreePoolManager(options.repoRoot, { baseDir: options.worktreeBaseDir });
 	const trackedWorktrees = retainedRecords
 		.map((record) => record.agent.worktreePath)
@@ -181,8 +182,11 @@ function buildAuditIssues(
 	for (const record of registry.records.filter(isRetainedRecord)) {
 		const agent = record.agent;
 		const locator = buildTmuxLocator(agent, defaultSessionName);
-		const knownWorktree =
-			typeof agent.worktreePath === "string" && agent.worktreePath.length > 0 && knownWorktrees.has(agent.worktreePath);
+		const normalizedWorktreePath =
+			typeof agent.worktreePath === "string" && agent.worktreePath.length > 0
+				? normalizeWorktreePath(agent.worktreePath)
+				: null;
+		const knownWorktree = normalizedWorktreePath !== null && knownWorktrees.has(normalizedWorktreePath);
 		if (record.incompleteLive) {
 			issues.push({
 				code: "live_metadata_incomplete",
@@ -220,7 +224,7 @@ function buildAuditIssues(
 			});
 			continue;
 		}
-		if (!knownWorktrees.has(agent.worktreePath)) {
+		if (!normalizedWorktreePath || !knownWorktrees.has(normalizedWorktreePath)) {
 			issues.push({
 				code: "live_worktree_missing",
 				severity: "fail",
@@ -229,7 +233,7 @@ function buildAuditIssues(
 			});
 			continue;
 		}
-		const currentBranch = gitBranch(agent.worktreePath);
+		const currentBranch = gitBranch(normalizedWorktreePath);
 		if (!currentBranch || currentBranch !== agent.branch) {
 			issues.push({
 				code: "live_branch_drift",

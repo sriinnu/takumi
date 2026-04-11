@@ -25,7 +25,13 @@ The important distinction: **not every document here describes fully shipped beh
 
 ### Current implementation + near-term architecture
 
+- [`tracking/README.md`](./tracking/README.md) — tracking docs index separating active roadmap from archived planning ledgers
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — current system shape plus future direction
+- [`tracking/future-roadmap.md`](./tracking/future-roadmap.md) — active future roadmap, organized by capability tracks instead of stale phase snapshots
+- [`tracking/consolidated-remaining-items.md`](./tracking/consolidated-remaining-items.md) — detailed backlog items consolidated from retired plan/spec/audit docs
+- [`takumi-extensibility-model.md`](./takumi-extensibility-model.md) — hooks, plugins/extensions, skills, and canonical-core residency model
+- [`pi-mono-lessons.md`](./pi-mono-lessons.md) — distilled lessons from the Pi ecosystem that Takumi should adopt, translate, or explicitly avoid
+- [`takumi-evolution-strike-list.md`](./takumi-evolution-strike-list.md) — scope-control guidance while the contract/runtime boundary is still being hardened
 - [`review-packet.md`](./review-packet.md) — short executive review packet with live-vs-directional status, decision log, and architecture sequence
 - [`orchestration.md`](./orchestration.md) — cluster, mesh, Lucy, Scarlett, and runtime orchestration
 - [`validation.md`](./validation.md) — blind validation model and aggregation
@@ -34,23 +40,15 @@ The important distinction: **not every document here describes fully shipped beh
 - [`takumi-executor-backlog-implementation-note.md`](./takumi-executor-backlog-implementation-note.md) — exact mapping from executor backlog bullets to shipped code
 - [`chitragupta-takumi-exec-handoff.md`](./chitragupta-takumi-exec-handoff.md) — parent-side Takumi spawn/IPC handoff
 - [`cli-adapter-contract.md`](./cli-adapter-contract.md) — reusable local-process adapter contract for any CLI
-- [`ui-ux-roadmap.md`](./ui-ux-roadmap.md) — current terminal-first UX reality and the path to a stronger visual operator experience
-- [`build-window-v1.md`](./build-window-v1.md) — concrete spec for the Takumi Build Window desktop/operator shell
 - [`checkpoints.md`](./checkpoints.md) — checkpoint and resume behavior
 
 ### Performance and diagrams
 
-- [`PERFORMANCE_INPUT_LATENCY.md`](./PERFORMANCE_INPUT_LATENCY.md) — renderer latency analysis and goals
 - [`diagrams.md`](./diagrams.md) — supplementary diagrams (check wording against architecture docs)
 
 ### Internal research / planning
 
-These are useful, but they are not product promises:
-
-- `PHASE_20_PLAN.md`
-- `arxiv-research-2025-2026.md`
-
-Some exploratory Pi ecosystem notes are intentionally kept local-only and are not tracked in git.
+Older plan/spec/audit docs were consolidated on 2026-04-11. Their remaining items live in [`tracking/consolidated-remaining-items.md`](./tracking/consolidated-remaining-items.md). The surviving historical ledger is at [`tracking/implementation-history.md`](./tracking/implementation-history.md).
 
 ## Reading guide
 
@@ -61,6 +59,7 @@ If you want the shortest accurate path:
 3. read `packages.md` if you want to extend Takumi without crossing the Chitragupta boundary
 4. read `ARCHITECTURE.md`
 5. read `orchestration.md` if you are working on multi-agent/runtime behavior
+6. read `tracking/future-roadmap.md` and `takumi-extensibility-model.md` if you are planning future features
 
 ## Branding assets
 

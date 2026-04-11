@@ -25,6 +25,13 @@ interface Message {
  */
 export function calculateContextPressure(messages: Message[], contextWindow: number): TelemetryContext {
 	const tokens = estimateMessagesTokens(messages);
+	return calculateContextPressureFromTokens(tokens, contextWindow);
+}
+
+/**
+ * Calculate context pressure from an exact or provider-reported token count.
+ */
+export function calculateContextPressureFromTokens(tokens: number, contextWindow: number): TelemetryContext {
 	const remainingTokens = Math.max(0, contextWindow - tokens);
 	const percent = (tokens / contextWindow) * 100;
 

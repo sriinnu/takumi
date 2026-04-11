@@ -8,13 +8,14 @@
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
 		"declaration": true,
-		"declarationMap": true,
-		"sourceMap": true,
-		"inlineSources": true,
+		"declarationMap": false,
+		"sourceMap": false,
+		"inlineSources": false,
 		"inlineSourceMap": false,
 		"moduleResolution": "NodeNext",
 		"resolveJsonModule": true,
 		"allowImportingTsExtensions": false,
 		"types": ["node"]
-	}
+	},
+	"exclude": ["node_modules", "dist", "dist-bin", "tmp", "coverage"]
 }

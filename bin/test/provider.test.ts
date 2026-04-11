@@ -1,18 +1,63 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TakumiConfig } from "@takumi/core";
 
+const { mockAutoDetectAuth } = vi.hoisted(() => ({
+	mockAutoDetectAuth: vi.fn<
+		() => Promise<{
+			provider: string;
+			apiKey: string;
+			model?: string;
+			source: string;
+		} | null>
+	>(async () => null),
+}));
+
+const { mockKoshaModel, mockKoshaModelRouteInfo } = vi.hoisted(() => ({
+	mockKoshaModel: vi.fn<(idOrAlias: string) => Promise<Record<string, unknown> | undefined>>(async () => undefined),
+	mockKoshaModelRouteInfo: vi.fn<(idOrAlias: string) => Promise<Record<string, unknown>[]>>(async () => []),
+}));
+
 vi.mock("../cli/cli-auth.js", () => ({
 	tryResolveCliToken: vi.fn(() => undefined),
+	autoDetectAuth: mockAutoDetectAuth,
 }));
 
 vi.mock("../cli/kosha-bridge.js", () => ({
 	koshaEndpoint: vi.fn(async () => ""),
+	koshaModel: mockKoshaModel,
+	koshaModelRouteInfo: mockKoshaModelRouteInfo,
+	mapKoshaProvider: vi.fn((provider: string) => (provider === "google" ? "gemini" : provider)),
 }));
 
+vi.mock("@takumi/agent", () => {
+	class DirectProvider {
+		constructor(public readonly config: Record<string, unknown>) {}
+	}
+
+	class GeminiProvider {
+		constructor(public readonly config: Record<string, unknown>) {}
+	}
+
+	class OpenAIProvider {
+		constructor(public readonly config: Record<string, unknown>) {}
+	}
+
+	class DarpanaProvider {
+		constructor(public readonly config: Record<string, unknown>) {}
+	}
+
+	class FailoverProvider {
+		constructor(public readonly config: Record<string, unknown>) {}
+	}
+
+	return { DirectProvider, GeminiProvider, OpenAIProvider, DarpanaProvider, FailoverProvider };
+});
+
 import { tryResolveCliToken } from "../cli/cli-auth.js";
-import { buildSingleProvider } from "../cli/provider.js";
+import { buildSingleProvider, createResolvedProvider, isRouteIncompatibleError } from "../cli/provider.js";
 
 const mockTryResolveCliToken = vi.mocked(tryResolveCliToken);
+type BootstrapCredentialBridge = NonNullable<Parameters<typeof buildSingleProvider>[3]>;
 
 const baseConfig: TakumiConfig = {
 	apiKey: "",
@@ -56,9 +101,9 @@ const baseConfig: TakumiConfig = {
 		},
 	},
 	statusBar: {
-		left: ["model", "mesh", "scarlett"],
+		left: ["model", "mesh", "cluster"],
 		center: ["status"],
-		right: ["metrics", "keybinds"],
+		right: ["authority", "metrics", "context", "scarlett", "keybinds"],
 	},
 	plugins: [],
 	packages: [],
@@ -82,11 +127,17 @@ function createAgentDouble() {
 
 describe("buildSingleProvider", () => {
 	beforeEach(() => {
-		vi.restoreAllMocks();
+		vi.clearAllMocks();
 		mockTryResolveCliToken.mockReturnValue(undefined);
+		mockAutoDetectAuth.mockResolvedValue(null);
+		mockKoshaModel.mockResolvedValue(undefined);
+		mockKoshaModelRouteInfo.mockResolvedValue([]);
+		delete process.env.OPENAI_API_KEY;
 		delete process.env.ZAI_API_KEY;
 		delete process.env.KIMI_API_KEY;
 		delete process.env.MOONSHOT_API_KEY;
+		delete process.env.GEMINI_API_KEY;
+		delete process.env.GOOGLE_API_KEY;
 		delete process.env.TAKUMI_API_KEY;
 	});
 
@@ -128,5 +179,261 @@ describe("buildSingleProvider", () => {
 
 		expect(provider).toBeInstanceOf(agent.OpenAIProvider);
 		expect(provider.config.apiKey).toBe("zai-env-key");
+	});
+
+	it("allows local OpenAI-compatible endpoints without an API key", async () => {
+		const agent = createAgentDouble();
+		const provider = await buildSingleProvider(
+			"openai",
+			{ ...baseConfig, provider: "openai", apiKey: "", endpoint: "http://127.0.0.1:11434/v1" },
+			agent,
+		);
+
+		expect(provider).toBeInstanceOf(agent.OpenAIProvider);
+		expect(provider.config.apiKey).toBe("");
+		expect(provider.config.endpoint).toBe("http://127.0.0.1:11434/v1");
+	});
+
+	it("maps gemini to the daemon's google credential id", async () => {
+		const agent = createAgentDouble();
+		const bridge: BootstrapCredentialBridge = {
+			requestProviderCredential: vi.fn<BootstrapCredentialBridge["requestProviderCredential"]>(async () => ({
+				found: true,
+				providerId: "google",
+				boundProviderId: "google",
+				modelId: null,
+				routeClass: null,
+				selectedCapabilityId: null,
+				consumer: "takumi",
+				value: "daemon-gemini-key",
+				needsRekey: false,
+			})),
+		};
+
+		const provider = await buildSingleProvider("gemini", { ...baseConfig, provider: "gemini", apiKey: "" }, agent, bridge);
+
+		expect(provider).toBeInstanceOf(agent.GeminiProvider);
+		expect(bridge.requestProviderCredential).toHaveBeenCalledWith("google");
+		expect(provider.config.apiKey).toBe("daemon-gemini-key");
+	});
+});
+
+describe("createResolvedProvider", () => {
+	it("resolves startup model policy aliases through Kosha", async () => {
+		mockTryResolveCliToken.mockImplementation((provider) => (provider === "anthropic" ? "claude-cli-key" : undefined));
+		mockKoshaModel.mockImplementation(async (idOrAlias: string) => {
+			if (idOrAlias === "claude" || idOrAlias === "claude-sonnet-4-20250514") {
+				return {
+					id: "claude-sonnet-4-20250514",
+					name: "Claude Sonnet 4",
+					provider: "anthropic",
+					originProvider: "anthropic",
+					mode: "chat",
+					capabilities: ["chat", "code"],
+					contextWindow: 200000,
+					maxOutputTokens: 8192,
+					aliases: ["claude"],
+					discoveredAt: Date.now(),
+					source: "api",
+				};
+			}
+			return undefined;
+		});
+		mockKoshaModelRouteInfo.mockResolvedValue([
+			{
+				model: {
+					id: "claude-sonnet-4-20250514",
+					name: "Claude Sonnet 4",
+					provider: "anthropic",
+					originProvider: "anthropic",
+					mode: "chat",
+					capabilities: ["chat", "code"],
+					contextWindow: 200000,
+					maxOutputTokens: 8192,
+					aliases: ["claude"],
+					discoveredAt: Date.now(),
+					source: "api",
+				},
+				provider: "anthropic",
+				originProvider: "anthropic",
+				version: "20250514",
+				isDirect: true,
+				isPreferred: true,
+			},
+		]);
+
+		const resolution = await createResolvedProvider({
+			...baseConfig,
+			provider: "anthropic",
+			model: "claude",
+			apiKey: "",
+			modelPolicy: {
+				allow: ["claude"],
+			},
+		});
+
+		expect(resolution.resolvedConfig.provider).toBe("anthropic");
+		expect(resolution.resolvedConfig.model).toBe("claude-sonnet-4-20250514");
+		expect(resolution.source).toContain("Kosha policy");
+		expect(resolution.startupModelSelection).toEqual(
+			expect.objectContaining({
+				requestedModel: "claude",
+				resolvedProvider: "anthropic",
+				resolvedModel: "claude-sonnet-4-20250514",
+				resolvedVersion: "20250514",
+				resolvedIntent: "claude",
+			}),
+		);
+	});
+
+	it("fails closed when no allowed Kosha model can be initialized locally", async () => {
+		mockKoshaModel.mockImplementation(async (idOrAlias: string) => {
+			if (idOrAlias === "gpt-4.1") {
+				return {
+					id: "gpt-4.1",
+					name: "GPT-4.1",
+					provider: "openai",
+					originProvider: "openai",
+					mode: "chat",
+					capabilities: ["chat", "code"],
+					contextWindow: 128000,
+					maxOutputTokens: 8192,
+					aliases: ["gpt-4.1"],
+					discoveredAt: Date.now(),
+					source: "api",
+				};
+			}
+			return undefined;
+		});
+		mockKoshaModelRouteInfo.mockResolvedValue([
+			{
+				model: {
+					id: "gpt-4.1",
+					name: "GPT-4.1",
+					provider: "openai",
+					originProvider: "openai",
+					mode: "chat",
+					capabilities: ["chat", "code"],
+					contextWindow: 128000,
+					maxOutputTokens: 8192,
+					aliases: ["gpt-4.1"],
+					discoveredAt: Date.now(),
+					source: "api",
+				},
+				provider: "openai",
+				originProvider: "openai",
+				version: "4.1",
+				isDirect: true,
+				isPreferred: true,
+			},
+		]);
+
+		await expect(
+			createResolvedProvider({
+				...baseConfig,
+				provider: "anthropic",
+				model: "claude",
+				apiKey: "",
+				modelPolicy: {
+					allow: ["gpt-4.1"],
+					prefer: ["gpt-4.1"],
+				},
+			}),
+		).rejects.toThrow(/No allowed model is available/);
+	});
+
+	it("honors Chitragupta provider handoff when the routed provider is available", async () => {
+		mockTryResolveCliToken.mockImplementation((provider) => (provider === "gemini" ? "gemini-cli-key" : undefined));
+
+		const resolution = await createResolvedProvider(
+			{ ...baseConfig, provider: "anthropic", apiKey: "claude-config-key" },
+			{ preferredProvider: "gemini", preferredModel: "gemini-2.5-pro" },
+		);
+
+		expect(resolution.resolvedConfig.provider).toBe("gemini");
+		expect(resolution.resolvedConfig.model).toBe("gemini-2.5-pro");
+		expect(resolution.source).toContain("Chitragupta route");
+		expect(resolution.usedStandaloneFallback).toBe(false);
+		expect(resolution.provider.config.apiKey).toBe("gemini-cli-key");
+	});
+
+	it("falls back to any detected standalone provider when the configured provider is unavailable", async () => {
+		mockAutoDetectAuth.mockResolvedValue({
+			provider: "openai",
+			apiKey: "openai-cli-key",
+			model: "gpt-4.1",
+			source: "Codex CLI credentials",
+		});
+
+		const resolution = await createResolvedProvider({
+			...baseConfig,
+			provider: "anthropic",
+			apiKey: "",
+			endpoint: "",
+		});
+
+		expect(resolution.resolvedConfig.provider).toBe("openai");
+		expect(resolution.resolvedConfig.model).toBe("gpt-4.1");
+		expect(resolution.usedStandaloneFallback).toBe(true);
+		expect(resolution.source).toBe("Codex CLI credentials");
+		expect(resolution.provider.config.apiKey).toBe("openai-cli-key");
+	});
+
+	it("uses the detected model when standalone fallback switches providers", async () => {
+		mockAutoDetectAuth.mockResolvedValue({
+			provider: "ollama",
+			apiKey: "",
+			model: "qwen2.5-coder:7b",
+			source: "Ollama (local)",
+		});
+
+		const resolution = await createResolvedProvider({
+			...baseConfig,
+			provider: "openai",
+			model: "claude-sonnet-4-20250514",
+			apiKey: "",
+			endpoint: "",
+		});
+
+		expect(resolution.resolvedConfig.provider).toBe("ollama");
+		expect(resolution.resolvedConfig.model).toBe("qwen2.5-coder:7b");
+		expect(resolution.usedStandaloneFallback).toBe(true);
+	});
+
+	it("fails closed when an authoritative Chitragupta route cannot be honored locally", async () => {
+		await expect(
+			createResolvedProvider(
+				{
+					...baseConfig,
+					provider: "anthropic",
+					apiKey: "",
+					endpoint: "",
+				},
+				{
+					preferredProvider: "impossible-provider",
+					preferredModel: "black-hole-1",
+					strictPreferredRoute: true,
+				},
+			),
+		).rejects.toSatisfy((error: unknown) => isRouteIncompatibleError(error));
+	});
+
+	it("fails closed when daemon credential resolution errors even if ambient env auth exists", async () => {
+		process.env.OPENAI_API_KEY = "ambient-openai-key";
+
+		await expect(
+			createResolvedProvider(
+				{ ...baseConfig, provider: "openai", model: "gpt-4.1", apiKey: "ambient-openai-key" },
+				{
+					preferredProvider: "openai",
+					preferredModel: "gpt-4.1",
+					bootstrapBridge: {
+						requestProviderCredential: vi.fn(async () => {
+							throw new Error("bridge failed");
+						}),
+					},
+				},
+			),
+		).rejects.toThrow("Chitragupta credential resolution failed for openai");
 	});
 });

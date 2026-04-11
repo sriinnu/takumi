@@ -7,12 +7,39 @@ export type {
 } from "@takumi/core";
 export { EXEC_EXIT_CODES, EXEC_PROTOCOL, EXEC_PROTOCOL_VERSION } from "@takumi/core";
 export { ChitraguptaBridge } from "./chitragupta.js";
+export type {
+	BridgeBootstrapLaneRequest,
+	BridgeBootstrapMode,
+	BridgeBootstrapRequest,
+	BridgeBootstrapRouteRequest,
+	BridgeBootstrapSessionRequest,
+	DaemonBridgeBootstrapAuth,
+	DaemonBridgeBootstrapBinding,
+	DaemonBridgeBootstrapLane,
+	DaemonBridgeBootstrapLaneConstraints,
+	DaemonBridgeBootstrapLanePolicy,
+	DaemonBridgeBootstrapResult,
+	DaemonBridgeBootstrapRoutingDecision,
+	DaemonBridgeBootstrapSession,
+	DaemonBridgeLaneRefreshRequest,
+	DaemonBridgeLaneSnapshotRequest,
+	DaemonBridgeLaneSnapshotResult,
+	DaemonBridgeProtocolDescriptor,
+	ProviderCredentialResolution,
+} from "./chitragupta-bootstrap-types.js";
+export {
+	daemonBootstrap,
+	daemonRouteLanesGet,
+	daemonRouteLanesRefresh,
+	resolveProviderCredential,
+} from "./chitragupta-control-plane.js";
 export type { NotificationCallbacks } from "./chitragupta-observe.js";
 export { routeResolve, subscribeNotifications } from "./chitragupta-observe.js";
 export { ChitraguptaObserver } from "./chitragupta-observer.js";
 export type {
 	AgentTelemetry,
 	AkashaTrace,
+	ArtifactImportBatchResult,
 	ChitraguptaBridgeOptions,
 	ChitraguptaHealth,
 	ChitraguptaProjectInfo,
@@ -22,6 +49,10 @@ export type {
 	DaySearchResult,
 	ExtractedFact,
 	HandoverSummary,
+	ImportedArtifactInput,
+	ImportedArtifactListResult,
+	ImportedArtifactRecord,
+	ImportedArtifactResult,
 	MaxTurnResult,
 	MemoryResult,
 	MemoryScope,
@@ -49,6 +80,47 @@ export type {
 	VidhiInfo,
 	VidhiMatch,
 } from "./chitragupta-types.js";
+export type {
+	VerticalAuthExchangeOptions,
+	VerticalAuthIntrospectResult,
+	VerticalAuthIssuedTokenResult,
+	VerticalAuthListResult,
+	VerticalAuthRevokeResult,
+	VerticalAuthRotateOptions,
+	VerticalAuthTokenOptions,
+	VerticalAuthTokenRecord,
+} from "./chitragupta-vertical-auth.js";
+export {
+	verticalAuthExchange,
+	verticalAuthIntrospect,
+	verticalAuthIssue,
+	verticalAuthList,
+	verticalAuthRevoke,
+	verticalAuthRotate,
+} from "./chitragupta-vertical-auth.js";
+export type {
+	VerticalRegistryAuthContract,
+	VerticalRegistryBindContract,
+	VerticalRegistryBindSubscribeContract,
+	VerticalRegistryBundle,
+	VerticalRegistryContract,
+	VerticalRegistryDaemonBearerContract,
+	VerticalRegistryMissedEventRecoveryContract,
+	VerticalRegistryProfile,
+	VerticalRegistryPullFallbackContract,
+	VerticalRegistryReattachContract,
+	VerticalRegistryReplayContract,
+	VerticalRegistryServePairingContract,
+	VerticalRegistrySubscribeContract,
+	VerticalRegistryTokenContract,
+	VerticalRegistryUnsubscribeContract,
+} from "./chitragupta-vertical-contract-types.js";
+export {
+	VERTICAL_PROFILE_AUTH_MODES,
+	VERTICAL_PROFILE_PREFERRED_TRANSPORTS,
+} from "./chitragupta-vertical-contract-types.js";
+export type { VerticalRuntimeContractSurface } from "./chitragupta-vertical-runtime.js";
+export { describeVerticalRuntimeContract, resolveVerticalRuntimeContract } from "./chitragupta-vertical-runtime.js";
 export type {
 	CliAdapterContract,
 	CliAdapterRequest,
@@ -142,6 +214,12 @@ export type {
 	RuntimeSummary,
 } from "./http-bridge.js";
 export { HttpBridgeServer } from "./http-bridge.js";
+export type {
+	ContinuityPeerActionResult,
+	ContinuityRedeemResult,
+	ContinuityRouteConfig,
+	ContinuityStateSnapshot,
+} from "./http-bridge-continuity-routes.js";
 export type { McpClientOptions } from "./mcp-client.js";
 export { McpClient } from "./mcp-client.js";
 export type {

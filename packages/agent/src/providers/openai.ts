@@ -25,6 +25,15 @@ const DEFAULT_ENDPOINT = "https://api.openai.com/v1/chat/completions";
 /** Default timeout for streaming requests (ms). */
 const STREAMING_TIMEOUT = 120_000;
 
+function allowsKeylessLocalEndpoint(endpoint: string): boolean {
+	try {
+		const url = new URL(endpoint);
+		return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1";
+	} catch {
+		return false;
+	}
+}
+
 export interface OpenAIProviderConfig {
 	apiKey: string;
 	model: string;
@@ -63,7 +72,7 @@ export class OpenAIProvider {
 		signal?: AbortSignal,
 		options?: SendMessageOptions,
 	): AsyncGenerator<AgentEvent> {
-		if (!this.apiKey) {
+		if (!this.apiKey && !allowsKeylessLocalEndpoint(this.endpoint)) {
 			throw new AgentErrorClass(
 				"No API key configured. Set the appropriate API key for your OpenAI-compatible provider.",
 				false,
@@ -96,13 +105,17 @@ export class OpenAIProvider {
 		const compositeSignal = signal ? AbortSignal.any([signal, timeoutController.signal]) : timeoutController.signal;
 
 		try {
+			const headers: Record<string, string> = {
+				"Content-Type": "application/json",
+				Accept: "text/event-stream",
+			};
+			if (this.apiKey) {
+				headers.Authorization = `Bearer ${this.apiKey}`;
+			}
+
 			const response = await fetch(this.endpoint, {
 				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${this.apiKey}`,
-					Accept: "text/event-stream",
-				},
+				headers,
 				body: JSON.stringify(body),
 				signal: compositeSignal,
 			});

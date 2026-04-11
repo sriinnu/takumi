@@ -1,7 +1,7 @@
 import { ModelRouter, type TaskClassification, TaskComplexity, TaskType } from "@takumi/agent";
 import type { OrchestrationConfig } from "@takumi/core";
 import { describe, expect, it } from "vitest";
-import { resolveTaskModelPlan } from "../src/coding-agent-model-routing.js";
+import { resolveTaskModelPlan } from "../src/agent/coding-agent-model-routing.js";
 
 function makeClassification(overrides: Partial<TaskClassification> = {}): TaskClassification {
 	return {

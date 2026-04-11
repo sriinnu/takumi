@@ -4,7 +4,7 @@
 
 import { SteeringQueue } from "@takumi/agent";
 import { describe, expect, it } from "vitest";
-import { registerSteeringCommands } from "../src/app-commands-steer.js";
+import { registerSteeringCommands } from "../src/commands/app-commands-steer.js";
 
 describe("registerSteeringCommands", () => {
 	it("is a function", () => {

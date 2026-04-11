@@ -21,6 +21,8 @@ export interface Orchestrator {
 	captureOutput(id: string, lines?: number): string | Promise<string>;
 	isWindowAlive(id: string): boolean | Promise<boolean>;
 	killWindow(id: string): Promise<void>;
+	/** Wait for a named tmux channel signal. Returns false on timeout/abort/unsupported. */
+	waitForChannel?(channel: string, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
 }
 
 // ── Factory ───────────────────────────────────────────────────────────────────

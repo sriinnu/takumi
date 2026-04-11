@@ -3,7 +3,7 @@
  * with context and suggestions.
  */
 
-import { ConfigError, PermissionError, TakumiError, ToolError } from "@takumi/core";
+import { ConfigError, getTakumiConfigSearchPaths, PermissionError, TakumiError, ToolError } from "@takumi/core";
 import { bold, dim, fg, reset, wrapText } from "@takumi/render";
 
 /**
@@ -50,8 +50,9 @@ function formatTakumiError(error: TakumiError, maxWidth: number): string {
 		lines.push("");
 		lines.push(`${dim("Tip: Check your config file or environment variables.")}`);
 		lines.push(`${dim("  Config locations:")}`);
-		lines.push(`${dim("    .takumi/config.json")}`);
-		lines.push(`${dim("    ~/.takumi/config.json")}`);
+		for (const configPath of getTakumiConfigSearchPaths()) {
+			lines.push(`${dim(`    ${configPath}`)}`);
+		}
 	} else if (error instanceof ToolError) {
 		lines.push(`${fg(1)}${bold(`Tool Error: ${error.toolName}`)}${reset()}`);
 		lines.push("");

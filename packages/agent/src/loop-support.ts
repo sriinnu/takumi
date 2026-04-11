@@ -6,13 +6,14 @@ import type { ExtensionRunner } from "./extensions/extension-runner.js";
 import type { MessagePayload } from "./loop.js";
 import { buildSystemPrompt } from "./message.js";
 import type { ToolRegistry } from "./tools/registry.js";
+import type { ToolResultCache } from "./tools/tool-cache.js";
 
 export function mergeExtensionTools(tools: ToolRegistry, extensionRunner?: ExtensionRunner): void {
 	if (!extensionRunner) {
 		return;
 	}
 
-	for (const [name, { tool }] of extensionRunner.getAllTools()) {
+	for (const [name, { tool, extensionPath }] of extensionRunner.getAllTools()) {
 		if (!tools.has(name)) {
 			tools.register(
 				{
@@ -23,7 +24,7 @@ export function mergeExtensionTools(tools: ToolRegistry, extensionRunner?: Exten
 					category: tool.category,
 				},
 				async (args, signal) => {
-					const ctx = extensionRunner.createContext();
+					const ctx = extensionRunner.createContext(extensionPath);
 					return tool.execute(args, signal, ctx);
 				},
 			);
@@ -194,5 +195,32 @@ export function recordTurnObservations(
 			hadError: toolResults.some((e) => e.result.isError),
 			finalResponse,
 		});
+	}
+}
+
+// ── Tool Result Cache Helpers ────────────────────────────────────────────────
+
+/** Tools that mutate the filesystem — cache entries touching these paths must be invalidated. */
+const MUTATING_TOOLS = new Set(["write", "edit", "bash", "ast_patch", "worktree_exec", "worktree_merge"]);
+
+/** Check cache before executing a tool. Returns cached result or null. */
+export function cacheGet(cache: ToolResultCache, name: string, input: Record<string, unknown>): ToolResult | null {
+	return cache.get(name, input);
+}
+
+/** Store result or invalidate cache after a tool execution. */
+export function cacheAfterExec(
+	cache: ToolResultCache,
+	name: string,
+	input: Record<string, unknown>,
+	result: ToolResult,
+	wasCached: boolean,
+): void {
+	if (result.isError) return;
+	if (MUTATING_TOOLS.has(name)) {
+		const path = input?.path ?? input?.file_path;
+		if (typeof path === "string") cache.invalidateForPath(path);
+	} else if (!wasCached) {
+		cache.set(name, input, result);
 	}
 }

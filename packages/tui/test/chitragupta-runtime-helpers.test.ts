@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resetRecentDirectiveHistory, wasRecentlyHandled } from "../src/chitragupta-runtime-helpers.js";
+import { resetRecentDirectiveHistory, wasRecentlyHandled } from "../src/chitragupta/chitragupta-runtime-helpers.js";
 
 describe("chitragupta-runtime-helpers", () => {
 	it("clears directive dedupe history when reset", () => {
