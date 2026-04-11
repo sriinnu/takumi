@@ -150,10 +150,20 @@ export const DEFAULT_COMPACT_OPTIONS: PayloadCompactOptions = {
 };
 
 /**
+ * WeakMap cache for payload token estimates — avoids repeated JSON.stringify
+ * on immutable tool_use input blocks across turns.
+ */
+const payloadTokenCache = new WeakMap<MessagePayload, number>();
+
+/**
  * Estimate the token count for a MessagePayload.
  * Uses the rough heuristic of ~4 chars per token.
+ * Caches results per message object identity (content blocks are immutable between turns).
  */
 export function estimatePayloadTokens(message: MessagePayload): number {
+	const cached = payloadTokenCache.get(message);
+	if (cached !== undefined) return cached;
+
 	const content = message.content;
 	let chars = 0;
 
@@ -185,7 +195,9 @@ export function estimatePayloadTokens(message: MessagePayload): number {
 		chars = JSON.stringify(content).length;
 	}
 
-	return Math.ceil(chars / 4);
+	const tokens = Math.ceil(chars / 4);
+	payloadTokenCache.set(message, tokens);
+	return tokens;
 }
 
 /**

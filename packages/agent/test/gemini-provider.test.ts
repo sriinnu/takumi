@@ -910,6 +910,33 @@ describe("GeminiProvider", () => {
 		});
 	});
 
+	it("uses configured endpoint overrides", async () => {
+		let capturedUrl = "";
+
+		globalThis.fetch = vi.fn(async (url: any) => {
+			capturedUrl = url;
+			return createMockResponse(
+				geminiFrame({
+					candidates: [
+						{
+							content: { parts: [{ text: "Response" }], role: "model" },
+							finishReason: "STOP",
+						},
+					],
+				}),
+			);
+		}) as any;
+
+		const provider = createProvider({ endpoint: "https://example.invalid/custom/models/" });
+		const events: AgentEvent[] = [];
+		for await (const event of provider.sendMessage([{ role: "user", content: "Hello" }], "system")) {
+			events.push(event);
+		}
+
+		expect(events.length).toBeGreaterThan(0);
+		expect(capturedUrl).toBe("https://example.invalid/custom/models/gemini-2.5-pro:streamGenerateContent?alt=sse");
+	});
+
 	it("includes thinking config when thinking is enabled", async () => {
 		let capturedBody: any = null;
 

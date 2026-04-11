@@ -6,8 +6,8 @@ vi.mock("node:child_process", () => ({
 
 import { execFileSync } from "node:child_process";
 import type { Message, ToolDefinition, ToolResult } from "@takumi/core";
-import { registerSideLaneCommands } from "../src/app-commands-side-lanes.js";
-import { SlashCommandRegistry } from "../src/commands.js";
+import { registerSideLaneCommands } from "../src/commands/app-commands-side-lanes.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
 import { AppState } from "../src/state.js";
 
 function lastInfoText(state: AppState): string {

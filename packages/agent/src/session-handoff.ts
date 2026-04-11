@@ -377,6 +377,13 @@ export class HandoffManager {
 			}
 		}
 
+		if (payload.workState.filesRead.length > 0) {
+			sections.push("", "**Files read:**");
+			for (const file of payload.workState.filesRead) {
+				sections.push(`- ${file}`);
+			}
+		}
+
 		if (payload.workState.blockers.length > 0) {
 			sections.push("", "**Blockers/Open questions:**");
 			for (const b of payload.workState.blockers) {

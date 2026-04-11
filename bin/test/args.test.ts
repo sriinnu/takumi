@@ -79,4 +79,29 @@ describe("parseArgs", () => {
 		expect(args.subcommandArg).toBe("repair");
 		expect(args.json).toBe(true);
 	});
+
+	it("parses keybindings as an operational subcommand", () => {
+		const args = parseArgs(["node", "takumi", "keybindings", "path"]);
+		expect(args.subcommand).toBe("keybindings");
+		expect(args.subcommandArg).toBe("path");
+	});
+
+	it("parses ide open while preserving launcher and path args", () => {
+		const args = parseArgs(["node", "takumi", "ide", "open", "cursor", "apps/desktop"]);
+		expect(args.subcommand).toBe("ide");
+		expect(args.subcommandArg).toBe("open");
+		expect(args.prompt).toEqual(["cursor", "apps/desktop"]);
+	});
+
+	it("parses config as an operational subcommand", () => {
+		const args = parseArgs(["node", "takumi", "config", "project"]);
+		expect(args.subcommand).toBe("config");
+		expect(args.subcommandArg).toBe("project");
+	});
+
+	it("parses init as an operational subcommand", () => {
+		const args = parseArgs(["node", "takumi", "init", "show"]);
+		expect(args.subcommand).toBe("init");
+		expect(args.subcommandArg).toBe("show");
+	});
 });

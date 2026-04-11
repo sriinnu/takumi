@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { ExtensionAPIActions, ExtensionContextActions } from "../src/extensions/extension-runner.js";
 import { ExtensionRunner } from "../src/extensions/extension-runner.js";
 import type { LoadedExtension } from "../src/extensions/extension-types.js";
-import { discoverAndLoadExtensions, discoverTakumiPackages } from "../src/index.js";
+import {
+	buildPackageRuntimeSnapshotFromPaths,
+	discoverAndLoadExtensions,
+	discoverTakumiPackages,
+} from "../src/index.js";
 
 function mockContextActions(): ExtensionContextActions {
 	return {
@@ -55,6 +59,19 @@ describe("example Takumi packages", () => {
 		expect(tools.has("counterfactual_scout")).toBe(true);
 		expect(tools.has("invariant_loom")).toBe(true);
 		expect(tools.has("negative_space_radar")).toBe(true);
+	});
+
+	it("builds a clean snapshot for configured example package roots", () => {
+		const snapshot = buildPackageRuntimeSnapshotFromPaths(process.cwd(), ["./examples/packages"]);
+		expect(snapshot.configuredPackagePaths).toEqual(["./examples/packages"]);
+		expect(snapshot.report.errors).toEqual([]);
+		expect(snapshot.report.packages.map((pkg) => pkg.packageName)).toEqual(
+			expect.arrayContaining([
+				"@takumi/counterfactual-scout",
+				"@takumi/invariant-loom",
+				"@takumi/negative-space-radar",
+			]),
+		);
 	});
 
 	it("counterfactual scout blocks a third identical failed move", async () => {

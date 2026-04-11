@@ -9,8 +9,8 @@
 import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { SessionContinuityState } from "./session-continuity.js";
 import type { Message } from "./types.js";
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface SessionData {
@@ -25,6 +25,103 @@ export interface SessionData {
 		outputTokens: number;
 		totalCost: number;
 	};
+	controlPlane?: SessionControlPlaneState;
+}
+
+export interface SessionControlPlaneSyncState {
+	lastSyncedMessageId?: string;
+	lastSyncedMessageTimestamp?: number;
+	lastSyncedAt?: number;
+	status?: "idle" | "pending" | "syncing" | "ready" | "failed";
+	lastError?: string;
+	lastAttemptedMessageId?: string;
+	lastAttemptedMessageTimestamp?: number;
+	lastFailedMessageId?: string;
+	lastFailedMessageTimestamp?: number;
+}
+
+export type SessionControlPlaneDegradedSourceKind = "route_degraded" | "sync_failure";
+
+export interface SessionControlPlaneDegradedSourceState {
+	kind: SessionControlPlaneDegradedSourceKind;
+	reason: string;
+	firstDetectedAt: number;
+	lastDetectedAt: number;
+	capability?: string | null;
+	authority?: "engine" | "takumi-fallback" | null;
+	fallbackChain?: string[];
+	status?: SessionControlPlaneSyncState["status"] | null;
+	lastFailedMessageId?: string | null;
+	pendingLocalTurns?: number | null;
+}
+
+export interface SessionControlPlaneDegradedContext {
+	firstDetectedAt: number;
+	lastUpdatedAt: number;
+	sources: SessionControlPlaneDegradedSourceState[];
+}
+
+export interface SessionControlPlaneLanePolicyState {
+	contractVersion?: number | null;
+	role: string;
+	preferLocal?: boolean | null;
+	allowCloud?: boolean | null;
+	maxCostClass?: "free" | "low" | "medium" | "high" | null;
+	requireStreaming?: boolean | null;
+	hardProviderFamily?: string | null;
+	preferredProviderFamilies?: string[];
+	toolAccess?: "inherit" | "allow" | "deny";
+	privacyBoundary?: "inherit" | "local-preferred" | "cloud-ok" | "strict-local";
+	fallbackStrategy?: "same-provider" | "capability-only" | "none";
+	tags?: string[];
+}
+
+export interface SessionControlPlaneLaneState {
+	key: string;
+	role: string;
+	laneId: string;
+	durableKey: string;
+	snapshotAt: number;
+	routeClass?: string | null;
+	capability?: string | null;
+	selectedCapabilityId?: string | null;
+	provider?: string | null;
+	model?: string | null;
+	degraded: boolean;
+	reason?: string | null;
+	fallbackChain?: string[];
+	policyTrace?: string[];
+	policy: SessionControlPlaneLanePolicyState;
+	requestedPolicy?: SessionControlPlaneLanePolicyState;
+	effectivePolicy?: SessionControlPlaneLanePolicyState;
+	constraintsApplied?: Record<string, unknown> | null;
+	policyHash?: string | null;
+	policyWarnings?: string[];
+	authoritySource?: "bootstrap" | "route.lanes.get" | "route.lanes.refresh" | "session-cache";
+	verifiedAt?: number;
+}
+
+export interface SessionArtifactPromotionState {
+	status?: "idle" | "pending" | "syncing" | "ready" | "failed";
+	pendingArtifactIds?: string[];
+	importedArtifactIds?: string[];
+	lastPromotionAt?: number;
+	lastError?: string;
+}
+
+export interface SessionControlPlaneState {
+	canonicalSessionId?: string;
+	sync?: SessionControlPlaneSyncState;
+	lanes?: SessionControlPlaneLaneState[];
+	degradedContext?: SessionControlPlaneDegradedContext;
+	artifactPromotion?: SessionArtifactPromotionState;
+	/**
+	 * Mirrored device-continuity summary for UI/recovery.
+	 *
+	 * I expect future daemon-side continuity work to remain canonical; this
+	 * snapshot is just the persisted local view.
+	 */
+	continuity?: SessionContinuityState;
 }
 
 export interface SessionSummary {
@@ -271,7 +368,6 @@ function isSessionData(data: unknown): data is SessionData {
 	const candidate = data as Partial<SessionData>;
 	return typeof candidate.id === "string" && Array.isArray(candidate.messages);
 }
-
 // ── Auto-saver ────────────────────────────────────────────────────────────────
 
 export interface AutoSaver {

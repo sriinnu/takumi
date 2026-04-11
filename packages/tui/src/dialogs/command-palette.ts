@@ -7,13 +7,21 @@ import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import type { Signal } from "@takumi/render";
 import { signal } from "@takumi/render";
-import type { SlashCommandRegistry } from "../commands.js";
-import type { KeyBindingRegistry } from "../keybinds.js";
+import type { SlashCommandRegistry } from "../commands/commands.js";
+import type { KeyBindingRegistry } from "../input/keybinds.js";
+import { formatSlashCommandOrigin } from "../slash-commands/pack.js";
+import {
+	type CommandPaletteGroup,
+	type CommandPaletteGroupableItem,
+	getCommandPaletteItemKey,
+	groupCommandPaletteItems,
+} from "./command-palette-groups.js";
 
-export interface CommandPaletteItem {
+export interface CommandPaletteItem extends CommandPaletteGroupableItem {
 	name: string;
 	description: string;
 	type: "command" | "keybind";
+	id?: string;
 	aliases?: string[];
 }
 
@@ -24,6 +32,7 @@ export class CommandPalette {
 	private readonly _isOpen: Signal<boolean> = signal(false);
 	private readonly _filterText: Signal<string> = signal("");
 	private readonly _selectedIndex: Signal<number> = signal(0);
+	private recentItemKeys: string[] = [];
 
 	/** Called when a command/keybind is executed from the palette. */
 	onExecute?: (item: CommandPaletteItem) => void;
@@ -80,6 +89,7 @@ export class CommandPalette {
 			const items = this.getItems();
 			if (items.length > 0 && this._selectedIndex.value < items.length) {
 				const item = items[this._selectedIndex.value];
+				this.recordRecentItem(item);
 				this.close();
 				if (item.type === "command") {
 					this.commands.execute(item.name);
@@ -113,7 +123,9 @@ export class CommandPalette {
 		const allItems = this.getAllItems();
 		const filter = this._filterText.value.toLowerCase();
 
-		if (!filter) return allItems;
+		if (!filter) {
+			return this.prioritizeRecentItems(allItems);
+		}
 
 		return allItems
 			.map((item) => ({ item, score: scoreCommandPaletteItem(item, filter) }))
@@ -130,6 +142,21 @@ export class CommandPalette {
 			.map((entry) => entry.item);
 	}
 
+	/**
+	 * I expose grouped sections for the overlay and any future help surfaces.
+	 */
+	getGroups(): CommandPaletteGroup<CommandPaletteItem>[] {
+		return groupCommandPaletteItems(this.getItems(), this._filterText.value ? [] : this.recentItemKeys);
+	}
+
+	/**
+	 * I return the currently selected item or null when the filtered list is empty.
+	 */
+	getSelectedItem(): CommandPaletteItem | null {
+		const items = this.getItems();
+		return items[this._selectedIndex.value] ?? null;
+	}
+
 	/** Get all available items (commands + keybindings). */
 	private getAllItems(): CommandPaletteItem[] {
 		const items: CommandPaletteItem[] = [];
@@ -141,19 +168,39 @@ export class CommandPalette {
 				description: cmd.description,
 				type: "command",
 				aliases: cmd.aliases,
+				source: cmd.source,
+				originLabel: formatSlashCommandOrigin(cmd) ?? undefined,
 			});
 		}
 
 		// Add keybindings
 		for (const kb of this.keybinds.list()) {
 			items.push({
+				id: kb.id,
 				name: kb.key,
 				description: kb.description,
 				type: "keybind",
+				aliases: kb.aliases,
 			});
 		}
 
 		return items;
+	}
+
+	private prioritizeRecentItems(items: readonly CommandPaletteItem[]): CommandPaletteItem[] {
+		if (this.recentItemKeys.length === 0) return [...items];
+
+		const itemByKey = new Map(items.map((item) => [getCommandPaletteItemKey(item), item]));
+		const recentItems = this.recentItemKeys
+			.map((key) => itemByKey.get(key))
+			.filter((item): item is CommandPaletteItem => Boolean(item));
+		const recentSet = new Set(recentItems.map((item) => getCommandPaletteItemKey(item)));
+		return [...recentItems, ...items.filter((item) => !recentSet.has(getCommandPaletteItemKey(item)))];
+	}
+
+	private recordRecentItem(item: CommandPaletteItem): void {
+		const key = getCommandPaletteItemKey(item);
+		this.recentItemKeys = [key, ...this.recentItemKeys.filter((entry) => entry !== key)].slice(0, 5);
 	}
 
 	get selectedIndex(): number {

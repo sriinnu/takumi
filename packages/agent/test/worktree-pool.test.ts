@@ -1,6 +1,14 @@
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("node:fs", async () => {
+	const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+	return {
+		...actual,
+		realpathSync: vi.fn((path: string) => path.replace("/symlink-repo", "/real-repo")),
+	};
+});
+
 // ── Mock @takumi/bridge git helpers ───────────────────────────────────────────
 
 vi.mock("@takumi/bridge", () => ({
@@ -280,6 +288,27 @@ describe("WorktreePoolManager", () => {
 
 			const cleaned = await pool.cleanOrphans();
 
+			expect(cleaned).toBe(0);
+			expect(gitWorktreeRemove).not.toHaveBeenCalled();
+		});
+
+		it("treats canonical git paths as the same tracked worktree", async () => {
+			const pool = new WorktreePoolManager("/symlink-repo", { maxSlots: 2, baseDir: BASE_DIR });
+			pool.adopt({
+				id: "wt-0001",
+				path: "/symlink-repo/.takumi/worktrees/wt-0001",
+				branch: "takumi/side-agent/side-1-wt-0001",
+				inUse: true,
+				agentId: "side-1",
+				createdAt: 123,
+			});
+
+			vi.mocked(gitWorktreeList).mockReturnValue(["/real-repo/.takumi/worktrees/wt-0001"]);
+			vi.mocked(gitWorktreeRemove).mockClear();
+
+			const cleaned = await pool.cleanOrphans();
+
+			expect(pool.getSlot("wt-0001")?.path).toBe("/real-repo/.takumi/worktrees/wt-0001");
 			expect(cleaned).toBe(0);
 			expect(gitWorktreeRemove).not.toHaveBeenCalled();
 		});

@@ -1,6 +1,6 @@
 import type { KeyEvent } from "@takumi/core";
 import { describe, expect, it, vi } from "vitest";
-import { KeyBindingRegistry } from "../src/keybinds.js";
+import { KeyBindingRegistry } from "../src/input/keybinds.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -39,13 +39,13 @@ describe("KeyBindingRegistry", () => {
 
 		it("supports alias keys for the same action", () => {
 			const reg = new KeyBindingRegistry();
-			reg.register("ctrl+k", "Command palette", vi.fn(), {
-				id: "app.command-palette.toggle",
-				aliases: ["ctrl+p"],
+			reg.register("ctrl+p", "Preview", vi.fn(), {
+				id: "app.test-action",
+				aliases: ["ctrl+shift+p"],
 			});
 
-			expect(reg.get("ctrl+k")?.id).toBe("app.command-palette.toggle");
-			expect(reg.get("ctrl+p")?.id).toBe("app.command-palette.toggle");
+			expect(reg.get("ctrl+p")?.id).toBe("app.test-action");
+			expect(reg.get("ctrl+shift+p")?.id).toBe("app.test-action");
 		});
 
 		it("stores description", () => {
@@ -81,6 +81,15 @@ describe("KeyBindingRegistry", () => {
 			const binding = reg.get("ctrl+k");
 			expect(binding!.description).toBe("Second");
 			expect(binding!.handler).toBe(handler2);
+		});
+
+		it("removes stale ids when a different action claims the same key", () => {
+			const reg = new KeyBindingRegistry();
+			reg.register("ctrl+k", "Quit", vi.fn(), { id: "app.quit" });
+			reg.register("ctrl+k", "Palette", vi.fn(), { id: "app.command-palette.toggle" });
+
+			expect(reg.getById("app.quit")).toBeUndefined();
+			expect(reg.getById("app.command-palette.toggle")?.key).toBe("ctrl+k");
 		});
 	});
 
@@ -146,12 +155,12 @@ describe("KeyBindingRegistry", () => {
 		it("triggers through alias keys", () => {
 			const reg = new KeyBindingRegistry();
 			const handler = vi.fn();
-			reg.register("ctrl+k", "Command palette", handler, {
-				id: "app.command-palette.toggle",
-				aliases: ["ctrl+p"],
+			reg.register("ctrl+p", "Preview", handler, {
+				id: "app.test-action",
+				aliases: ["ctrl+shift+p"],
 			});
 
-			const result = reg.handle(makeKeyEvent({ key: "p", ctrl: true }));
+			const result = reg.handle(makeKeyEvent({ key: "p", ctrl: true, shift: true }));
 
 			expect(result).toBe(true);
 			expect(handler).toHaveBeenCalledOnce();
@@ -380,14 +389,14 @@ describe("KeyBindingRegistry", () => {
 		describe("matches", () => {
 			it("matches a namespaced action id against a key event", () => {
 				const reg = new KeyBindingRegistry();
-				reg.register("ctrl+k", "Command palette", vi.fn(), {
-					id: "app.command-palette.toggle",
-					aliases: ["ctrl+p"],
+				reg.register("ctrl+p", "Preview", vi.fn(), {
+					id: "app.test-action",
+					aliases: ["ctrl+shift+p"],
 				});
 
-				expect(reg.matches("app.command-palette.toggle", makeKeyEvent({ key: "k", ctrl: true }))).toBe(true);
-				expect(reg.matches("app.command-palette.toggle", makeKeyEvent({ key: "p", ctrl: true }))).toBe(true);
-				expect(reg.matches("app.command-palette.toggle", makeKeyEvent({ key: "x", ctrl: true }))).toBe(false);
+				expect(reg.matches("app.test-action", makeKeyEvent({ key: "p", ctrl: true }))).toBe(true);
+				expect(reg.matches("app.test-action", makeKeyEvent({ key: "p", ctrl: true, shift: true }))).toBe(true);
+				expect(reg.matches("app.test-action", makeKeyEvent({ key: "x", ctrl: true }))).toBe(false);
 			});
 		});
 

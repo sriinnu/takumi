@@ -10,6 +10,7 @@
  * - before_provider_request              — intercept raw LLM HTTP payload
  * - user_bash                            — intercept !cmd shell prefix
  * - tool_call:bash, :read, :edit ...     — filtered, auto-narrowed subscriptions
+ * - sho.storage                           — durable extension storage seam
  * - sho.bridge                            — typed inter-extension event bus
  * - sho.getSessionName() / setSessionName() — session label access
  */
@@ -28,6 +29,17 @@ import type {
 	SabhaEscalationEvent,
 } from "./cluster-events.js";
 import type { ExtensionBridge } from "./extension-bridge.js";
+import type {
+	AfterRouteResolutionEvent,
+	BeforeRouteRequestEvent,
+	RouteDegradedEvent,
+} from "./extension-route-events.js";
+import type {
+	AfterReplayImportEvent,
+	BeforeReplayImportEvent,
+	BeforeSessionRebindEvent,
+} from "./extension-session-replay-events.js";
+import type { ExtensionStorage } from "./extension-storage.js";
 import type {
 	BashToolCallEvent,
 	BeforeProviderRequestEvent,
@@ -95,6 +107,15 @@ export interface ExtensionAPI {
 	): void;
 	on(event: "session_compact", handler: ExtensionHandler<SessionCompactEvent>): void;
 	on(event: "session_shutdown", handler: ExtensionHandler<SessionShutdownEvent>): void;
+	on(event: "before_replay_import", handler: ExtensionHandler<BeforeReplayImportEvent>): void;
+	on(event: "after_replay_import", handler: ExtensionHandler<AfterReplayImportEvent>): void;
+	on(event: "before_session_rebind", handler: ExtensionHandler<BeforeSessionRebindEvent>): void;
+
+	// ── Route Lifecycle Events ────────────────────────────────────────────────
+
+	on(event: "before_route_request", handler: ExtensionHandler<BeforeRouteRequestEvent>): void;
+	on(event: "after_route_resolution", handler: ExtensionHandler<AfterRouteResolutionEvent>): void;
+	on(event: "route_degraded", handler: ExtensionHandler<RouteDegradedEvent>): void;
 
 	// ── Agent Loop Events ──────────────────────────────────────────────────────
 
@@ -207,6 +228,9 @@ export interface ExtensionAPI {
 
 	/** Execute a shell command and await its output. */
 	exec(command: string, args?: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+
+	/** Durable storage scoped to this extension within the current workspace. */
+	storage: ExtensionStorage;
 
 	/** Get the current human-readable session label (or undefined if unset). */
 	getSessionName(): string | undefined;

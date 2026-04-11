@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "@takumi/core";
-import { discoverTakumiPackages } from "./package-loader.js";
+import { buildPackageRuntimeSnapshotFromPaths, type PackageRuntimeSnapshot } from "./package-runtime-snapshot.js";
 import { buildSkillsPrompt, type LoadedSkill, loadSkills } from "./skills-loader.js";
 
 const log = createLogger("convention-loader");
@@ -56,6 +56,14 @@ export interface ConventionFiles {
  * Never throws — returns empty defaults if files are missing or malformed.
  */
 export function loadConventionFiles(cwd: string, configuredPackagePaths: string[] = []): ConventionFiles {
+	const snapshot = buildPackageRuntimeSnapshotFromPaths(cwd, configuredPackagePaths);
+	return loadConventionFilesFromSnapshot(snapshot, cwd);
+}
+
+/**
+ * Load convention files using one already-computed package snapshot.
+ */
+export function loadConventionFilesFromSnapshot(snapshot: PackageRuntimeSnapshot, cwd = snapshot.cwd): ConventionFiles {
 	const result: ConventionFiles = {
 		systemPromptAddon: null,
 		toolRules: [],
@@ -63,23 +71,19 @@ export function loadConventionFiles(cwd: string, configuredPackagePaths: string[
 		skillsPromptAddon: null,
 		loadedFiles: [],
 	};
-	const packageResult = discoverTakumiPackages(configuredPackagePaths, cwd);
 	const systemPromptBlocks: string[] = [];
 
 	// ── System prompt addon ─────────────────────────────────────────────────
-	for (const pkg of packageResult.packages) {
-		if (!pkg.systemPromptPath) {
-			continue;
-		}
+	for (const promptEntry of snapshot.views.systemPrompts) {
 		try {
-			const content = readFileSync(pkg.systemPromptPath, "utf-8").trim();
+			const content = readFileSync(promptEntry.path, "utf-8").trim();
 			if (content.length === 0) {
 				continue;
 			}
-			systemPromptBlocks.push(`## Package: ${pkg.packageName}\n${content}`);
-			result.loadedFiles.push(pkg.systemPromptPath);
+			systemPromptBlocks.push(`## Package: ${promptEntry.packageName}\n${content}`);
+			result.loadedFiles.push(promptEntry.path);
 		} catch (err) {
-			log.debug(`Failed to read ${pkg.systemPromptPath}: ${(err as Error).message}`);
+			log.debug(`Failed to read ${promptEntry.path}: ${(err as Error).message}`);
 		}
 	}
 	const promptPath = join(cwd, ".takumi", "system-prompt.md");
@@ -98,15 +102,12 @@ export function loadConventionFiles(cwd: string, configuredPackagePaths: string[
 	result.systemPromptAddon = systemPromptBlocks.length > 0 ? systemPromptBlocks.join("\n\n") : null;
 
 	// ── Tool rules ──────────────────────────────────────────────────────────
-	for (const pkg of packageResult.packages) {
-		if (!pkg.toolRulesPath) {
-			continue;
-		}
+	for (const rulesEntry of snapshot.views.toolRules) {
 		try {
-			const raw = readFileSync(pkg.toolRulesPath, "utf-8");
+			const raw = readFileSync(rulesEntry.path, "utf-8");
 			const parsed = JSON.parse(raw);
 			if (!Array.isArray(parsed)) {
-				log.warn(`${pkg.toolRulesPath}: expected JSON array, got ${typeof parsed}`);
+				log.warn(`${rulesEntry.path}: expected JSON array, got ${typeof parsed}`);
 				continue;
 			}
 			result.toolRules.push(
@@ -118,9 +119,9 @@ export function loadConventionFiles(cwd: string, configuredPackagePaths: string[
 						typeof (rule as ToolRule).requiresPermission === "boolean",
 				),
 			);
-			result.loadedFiles.push(pkg.toolRulesPath);
+			result.loadedFiles.push(rulesEntry.path);
 		} catch (err) {
-			log.debug(`Failed to parse ${pkg.toolRulesPath}: ${(err as Error).message}`);
+			log.debug(`Failed to parse ${rulesEntry.path}: ${(err as Error).message}`);
 		}
 	}
 	const rulesPath = join(cwd, ".takumi", "tool-rules.json");
@@ -149,14 +150,11 @@ export function loadConventionFiles(cwd: string, configuredPackagePaths: string[
 	}
 
 	// ── Skills ──────────────────────────────────────────────────────────────
-	const loadedSkills = loadSkills(
-		cwd,
-		packageResult.packages.flatMap((pkg) => pkg.skillPaths.map((path) => ({ path, source: "package" as const }))),
-	);
+	const loadedSkills = loadSkills(cwd, snapshot.views.skillRoots);
 	result.skills = loadedSkills.skills;
 	result.skillsPromptAddon = buildSkillsPrompt(loadedSkills.skills);
 	result.loadedFiles.push(...loadedSkills.loadedFiles);
-	for (const error of packageResult.errors) {
+	for (const error of snapshot.report.errors) {
 		log.debug(`Package discovery skipped ${error.path}: ${error.error}`);
 	}
 	if (loadedSkills.skills.length > 0) {

@@ -6,6 +6,7 @@
  * and capability-aware model routing, both powered by AgentProfileStore.
  */
 
+import type { ExecutionLaneEnvelope } from "@takumi/bridge";
 import { createLogger } from "@takumi/core";
 import type { AgentProfileStore } from "./agent-identity.js";
 import type { AgentRole, ClusterTopology } from "./types.js";
@@ -43,20 +44,31 @@ export function lucyBiasTopology(proposed: ClusterTopology, store: AgentProfileS
 /**
  * Return the best model for a given agent role.
  *
- * Priority: explicit modelOverrides → profile-store best match → undefined.
+ * Priority: executable lane envelope → explicit modelOverrides → profile-store best match → undefined.
  *
  * When the store is consulted, inferred task capabilities are used to bias
  * selection toward agents that have performed well on similar work.
  */
 export function getProfileBiasedModel(
 	role: AgentRole,
+	laneEnvelopes: Partial<Record<AgentRole, ExecutionLaneEnvelope>> | undefined,
 	overrides: Partial<Record<AgentRole, string>> | undefined,
 	store: AgentProfileStore,
 	taskDescription: string,
 ): string | undefined {
+	const laneModel = laneEnvelopes?.[role]?.appliedModel;
+	if (laneModel) return laneModel;
 	if (overrides?.[role]) return overrides[role];
 	const caps = inferRoutingCaps(taskDescription);
 	return store.bestModelForRole(role, caps);
+}
+
+export function getRecordedRoleModel(
+	role: AgentRole,
+	laneEnvelopes: Partial<Record<AgentRole, ExecutionLaneEnvelope>> | undefined,
+	overrides: Partial<Record<AgentRole, string>> | undefined,
+): string {
+	return laneEnvelopes?.[role]?.appliedModel ?? overrides?.[role] ?? "default";
 }
 
 // ── Capability inference (lightweight, no classifier dependency) ─────────────

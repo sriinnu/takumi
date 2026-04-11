@@ -67,6 +67,7 @@ describe("resolveRoutingOverrides", () => {
 	});
 
 	it("groups roles by route class and uses engine-approved same-provider models", async () => {
+		const routeEvents: Array<Record<string, unknown>> = [];
 		const routeResolve = vi
 			.fn()
 			.mockResolvedValueOnce(
@@ -134,6 +135,9 @@ describe("resolveRoutingOverrides", () => {
 			currentModel: "claude-sonnet-4-20250514",
 			router: new ModelRouter("anthropic"),
 			classification: makeClassification(),
+			emitRouteEvent: (event) => {
+				routeEvents.push(event as Record<string, unknown>);
+			},
 		});
 
 		expect(routeResolve).toHaveBeenCalledTimes(4);
@@ -169,6 +173,30 @@ describe("resolveRoutingOverrides", () => {
 		expect(plan.decisions).toHaveLength(4);
 		expect(plan.notes.some((note) => note.includes("using engine-approved model claude-opus-4-5"))).toBe(true);
 		expect(plan.notes.some((note) => note.includes("had no concrete model metadata"))).toBe(true);
+		expect(routeEvents.filter((event) => event.type === "before_route_request")).toHaveLength(4);
+		expect(routeEvents.find((event) => event.type === "route_degraded")).toMatchObject({
+			type: "route_degraded",
+			flow: "multi-agent",
+			request: expect.objectContaining({ capability: "coding.patch-cheap" }),
+			authority: "takumi-fallback",
+			applied: false,
+			degraded: true,
+			model: "claude-sonnet-4-20250514",
+		});
+		expect(
+			routeEvents.find(
+				(event) =>
+					event.type === "after_route_resolution" &&
+					(event.request as { capability?: string } | undefined)?.capability === "coding.deep-reasoning",
+			),
+		).toMatchObject({
+			type: "after_route_resolution",
+			flow: "multi-agent",
+			authority: "engine",
+			applied: true,
+			degraded: false,
+			model: "claude-opus-4-5",
+		});
 	});
 
 	it("keeps Takumi fallback when engine metadata lacks a concrete model", async () => {

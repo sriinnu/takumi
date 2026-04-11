@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentRunner } from "../src/agent-runner.js";
-import type { AppCommandContext } from "../src/app-command-context.js";
-import { parseBasicArgs, registerAutocycleCommands } from "../src/app-commands-autocycle.js";
+import type { AgentRunner } from "../src/agent/agent-runner.js";
+import type { AppCommandContext } from "../src/commands/app-command-context.js";
+import { parseBasicArgs, registerAutocycleCommands } from "../src/commands/app-commands-autocycle.js";
 import { AppState } from "../src/state.js";
 
 /* ── Module-level mocks ─────────────────────────────────────────────────────── */
@@ -73,7 +73,7 @@ vi.mock("@takumi/render", async (importOriginal) => {
 	return { ...actual, batch: (fn: () => void) => fn() };
 });
 
-vi.mock("../src/autocycle-chitragupta.js", () => ({
+vi.mock("../src/autocycle/autocycle-chitragupta.js", () => ({
 	reportAutocycleIterationToChitragupta: mockReportAutocycleIterationToChitragupta,
 }));
 
@@ -110,7 +110,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 });
 
 // Import after mocks so AutocycleAgent uses the mocked modules
-const { AutocycleAgent } = await import("../src/autocycle-agent.js");
+const { AutocycleAgent } = await import("../src/autocycle/autocycle-agent.js");
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 

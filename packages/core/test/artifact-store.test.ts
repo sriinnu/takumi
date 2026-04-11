@@ -97,6 +97,8 @@ describe("ArtifactStore", () => {
 		expect(entries[0].artifactId).toBe(art.artifactId);
 		expect(entries[0].sessionId).toBe("sess-1");
 		expect(entries[0].kind).toBe("validation");
+		expect(entries[0].promoted).toBe(false);
+		expect(entries[0].contentHash).toBe(art.contentHash);
 	});
 
 	it("setPromoted updates promotion state", async () => {
@@ -108,5 +110,48 @@ describe("ArtifactStore", () => {
 
 		const loaded = await store.load(art.artifactId);
 		expect(loaded?.promoted).toBe(true);
+	});
+
+	it("updateImportState persists canonical import metadata", async () => {
+		const art = createHubArtifact({
+			kind: "summary",
+			producer: "takumi.exec",
+			summary: "Import me",
+			localSessionId: "sess-1",
+			importStatus: "pending",
+		});
+		await store.save(art, "sess-1");
+
+		const ok = await store.updateImportState(art.artifactId, {
+			promoted: true,
+			importStatus: "imported",
+			canonicalArtifactId: "cart-1",
+			canonicalSessionId: "canon-1",
+			runId: "run-1",
+			lastImportAt: 1234,
+			lastImportError: undefined,
+		});
+		expect(ok).toBe(true);
+
+		const loaded = await store.load(art.artifactId);
+		expect(loaded).toMatchObject({
+			promoted: true,
+			importStatus: "imported",
+			canonicalArtifactId: "cart-1",
+			canonicalSessionId: "canon-1",
+			runId: "run-1",
+			lastImportAt: 1234,
+		});
+
+		const entries = await store.manifest({ sessionId: "sess-1" });
+		expect(entries[0]).toMatchObject({
+			promoted: true,
+			importStatus: "imported",
+			canonicalArtifactId: "cart-1",
+			canonicalSessionId: "canon-1",
+			runId: "run-1",
+			contentHash: art.contentHash,
+			lastImportAt: 1234,
+		});
 	});
 });

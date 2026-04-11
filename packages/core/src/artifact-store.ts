@@ -9,7 +9,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { ArtifactKind, HubArtifact } from "./artifact-types.js";
+import type { ArtifactImportStatus, ArtifactKind, HubArtifact } from "./artifact-types.js";
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -55,6 +55,31 @@ interface ManifestEntry {
 	sessionId?: string;
 	createdAt: string;
 	summary: string;
+	promoted: boolean;
+	importStatus?: ArtifactImportStatus;
+	canonicalArtifactId?: string;
+	canonicalSessionId?: string;
+	localSessionId?: string;
+	runId?: string;
+	contentHash: string;
+	lastImportAt?: number;
+	lastImportError?: string;
+}
+
+export interface StoredArtifact extends HubArtifact {
+	_sessionId?: string;
+}
+
+export interface ArtifactImportStatePatch {
+	promoted?: boolean;
+	importStatus?: ArtifactImportStatus;
+	canonicalArtifactId?: string;
+	canonicalSessionId?: string;
+	localSessionId?: string;
+	runId?: string;
+	contentHash?: string;
+	lastImportAt?: number;
+	lastImportError?: string;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -69,17 +94,15 @@ export class ArtifactStore {
 	/** Persist a HubArtifact to disk, optionally bound to a session. */
 	async save(artifact: HubArtifact, sessionId?: string): Promise<void> {
 		const dir = await ensureDir(this.baseDir);
-		const filePath = join(dir, `${safeName(artifact.artifactId)}.json`);
-		const payload = { ...artifact, _sessionId: sessionId };
-		await writeFile(filePath, JSON.stringify(payload, null, 2), "utf-8");
+		await persistArtifact(dir, { ...artifact, _sessionId: sessionId });
 	}
 
 	/** Load a single artifact by ID. */
-	async load(artifactId: string): Promise<(HubArtifact & { _sessionId?: string }) | null> {
+	async load(artifactId: string): Promise<StoredArtifact | null> {
 		try {
 			const dir = await ensureDir(this.baseDir);
 			const raw = await readFile(join(dir, `${safeName(artifactId)}.json`), "utf-8");
-			return JSON.parse(raw) as HubArtifact & { _sessionId?: string };
+			return JSON.parse(raw) as StoredArtifact;
 		} catch {
 			return null;
 		}
@@ -98,25 +121,38 @@ export class ArtifactStore {
 
 	/** Mark an artifact as promoted/demoted. */
 	async setPromoted(artifactId: string, promoted: boolean): Promise<boolean> {
+		return this.updateImportState(artifactId, { promoted });
+	}
+
+	/** Persist canonical Chitragupta import state for one local artifact. */
+	async updateImportState(artifactId: string, patch: ArtifactImportStatePatch): Promise<boolean> {
 		const artifact = await this.load(artifactId);
 		if (!artifact) return false;
 		const dir = await ensureDir(this.baseDir);
-		const filePath = join(dir, `${safeName(artifactId)}.json`);
-		await writeFile(filePath, JSON.stringify({ ...artifact, promoted }, null, 2), "utf-8");
+		const nextArtifact: StoredArtifact = {
+			...artifact,
+			...patch,
+		};
+		for (const [key, value] of Object.entries(patch) as Array<[keyof ArtifactImportStatePatch, unknown]>) {
+			if (value === undefined) {
+				delete nextArtifact[key as keyof StoredArtifact];
+			}
+		}
+		await persistArtifact(dir, nextArtifact);
 		return true;
 	}
 
 	/** Query artifacts matching criteria. */
-	async query(q: ArtifactQuery): Promise<HubArtifact[]> {
+	async query(q: ArtifactQuery): Promise<StoredArtifact[]> {
 		const dir = await ensureDir(this.baseDir);
 		const files = await readdir(dir).catch(() => [] as string[]);
 		const jsonFiles = files.filter((f) => f.endsWith(".json"));
 
-		const results: (HubArtifact & { _sessionId?: string })[] = [];
+		const results: StoredArtifact[] = [];
 		for (const file of jsonFiles) {
 			try {
 				const raw = await readFile(join(dir, file), "utf-8");
-				const art = JSON.parse(raw) as HubArtifact & { _sessionId?: string };
+				const art = JSON.parse(raw) as StoredArtifact;
 				if (matchesQuery(art, q)) results.push(art);
 			} catch {
 				// Skip corrupt files.
@@ -135,20 +171,35 @@ export class ArtifactStore {
 			kind: a.kind,
 			producer: a.producer,
 			taskId: a.taskId,
-			sessionId: (a as HubArtifact & { _sessionId?: string })._sessionId,
+			sessionId: a._sessionId,
 			createdAt: a.createdAt,
 			summary: a.summary,
+			promoted: a.promoted,
+			importStatus: a.importStatus,
+			canonicalArtifactId: a.canonicalArtifactId,
+			canonicalSessionId: a.canonicalSessionId,
+			localSessionId: a.localSessionId,
+			runId: a.runId,
+			contentHash: a.contentHash,
+			lastImportAt: a.lastImportAt,
+			lastImportError: a.lastImportError,
 		}));
 	}
 }
 
 // ── Matching ──────────────────────────────────────────────────────────────────
 
-function matchesQuery(art: HubArtifact & { _sessionId?: string }, q: ArtifactQuery): boolean {
+function matchesQuery(art: StoredArtifact, q: ArtifactQuery): boolean {
 	if (q.sessionId && art._sessionId !== q.sessionId) return false;
 	if (q.taskId && art.taskId !== q.taskId) return false;
 	if (q.kind && art.kind !== q.kind) return false;
 	if (q.since && art.createdAt < q.since) return false;
 	if (q.until && art.createdAt > q.until) return false;
 	return true;
+}
+
+/** Write one stored artifact payload to disk atomically enough for local use. */
+async function persistArtifact(dir: string, artifact: StoredArtifact): Promise<void> {
+	const filePath = join(dir, `${safeName(artifact.artifactId)}.json`);
+	await writeFile(filePath, JSON.stringify(artifact, null, 2), "utf-8");
 }

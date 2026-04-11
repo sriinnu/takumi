@@ -3,11 +3,16 @@
  * Commands are validated against an allowlist before execution.
  */
 
-import { execSync } from "node:child_process";
+import { exec as nodeExec } from "node:child_process";
+import { promisify } from "node:util";
 import type { ToolDefinition } from "@takumi/core";
 import { LIMITS } from "@takumi/core";
 import { validateCommand } from "../safety/sandbox.js";
 import type { ToolHandler } from "./registry.js";
+
+/** Promisified exec — lazy-init to avoid breaking test mocks that omit `exec`. */
+type ExecFn = (cmd: string, opts: object) => Promise<{ stdout: string; stderr: string }>;
+let _execAsync: ExecFn | undefined;
 
 export const bashDefinition: ToolDefinition = {
 	name: "bash",
@@ -48,15 +53,15 @@ export const bashHandler: ToolHandler = async (input, _signal) => {
 	}
 
 	try {
-		const result = execSync(command, {
+		_execAsync ??= promisify(nodeExec) as unknown as ExecFn;
+		const { stdout } = await _execAsync(command, {
 			timeout,
 			maxBuffer: LIMITS.MAX_BASH_OUTPUT,
 			encoding: "utf-8",
-			stdio: ["pipe", "pipe", "pipe"],
 			env: { ...process.env },
 		});
 
-		const output = typeof result === "string" ? result : "";
+		const output = typeof stdout === "string" ? stdout : "";
 
 		if (output.length > LIMITS.MAX_BASH_OUTPUT) {
 			return {
@@ -67,10 +72,9 @@ export const bashHandler: ToolHandler = async (input, _signal) => {
 
 		return { output: output || "(no output)", isError: false };
 	} catch (err: any) {
-		// execSync throws on non-zero exit code
 		const stderr = err.stderr?.toString() ?? "";
 		const stdout = err.stdout?.toString() ?? "";
-		const exitCode = err.status ?? 1;
+		const exitCode = err.status ?? err.code ?? 1;
 		const output = [stdout, stderr, `Exit code: ${exitCode}`].filter(Boolean).join("\n");
 
 		return { output, isError: true };

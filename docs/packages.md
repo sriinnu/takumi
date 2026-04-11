@@ -60,10 +60,12 @@ Each package is a directory with a `package.json` manifest:
 
 ```json
 {
-	"packages": [{ "name": "./vendor/takumi/review-kit" }],
-	"plugins": [{ "name": "./extensions/local-debugger.mjs" }]
+	"packages": [{ "path": "./vendor/takumi/review-kit" }],
+	"plugins": [{ "path": "./extensions/local-debugger.mjs" }]
 }
 ```
+
+`path` is now the canonical field for both arrays. The older `name` field is still accepted as a compatibility alias for existing configs.
 
 `plugins` stays backward-compatible for direct extension entry points. `packages` is the new higher-level distribution surface.
 
@@ -168,7 +170,7 @@ example package root:
 
 ```json
 {
-	"packages": [{ "name": "./examples/packages" }]
+	"packages": [{ "path": "./examples/packages" }]
 }
 ```
 

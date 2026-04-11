@@ -2,7 +2,7 @@
  * Write file tool — creates or overwrites a file with given content.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { ToolDefinition } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
@@ -39,12 +39,21 @@ export const writeHandler: ToolHandler = async (input) => {
 	try {
 		// Ensure parent directory exists
 		const dir = dirname(filePath);
-		if (!existsSync(dir)) {
-			mkdirSync(dir, { recursive: true });
+		try {
+			await access(dir);
+		} catch {
+			await mkdir(dir, { recursive: true });
 		}
 
-		const existed = existsSync(filePath);
-		writeFileSync(filePath, content, "utf-8");
+		let existed = false;
+		try {
+			await access(filePath);
+			existed = true;
+		} catch {
+			// File doesn't exist — will be created
+		}
+
+		await writeFile(filePath, content, "utf-8");
 
 		const lineCount = content.split("\n").length;
 		const action = existed ? "Updated" : "Created";

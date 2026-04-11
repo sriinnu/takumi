@@ -5,6 +5,7 @@
 import type { Rect, TakumiConfig } from "@takumi/core";
 import type { Screen } from "@takumi/render";
 import { Component, effect } from "@takumi/render";
+import { formatCompactAuthorityWidget } from "../operator-authority.js";
 import type { AppState } from "../state.js";
 
 export interface StatusBarPanelProps {
@@ -25,6 +26,9 @@ export class StatusBarPanel extends Component {
 		this.disposeEffect = effect(() => {
 			const _status = this.state.statusText.value;
 			const _chi = this.state.chitraguptaConnected.value;
+			const _canonical = this.state.canonicalSessionId.value;
+			const _sync = this.state.chitraguptaSync.value;
+			const _routing = this.state.routingDecisions.value;
 			const _scarlett = this.state.scarlettIntegrityReport.value;
 			// Cluster signals — trigger re-render when active cluster state changes
 			const _clusterId = this.state.clusterId.value;
@@ -32,6 +36,9 @@ export class StatusBarPanel extends Component {
 			const _agentCount = this.state.clusterAgentCount.value;
 			const _tokens = this.state.totalTokens.value;
 			const _cost = this.state.totalCost.value;
+			const _costTelemetry = this.state.costTelemetryText.value;
+			const _costAlertLevel = this.state.costAlertLevel.value;
+			const _costSpike = this.state.hasCostSpike.value;
 			// Akasha mesh signals
 			const _deposits = this.state.akashaDeposits.value;
 			const _meshSize = this.state.akashaMeshSize.value;
@@ -76,6 +83,10 @@ export class StatusBarPanel extends Component {
 			switch (widget) {
 				case "model":
 					return { text: ` ${model} `, fg: 15, bg: 236, bold: true };
+				case "authority": {
+					const authority = formatCompactAuthorityWidget(this.state);
+					return { text: authority.text, fg: authority.fg, bg: 236, bold: authority.bold, dim: authority.dim };
+				}
 				case "mesh": {
 					const chiConnected = this.state.chitraguptaConnected.value;
 					const deposits = this.state.akashaDeposits.value;
@@ -108,10 +119,24 @@ export class StatusBarPanel extends Component {
 						bg: 236,
 					};
 				case "metrics": {
-					const tokens = this.state.totalTokens.value;
-					const cost = this.state.totalCost.value;
-					const metricsText = tokens > 0 ? ` ${tokens.toLocaleString()}t | $${cost.toFixed(3)} ` : "";
-					return { text: metricsText, fg: 8, bg: 236, dim: true };
+					const metricsText = this.state.costTelemetryText.value;
+					const alertLevel = this.state.costAlertLevel.value;
+					const hasCostSpike = this.state.hasCostSpike.value;
+					const fg =
+						alertLevel === "critical"
+							? 1
+							: alertLevel === "warning" || hasCostSpike
+								? 214
+								: alertLevel === "info"
+									? 3
+									: 8;
+					return {
+						text: metricsText,
+						fg,
+						bg: 236,
+						dim: alertLevel === "none" && !hasCostSpike,
+						bold: alertLevel !== "none" || hasCostSpike,
+					};
 				}
 				case "context": {
 					const percent = this.state.contextPercent.value;
@@ -142,7 +167,7 @@ export class StatusBarPanel extends Component {
 				}
 				case "keybinds":
 					return {
-						text: " Enter send  Ctrl+J newline  Alt+↑ history  Ctrl+K cmd  Ctrl+C quit ",
+						text: " Enter send  Ctrl+P preview  Ctrl+K cmd  Ctrl+C quit ",
 						fg: 8,
 						bg: 236,
 						dim: true,
@@ -155,7 +180,7 @@ export class StatusBarPanel extends Component {
 		const statusBarConfig = this.config.statusBar || {
 			left: ["model", "mesh", "cluster"],
 			center: ["status"],
-			right: ["metrics", "context", "scarlett", "keybinds"],
+			right: ["authority", "metrics", "context", "scarlett", "keybinds"],
 		};
 
 		// ── Branded anchor: 匠 always pinned at position 0 ──────────────────────
@@ -197,20 +222,20 @@ export class StatusBarPanel extends Component {
 		}
 
 		// Right side
-		let rightText = "";
-		const rightWidgets = (statusBarConfig.right || []).map(renderWidget);
-		for (const rendered of rightWidgets) {
-			rightText += rendered.text;
-		}
-		const rightCol = rect.x + rect.width - rightText.length;
-		if (rightCol > centerCol + centerText.length) {
-			let currentRightCol = rightCol;
-			for (const rendered of rightWidgets) {
-				if (rendered.text) {
+		const rightWidgets = (statusBarConfig.right || []).map(renderWidget).filter((rendered) => rendered.text.length > 0);
+		const visibleRightWidgets = [...rightWidgets];
+		while (visibleRightWidgets.length > 0) {
+			const rightText = visibleRightWidgets.map((rendered) => rendered.text).join("");
+			const rightCol = rect.x + rect.width - rightText.length;
+			if (rightCol > centerCol + centerText.length) {
+				let currentRightCol = rightCol;
+				for (const rendered of visibleRightWidgets) {
 					screen.writeText(rect.y, currentRightCol, rendered.text, rendered);
 					currentRightCol += rendered.text.length;
 				}
+				break;
 			}
+			visibleRightWidgets.pop();
 		}
 	}
 }

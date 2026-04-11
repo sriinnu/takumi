@@ -1,13 +1,51 @@
 /**
  * Grep tool — search file contents using regex patterns.
- * Uses child_process.spawnSync with array args (no shell injection).
+ * Uses child_process.spawn (async) with array args (no shell injection).
  * Invokes ripgrep (rg) or falls back to node grep.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import type { ToolDefinition } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
+
+/** Async wrapper around child_process.spawn — non-blocking alternative to spawnSync. */
+function spawnAsync(
+	cmd: string,
+	args: string[],
+	opts: { timeout?: number; maxBuffer?: number },
+): Promise<{ stdout: string; stderr: string; status: number }> {
+	return new Promise((resolve, reject) => {
+		const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
+		const chunks: Buffer[] = [];
+		const errChunks: Buffer[] = [];
+		let totalBytes = 0;
+		const maxBuf = opts.maxBuffer ?? 1024 * 1024;
+
+		child.stdout.on("data", (d: Buffer) => {
+			totalBytes += d.length;
+			if (totalBytes <= maxBuf) chunks.push(d);
+		});
+		child.stderr.on("data", (d: Buffer) => errChunks.push(d));
+		child.on("error", reject);
+
+		const timer = opts.timeout
+			? setTimeout(() => {
+					child.kill("SIGTERM");
+					reject(new Error(`Process timed out after ${opts.timeout}ms`));
+				}, opts.timeout)
+			: null;
+
+		child.on("close", (status) => {
+			if (timer) clearTimeout(timer);
+			resolve({
+				stdout: Buffer.concat(chunks).toString("utf-8"),
+				stderr: Buffer.concat(errChunks).toString("utf-8"),
+				status: status ?? 1,
+			});
+		});
+	});
+}
 
 export const grepDefinition: ToolDefinition = {
 	name: "grep",
@@ -55,11 +93,9 @@ export const grepHandler: ToolHandler = async (input) => {
 		args.push("-m", String(maxResults));
 		args.push("--", pattern, cwd);
 
-		const result = spawnSync("rg", args, {
-			encoding: "utf-8",
+		const result = await spawnAsync("rg", args, {
 			maxBuffer: 1024 * 1024,
 			timeout: 30_000,
-			stdio: ["pipe", "pipe", "pipe"],
 		});
 
 		// rg exits with code 1 for "no matches" — not an error

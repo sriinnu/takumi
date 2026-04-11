@@ -6,9 +6,16 @@ import type {
 	RoutingDecision,
 	RoutingRequest,
 } from "@takumi/bridge";
-import { createLogger } from "@takumi/core";
+import {
+	createLogger,
+	DEFAULT_HOOK_POLICY,
+	executeWithHookPolicy,
+	type HookPolicyConfig,
+	resolveHookPolicy,
+} from "@takumi/core";
 import type { TaskClassification } from "./classifier.js";
 import { AgentRole } from "./cluster/types.js";
+import type { ExtensionEvent } from "./extensions/extension-types.js";
 import { inferProvider, type ModelRecommendation, type ModelRouter } from "./model-router.js";
 
 const log = createLogger("task-routing");
@@ -19,6 +26,8 @@ interface ResolveRoutingOverridesOptions {
 	currentModel: string;
 	router: ModelRouter;
 	classification: TaskClassification;
+	emitRouteEvent?: (event: ExtensionEvent) => Promise<void> | void;
+	hookPolicy?: HookPolicyConfig;
 }
 
 export interface RoutingOverridePlan {
@@ -51,6 +60,7 @@ export async function resolveRoutingOverrides({
 	currentModel,
 	router,
 	classification,
+	emitRouteEvent,
 }: ResolveRoutingOverridesOptions): Promise<RoutingOverridePlan> {
 	if (!observer) {
 		return { overrides: {}, laneEnvelopes: {}, decisions: [], notes: [] };
@@ -70,7 +80,34 @@ export async function resolveRoutingOverrides({
 				classification,
 				group.map((item) => item.role),
 			);
-			const decision = await observer.routeResolve(request);
+			await safelyEmitRouteEvent(emitRouteEvent, {
+				type: "before_route_request",
+				flow: "multi-agent",
+				request,
+				currentProvider: currentModel ? inferProvider(currentModel) : undefined,
+				currentModel: currentModel || undefined,
+			});
+
+			let decision: RoutingDecision | null = null;
+			try {
+				decision = await observer.routeResolve(request);
+			} catch (error) {
+				const message = formatRouteResolutionError(error);
+				await safelyEmitRouteEvent(emitRouteEvent, {
+					type: "after_route_resolution",
+					flow: "multi-agent",
+					request,
+					decision: null,
+					authority: "takumi-fallback",
+					applied: false,
+					degraded: false,
+					provider: currentModel ? inferProvider(currentModel) : undefined,
+					model: currentModel || undefined,
+					reason: `Engine route ${request.capability} failed: ${message}`,
+					resolutionError: message,
+				});
+				throw error;
+			}
 			const notes = decision?.selected
 				? [`Engine lane ${request.capability} → ${decision.selected.id}`]
 				: [`No engine lane resolved for ${request.capability}; using Takumi fallback.`];
@@ -83,6 +120,33 @@ export async function resolveRoutingOverrides({
 				overrides[item.role] = model;
 				laneEnvelopes[item.role] = buildLaneEnvelope(request, item.role, resolved, decision);
 				if (note) notes.push(`${item.role}: ${note}`);
+			}
+
+			const emittedLanes = Object.values(laneEnvelopes).filter((lane): lane is ExecutionLaneEnvelope => Boolean(lane));
+			const representativeLane = emittedLanes[0];
+			const authority = representativeLane?.authority ?? (decision?.selected ? "engine" : "takumi-fallback");
+			const applied = authority === "engine";
+			const degraded = Boolean(decision?.degraded || authority !== "engine");
+			const appliedModel = representativeLane?.appliedModel;
+			const afterRouteEvent: ExtensionEvent = {
+				type: "after_route_resolution",
+				flow: "multi-agent",
+				request,
+				decision,
+				authority,
+				applied,
+				degraded,
+				provider: appliedModel ? inferProvider(appliedModel) : currentModel ? inferProvider(currentModel) : undefined,
+				model: appliedModel ?? (authority !== "engine" ? currentModel || undefined : undefined),
+				reason: representativeLane?.reason ?? decision?.reason ?? `Resolved ${request.capability}`,
+				laneEnvelopes: emittedLanes.length > 0 ? emittedLanes : undefined,
+			};
+			await safelyEmitRouteEvent(emitRouteEvent, afterRouteEvent);
+			if (degraded) {
+				await safelyEmitRouteEvent(emitRouteEvent, {
+					...afterRouteEvent,
+					type: "route_degraded",
+				});
 			}
 
 			return {
@@ -269,10 +333,29 @@ function buildLaneEnvelope(
 		fallbackModel: (request.context?.takumiFallbackModel as string | undefined) ?? resolved.model,
 		appliedModel: resolved.model,
 		degraded: decision?.degraded ?? false,
-		reason: decision?.reason ?? `Takumi fallback for ${request.capability}`,
+		reason: resolved.note ?? decision?.reason ?? `Takumi fallback for ${request.capability}`,
 		fallbackChain: decision?.fallbackChain ?? [],
 		policyTrace: decision?.policyTrace ?? [],
 	};
+}
+
+/**
+ * Route hook emission governed by HookPolicyConfig.
+ * Default is fail_open; callers may pass stricter policies per event type.
+ */
+async function safelyEmitRouteEvent(
+	emitRouteEvent: ResolveRoutingOverridesOptions["emitRouteEvent"],
+	event: ExtensionEvent,
+	policyConfig: HookPolicyConfig = DEFAULT_HOOK_POLICY,
+): Promise<void> {
+	if (!emitRouteEvent) return;
+	const policy = resolveHookPolicy(policyConfig, event.type);
+	await executeWithHookPolicy(event.type, policy, () => emitRouteEvent(event));
+}
+
+function formatRouteResolutionError(error: unknown): string {
+	if (error instanceof Error) return error.message;
+	return String(error);
 }
 
 function normalizeProviderFamily(value?: string): ReturnType<typeof inferProvider> | null {

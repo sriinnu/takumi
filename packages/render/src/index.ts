@@ -32,6 +32,7 @@ export type { ColorName } from "./color.js";
 // Color utilities
 export {
 	COLORS,
+	clearHexCache,
 	color256,
 	color256Bg,
 	color256Fg,

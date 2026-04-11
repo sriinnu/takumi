@@ -191,6 +191,36 @@ describe("StatusBarPanel — Context Pressure (Phase 20.4)", () => {
 	});
 
 	describe("widget configuration", () => {
+		it("renders live cost telemetry inside the metrics widget", () => {
+			const { panel, state } = createStatusBar({
+				statusBar: {
+					left: ["model"],
+					center: [],
+					right: ["metrics"],
+				},
+			});
+			state.setCostSnapshot({
+				totalUsd: 0.12,
+				totalInputTokens: 1000,
+				totalOutputTokens: 500,
+				turns: [],
+				ratePerMinute: 0.15,
+				projectedUsd: 1.62,
+				budgetFraction: 0.8,
+				alertLevel: "warning",
+				avgCostPerTurn: 0.12,
+				elapsedSeconds: 30,
+			});
+
+			const screen = new Screen(120, 1);
+			panel.render(screen, { x: 0, y: 0, width: 120, height: 1 });
+
+			const text = getLineText(screen, 0);
+			expect(text).toContain("1,500t");
+			expect(text).toContain("▲$0.150/m");
+			expect(text).toContain("80% budget");
+		});
+
 		it("renders Scarlett widget when configured", () => {
 			const { panel, state } = createStatusBar({
 				statusBar: {

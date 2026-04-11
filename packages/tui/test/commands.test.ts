@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { SlashCommandRegistry } from "../src/commands.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
+import { registerSlashCommandPack } from "../src/slash-commands/pack.js";
 
 /* ── Tests ──────────────────────────────────────────────────────────────────── */
 
@@ -52,6 +53,30 @@ describe("SlashCommandRegistry", () => {
 			expect(cmd?.getArgumentCompletions).toBeDefined();
 			await expect(cmd?.getArgumentCompletions?.("re")).resolves.toEqual(["resume", "refresh"]);
 			expect(complete).toHaveBeenCalledWith("re");
+		});
+
+		it("stores shared contribution metadata via slash command packs", () => {
+			const reg = new SlashCommandRegistry();
+			registerSlashCommandPack(reg, {
+				id: "builtin.ide",
+				label: "IDE",
+				source: "builtin",
+				commands: [
+					{
+						name: "/ide",
+						description: "IDE commands",
+						handler: vi.fn(),
+						aliases: ["/open-ide"],
+					},
+				],
+			});
+
+			const cmd = reg.get("/ide");
+			expect(cmd?.source).toBe("builtin");
+			expect(cmd?.packId).toBe("builtin.ide");
+			expect(cmd?.packLabel).toBe("IDE");
+			expect(cmd?.requestedName).toBe("/ide");
+			expect(reg.get("/open-ide")?.name).toBe("/ide");
 		});
 	});
 

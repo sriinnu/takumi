@@ -1,7 +1,7 @@
 import type { Message } from "@takumi/core";
 import { describe, expect, it, vi } from "vitest";
-import { registerChitraguptaCommands } from "../src/app-commands-chitragupta.js";
-import { SlashCommandRegistry } from "../src/commands.js";
+import { registerChitraguptaCommands } from "../src/commands/app-commands-chitragupta.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
 import { AppState } from "../src/state.js";
 
 function collectMessages(state: AppState): string[] {
@@ -17,7 +17,20 @@ function collectMessages(state: AppState): string[] {
 	return texts;
 }
 
-function createContext() {
+function createContext(overrides?: {
+	reconnectChitragupta?: () => Promise<{
+		connected: boolean;
+		canonicalSessionId: string | null;
+		syncedMessages: number;
+		pendingMessages: number;
+		syncStatus?: string;
+		validationWarnings?: string[];
+		validationConflicts?: string[];
+		lastError?: string;
+		lastSyncedMessageId?: string;
+		lastFailedMessageId?: string;
+	}>;
+}) {
 	const commands = new SlashCommandRegistry();
 	const state = new AppState();
 	const messages = collectMessages(state);
@@ -40,6 +53,16 @@ function createContext() {
 		},
 		buildSessionData: vi.fn(),
 		startAutoSaver: vi.fn(),
+		reconnectChitragupta: vi.fn(
+			overrides?.reconnectChitragupta ??
+				(async () => ({
+					connected: true,
+					canonicalSessionId: "canon-77",
+					syncedMessages: 2,
+					pendingMessages: 0,
+					syncStatus: "ready",
+				})),
+		),
 		quit: vi.fn(),
 		getActiveCoder: vi.fn().mockReturnValue(null),
 		setActiveCoder: vi.fn(),
@@ -59,6 +82,133 @@ describe("/sabha command", () => {
 		await commands.execute("/sabha");
 
 		expect(messages.at(-1)).toBe("Chitragupta not connected");
+	});
+
+	it("rebinds and reports sync status", async () => {
+		const { commands, messages } = createContext();
+
+		await commands.execute("/rebind");
+
+		expect(messages.at(-2)).toBe("Rebinding to Chitragupta...");
+		expect(messages.at(-1)).toContain("Chitragupta rebind status");
+		expect(messages.at(-1)).toContain("Canonical session: canon-77");
+		expect(messages.at(-1)).toContain("Synced local turns: 2");
+		expect(messages.at(-1)).toContain("Sync status: ready");
+	});
+
+	it("reports the stalled replay turn when rebind fails mid-sync", async () => {
+		const { commands, messages } = createContext({
+			reconnectChitragupta: async () => ({
+				connected: true,
+				canonicalSessionId: "canon-88",
+				syncedMessages: 1,
+				pendingMessages: 2,
+				syncStatus: "failed",
+				lastSyncedMessageId: "user-1",
+				lastFailedMessageId: "assistant-1",
+				lastError: "daemon write failed",
+			}),
+		});
+
+		await commands.execute("/rebind");
+
+		expect(messages.at(-1)).toContain("Sync status: failed");
+		expect(messages.at(-1)).toContain("Last mirrored turn: user-1");
+		expect(messages.at(-1)).toContain("Replay stalled on: assistant-1");
+		expect(messages.at(-1)).toContain("Last error: daemon write failed");
+	});
+
+	it("surfaces replay validation drift in the rebind report", async () => {
+		const { commands, messages } = createContext({
+			reconnectChitragupta: async () => ({
+				connected: true,
+				canonicalSessionId: "canon-99",
+				syncedMessages: 0,
+				pendingMessages: 2,
+				syncStatus: "failed",
+				validationConflicts: ["provider mismatch (anthropic ≠ openai)"],
+				validationWarnings: ["Policy contractVersion markers are incomplete; policy-era validation is partial."],
+				lastError: "Replay validation blocked canonical rebind for canon-99",
+			}),
+		});
+
+		await commands.execute("/rebind");
+
+		expect(messages.at(-1)).toContain("Replay validation conflicts: provider mismatch (anthropic ≠ openai)");
+		expect(messages.at(-1)).toContain(
+			"Replay validation warnings: Policy contractVersion markers are incomplete; policy-era validation is partial.",
+		);
+	});
+
+	it("uses /route as the canonical routing drill-down surface", async () => {
+		const { commands, state, messages } = createContext();
+		state.routingDecisions.value = [
+			{
+				request: {
+					consumer: "takumi",
+					sessionId: "canon-route",
+					capability: "coding.patch-cheap",
+				},
+				selected: {
+					id: "adapter.takumi.executor",
+					kind: "adapter",
+					label: "Takumi Executor",
+					capabilities: ["coding.patch-cheap"],
+					costClass: "low",
+					trust: "local",
+					health: "healthy",
+					invocation: {
+						id: "takumi",
+						transport: "local-process",
+						entrypoint: "takumi",
+						requestShape: "route-request",
+						responseShape: "route-response",
+						timeoutMs: 1000,
+						streaming: true,
+					},
+					providerFamily: "takumi",
+					metadata: { model: "takumi-local" },
+				},
+				reason: "Selected executor route",
+				fallbackChain: ["cli.codex"],
+				policyTrace: ["requested:coding.patch-cheap", "selected:adapter.takumi.executor"],
+				degraded: false,
+			},
+		] as never;
+
+		await commands.execute("/route summary");
+
+		const output = messages.at(-1) ?? "";
+		expect(output).toContain("## Route Summary");
+		expect(output).toContain("Engine-routed:   1 (100%)");
+		expect(output).toContain("Drill down: /route inspect <#> • /lanes • /lane-show <id>");
+	});
+
+	it("shows route detail with authority, enforcement, and fallback chain", async () => {
+		const { commands, state, messages } = createContext();
+		state.routingDecisions.value = [
+			{
+				request: {
+					consumer: "takumi",
+					sessionId: "canon-route",
+					capability: "coding.review.strict",
+				},
+				selected: null,
+				reason: "Engine unavailable; used local fallback",
+				fallbackChain: ["adapter.takumi.executor", "cli.codex"],
+				policyTrace: ["requested:coding.review.strict", "fallback:cli.codex"],
+				degraded: true,
+			},
+		] as never;
+
+		await commands.execute("/route inspect 1");
+
+		const output = messages.at(-1) ?? "";
+		expect(output).toContain("## Route #1");
+		expect(output).toContain("Authority: takumi-fallback");
+		expect(output).toContain("Enforcement: capability-only");
+		expect(output).toContain("### Fallback chain");
+		expect(output).toContain("cli.codex");
 	});
 
 	it("shows default sabha council details when no tracked sabha exists", async () => {

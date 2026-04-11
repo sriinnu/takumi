@@ -34,6 +34,173 @@ describe("HttpBridgeServer", () => {
 		expect(getStatus).toHaveBeenCalled();
 	});
 
+	it("should serve GET /continuity", async () => {
+		const getContinuityState = vi.fn().mockResolvedValue({
+			grantCount: 1,
+			attachedPeerCount: 0,
+			grants: [
+				{
+					grantId: "grant-1",
+					kind: "phone",
+					initialRole: "observer",
+					expiresAt: 123456,
+					transportRef: "http://127.0.0.1:3100/continuity",
+				},
+			],
+			lease: null,
+		});
+		bridge = new HttpBridgeServer({ port: 0, host: "127.0.0.1", getContinuityState });
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		const res = await app.inject({
+			method: "GET",
+			url: "/continuity",
+		});
+
+		expect(res.statusCode).toBe(200);
+		expect(res.json()).toEqual({
+			continuity: {
+				grantCount: 1,
+				attachedPeerCount: 0,
+				grants: [
+					{
+						grantId: "grant-1",
+						kind: "phone",
+						initialRole: "observer",
+						expiresAt: 123456,
+						transportRef: "http://127.0.0.1:3100/continuity",
+					},
+				],
+				lease: null,
+			},
+		});
+		expect(getContinuityState).toHaveBeenCalledOnce();
+	});
+
+	it("should return 501 for GET /continuity when not configured", async () => {
+		bridge = new HttpBridgeServer({ port: 0, host: "127.0.0.1" });
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		const res = await app.inject({
+			method: "GET",
+			url: "/continuity",
+		});
+
+		expect(res.statusCode).toBe(501);
+		expect(res.json().error).toContain("Continuity state not configured");
+	});
+
+	it("should allow companion continuity redemption without the bridge bearer token", async () => {
+		const redeemContinuityGrant = vi.fn().mockResolvedValue({
+			success: true,
+			peer: {
+				peerId: "peer-1",
+				kind: "phone",
+				role: "observer",
+				attachedAt: 123400,
+				lastSeenAt: 123400,
+			},
+			continuity: {
+				grantCount: 0,
+				attachedPeerCount: 1,
+				grants: [],
+				lease: null,
+				peers: [
+					{
+						peerId: "peer-1",
+						kind: "phone",
+						role: "observer",
+						attachedAt: 123400,
+						lastSeenAt: 123400,
+					},
+				],
+			},
+			companionSession: {
+				token: "companion-token",
+				expiresAt: 124000,
+			},
+		});
+		bridge = new HttpBridgeServer({
+			port: 0,
+			host: "127.0.0.1",
+			bearerToken: "secret",
+			cidrAllowlist: ["192.168.1.5/32", "127.0.0.1/32"],
+			redeemContinuityGrant,
+		});
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		const res = await app.inject({
+			method: "POST",
+			url: "/continuity/redeem",
+			remoteAddress: "192.168.1.5",
+			payload: { grantId: "grant-1", nonce: "nonce-1", kind: "phone" },
+		});
+
+		expect(res.statusCode).toBe(200);
+		expect(res.json().peer.peerId).toBe("peer-1");
+		expect(res.json().companionSession.token).toBe("companion-token");
+		expect(redeemContinuityGrant).toHaveBeenCalledWith({ grantId: "grant-1", nonce: "nonce-1", kind: "phone" });
+	});
+
+	it("should heartbeat and detach continuity peers through dedicated routes", async () => {
+		const heartbeatContinuityPeer = vi.fn().mockResolvedValue({
+			success: true,
+			peer: {
+				peerId: "peer-1",
+				kind: "phone",
+				role: "observer",
+				attachedAt: 123400,
+				lastSeenAt: 123430,
+			},
+		});
+		const detachContinuityPeer = vi.fn().mockResolvedValue({
+			success: true,
+			continuity: {
+				grantCount: 0,
+				attachedPeerCount: 0,
+				grants: [],
+				lease: null,
+				events: [
+					{
+						eventId: "evt-1",
+						kind: "peer-detached",
+						occurredAt: 123500,
+						peerId: "peer-1",
+					},
+				],
+			},
+		});
+		bridge = new HttpBridgeServer({
+			port: 0,
+			host: "127.0.0.1",
+			heartbeatContinuityPeer,
+			detachContinuityPeer,
+		});
+		await bridge.start();
+
+		const app = (bridge as any).server;
+		let res = await app.inject({
+			method: "POST",
+			url: "/continuity/peers/peer-1/heartbeat",
+			payload: { companionToken: "companion-token" },
+		});
+		expect(res.statusCode).toBe(200);
+		expect(res.json().peer.lastSeenAt).toBe(123430);
+		expect(heartbeatContinuityPeer).toHaveBeenCalledWith({ peerId: "peer-1", companionToken: "companion-token" });
+
+		res = await app.inject({
+			method: "POST",
+			url: "/continuity/peers/peer-1/detach",
+			payload: { companionToken: "companion-token" },
+		});
+		expect(res.statusCode).toBe(200);
+		expect(res.json().continuity.attachedPeerCount).toBe(0);
+		expect(detachContinuityPeer).toHaveBeenCalledWith({ peerId: "peer-1", companionToken: "companion-token" });
+	});
+
 	it("should serve POST /send", async () => {
 		const onSend = vi.fn().mockResolvedValue(undefined);
 		bridge = new HttpBridgeServer({ port: 0, host: "127.0.0.1", onSend });

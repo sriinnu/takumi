@@ -7,10 +7,11 @@ import type { KeyEvent, Rect } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import type { Screen } from "@takumi/render";
 import { Component } from "@takumi/render";
-import type { SlashCommandRegistry } from "../commands.js";
+import type { SlashCommandRegistry } from "../commands/commands.js";
 import type { CompletionItem, ProviderModelCatalog } from "../completion.js";
-import { applyCompletionEdit, CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS } from "../completion.js";
-import { Editor } from "../editor.js";
+import { applyCompletionEdit, CompletionEngine, CompletionPopup } from "../completion.js";
+import { Editor } from "../editor/editor.js";
+import { renderEditorCompletionPopup } from "./editor-completion-popup.js";
 
 export interface EditorPanelProps {
 	onSubmit: (text: string) => boolean;
@@ -355,47 +356,7 @@ export class EditorPanel extends Component {
 		}
 
 		if (this.completion.isVisible.value) {
-			this.renderCompletionPopup(screen, rect);
-		}
-	}
-
-	private renderCompletionPopup(screen: Screen, rect: Rect): void {
-		const items = this.completion.items.value;
-		if (items.length === 0) return;
-		const visibleCount = Math.min(items.length, MAX_VISIBLE_ITEMS);
-		const popupWidth = Math.min(
-			Math.max(...items.map((item) => item.label.length + (item.detail ? item.detail.length + 3 : 0))) + 4,
-			rect.width - 2,
-		);
-		const popupHeight = visibleCount + 2;
-		const popupX = rect.x + 1;
-		const popupY = rect.y - popupHeight;
-		if (popupY < 0) return;
-
-		screen.writeText(popupY, popupX, `┌${"─".repeat(popupWidth - 2)}┐`, { fg: 8 });
-		screen.writeText(popupY + popupHeight - 1, popupX, `└${"─".repeat(popupWidth - 2)}┘`, { fg: 8 });
-
-		const selectedIdx = this.completion.selectedIndex.value;
-		const scrollOff = this.completion.scrollOffset.value;
-		for (let i = 0; i < visibleCount; i++) {
-			const itemIdx = scrollOff + i;
-			if (itemIdx >= items.length) break;
-			const item = items[itemIdx];
-			const isSelected = itemIdx === selectedIdx;
-			const row = popupY + 1 + i;
-			const innerWidth = popupWidth - 4;
-			let displayText = item.label;
-			if (item.detail) {
-				const remaining = innerWidth - displayText.length - 2;
-				if (remaining > 0) {
-					const detail = item.detail.length > remaining ? `${item.detail.slice(0, remaining - 1)}…` : item.detail;
-					displayText += `  ${detail}`;
-				}
-			}
-			displayText = displayText.padEnd(innerWidth).slice(0, innerWidth);
-			screen.writeText(row, popupX, "│ ", { fg: 8 });
-			screen.writeText(row, popupX + 2, displayText, isSelected ? { fg: 0, bg: 15 } : { fg: 7 });
-			screen.writeText(row, popupX + popupWidth - 2, " │", { fg: 8 });
+			renderEditorCompletionPopup(this, screen, rect);
 		}
 	}
 }

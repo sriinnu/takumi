@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { getTakumiConfigSearchPaths } from "./config-locations.js";
+import { normalizePackageConfigEntries, normalizePluginConfigEntries } from "./config-path-entries.js";
 import { ConfigError } from "./errors.js";
 import type { OrchestrationConfig } from "./orchestration-types.js";
 import {
@@ -96,26 +96,14 @@ const DEFAULT_CONFIG: TakumiConfig = {
 		},
 	},
 	statusBar: {
-		left: ["model", "mesh", "scarlett"],
+		left: ["model", "mesh", "cluster"],
 		center: ["status"],
-		right: ["metrics", "keybinds"],
+		right: ["authority", "metrics", "context", "scarlett", "keybinds"],
 	},
 	plugins: [],
 	packages: [],
 	// maxCostUsd is intentionally undefined — no limit by default
 };
-
-/** Config file search paths, in priority order (first found wins). */
-function configPaths(): string[] {
-	const home = homedir();
-	const cwd = process.cwd();
-	return [
-		join(cwd, ".takumi", "config.json"),
-		join(cwd, "takumi.config.json"),
-		join(home, ".takumi", "config.json"),
-		join(home, ".config", "takumi", "config.json"),
-	];
-}
 
 /** Read and parse a JSON config file, returning null on any failure. */
 function readConfigFile(path: string): Partial<TakumiConfig> | null {
@@ -253,6 +241,13 @@ function mergeTakumiConfig(base: TakumiConfig, override: Partial<TakumiConfig>):
 		};
 	}
 
+	if (base.modelPolicy || override.modelPolicy) {
+		merged.modelPolicy = {
+			...base.modelPolicy,
+			...override.modelPolicy,
+		};
+	}
+
 	if (base.sideAgent || override.sideAgent) {
 		merged.sideAgent = {
 			maxConcurrent: 2,
@@ -369,7 +364,7 @@ export function loadConfig(cliOverrides?: Partial<TakumiConfig>): TakumiConfig {
 	let config: TakumiConfig = { ...DEFAULT_CONFIG };
 
 	// 2. Merge first config file found
-	for (const path of configPaths()) {
+	for (const path of getTakumiConfigSearchPaths()) {
 		const fileConfig = readConfigFile(path);
 		if (fileConfig !== null) {
 			config = mergeTakumiConfig(config, fileConfig);
@@ -385,6 +380,9 @@ export function loadConfig(cliOverrides?: Partial<TakumiConfig>): TakumiConfig {
 	if (cliOverrides) {
 		config = mergeTakumiConfig(config, cliOverrides);
 	}
+
+	config.plugins = normalizePluginConfigEntries(config.plugins);
+	config.packages = normalizePackageConfigEntries(config.packages);
 
 	config.provider = normalizeProviderName(config.provider) ?? config.provider;
 
@@ -424,3 +422,9 @@ export function loadConfig(cliOverrides?: Partial<TakumiConfig>): TakumiConfig {
 }
 
 export { DEFAULT_CONFIG };
+export {
+	getConfiguredPackagePaths,
+	getConfiguredPluginPaths,
+	normalizePackageConfigEntries,
+	normalizePluginConfigEntries,
+} from "./config-path-entries.js";

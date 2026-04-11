@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { SideAgentInfo, SideAgentState } from "@takumi/core";
+import type { SideAgentDispatchKind, SideAgentInfo, SideAgentState } from "@takumi/core";
 
 export const DEFAULT_SIDE_AGENT_REGISTRY_DIR = ".takumi/side-agents";
 export const SIDE_AGENT_REGISTRY_FILENAME = "registry.json";
@@ -182,6 +182,17 @@ export function normalizeLoadedAgent(value: unknown): LoadedAgentResult {
 	const tmuxWindowId = readNullableString(value.tmuxWindowId);
 	const tmuxPaneId = readNullableString(value.tmuxPaneId);
 	const pid = readNullableNumber(value.pid);
+	const dispatchSequence = readOptionalInteger(value.dispatchSequence);
+	const reuseCount = readOptionalInteger(value.reuseCount);
+	const leaseOwner = readNullableString(value.leaseOwner);
+	const leaseExpiresAt = readNullableNumber(value.leaseExpiresAt);
+	const lastHeartbeatAt = readNullableNumber(value.lastHeartbeatAt);
+	const lastDispatchAt = readNullableNumber(value.lastDispatchAt);
+	const lastDispatchKind = readNullableDispatchKind(value.lastDispatchKind);
+	const lastRunStartedAt = readNullableNumber(value.lastRunStartedAt);
+	const lastRunFinishedAt = readNullableNumber(value.lastRunFinishedAt);
+	const lastRunExitCode = readNullableInteger(value.lastRunExitCode);
+	const lastRunRequestId = readNullableString(value.lastRunRequestId);
 	const startedAt = readFiniteNumber(value.startedAt) ?? markDirty(Date.now(), "missing_started_at");
 	const updatedAt = readFiniteNumber(value.updatedAt) ?? markDirty(startedAt, "missing_updated_at");
 	let error = readOptionalString(value.error);
@@ -221,6 +232,17 @@ export function normalizeLoadedAgent(value: unknown): LoadedAgentResult {
 		startedAt,
 		updatedAt,
 		error,
+		dispatchSequence,
+		reuseCount,
+		leaseOwner,
+		leaseExpiresAt,
+		lastHeartbeatAt,
+		lastDispatchAt,
+		lastDispatchKind,
+		lastRunStartedAt,
+		lastRunFinishedAt,
+		lastRunExitCode,
+		lastRunRequestId,
 	};
 	return {
 		agent,
@@ -281,6 +303,18 @@ function readNullableNumber(value: unknown): number | null {
 	return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function readNullableInteger(value: unknown): number | null {
+	return typeof value === "number" && Number.isInteger(value) ? value : null;
+}
+
+function readOptionalInteger(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isInteger(value) ? value : undefined;
+}
+
+function readNullableDispatchKind(value: unknown): SideAgentDispatchKind | null {
+	return value === "start" || value === "send" || value === "query" ? value : null;
+}
+
 function appendLoadError(existing: string | undefined, message: string): string {
 	return existing?.trim() ? `${existing} ${message}` : message;
 }
@@ -289,7 +323,7 @@ function deriveSlotId(worktreePath: string | null): string | null {
 	if (!worktreePath) {
 		return null;
 	}
-	const match = /\/(wt-\d+)$/.exec(worktreePath.trim());
+	const match = /(?:^|[\\/])(wt-\d+)$/.exec(worktreePath.trim());
 	return match?.[1] ?? null;
 }
 

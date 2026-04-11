@@ -3,6 +3,60 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import fastify, { type FastifyInstance } from "fastify";
 import type { ChitraguptaSessionInfo, SessionDetail } from "./chitragupta-types.js";
+import {
+	type ContinuityPeerActionResult,
+	type ContinuityRedeemResult,
+	type ContinuityStateSnapshot,
+	isCompanionContinuityRoute,
+	registerContinuityRoutes,
+} from "./http-bridge-continuity-routes.js";
+import { registerHttpBridgeOperatorRoutes, registerHttpBridgeSessionRoutes } from "./http-bridge-routes.js";
+
+export interface TokmeterProjectSnapshot {
+	/** Source identifier so clients can explain where project telemetry came from. */
+	source: "tokmeter-core";
+	/** Project substring used when querying tokmeter. */
+	projectQuery: string;
+	/** Epoch ms when this tokmeter snapshot was refreshed. */
+	refreshedAt: number;
+	/** Distinct tokmeter project buckets that matched the query. */
+	matchedProjects: string[];
+	/** Aggregated token count across all matched project records. */
+	totalTokens: number;
+	/** Aggregated spend across all matched project records. */
+	totalCostUsd: number;
+	/** Tokens recorded today for the matched project set. */
+	todayTokens: number;
+	/** Spend recorded today for the matched project set. */
+	todayCostUsd: number;
+	/** Number of active days represented by the matched project set. */
+	activeDays: number;
+	/** Number of priced or unpriced usage records seen by tokmeter. */
+	totalRecords: number;
+	/** Highest-cost models in the matched project set. */
+	topModels: Array<{
+		model: string;
+		provider: string;
+		totalTokens: number;
+		costUsd: number;
+		percentageOfTotal: number;
+	}>;
+	/** Highest-cost providers in the matched project set. */
+	topProviders: Array<{
+		provider: string;
+		totalTokens: number;
+		costUsd: number;
+		percentageOfTotal: number;
+	}>;
+	/** Recent daily cost/token samples for lightweight spark charts. */
+	recentDaily: Array<{
+		date: string;
+		totalTokens: number;
+		costUsd: number;
+	}>;
+	/** Optional operator-facing note explaining empty or degraded tokmeter data. */
+	note: string | null;
+}
 
 export interface AgentStateSnapshot {
 	pid: number;
@@ -16,6 +70,19 @@ export interface AgentStateSnapshot {
 	contextPercent: number | null;
 	contextPressure?: string | null;
 	bridgeConnected?: boolean;
+	sync?: {
+		canonicalSessionId: string | null;
+		status: "idle" | "pending" | "syncing" | "ready" | "failed";
+		pendingLocalTurns: number;
+		lastSyncError: string | null;
+		lastSyncedMessageId: string | null;
+		lastSyncedMessageTimestamp: number | null;
+		lastAttemptedMessageId: string | null;
+		lastAttemptedMessageTimestamp: number | null;
+		lastFailedMessageId: string | null;
+		lastFailedMessageTimestamp: number | null;
+		lastSyncedAt: number | null;
+	} | null;
 	routing?: {
 		capability: string | null;
 		authority: "engine" | "takumi-fallback";
@@ -30,6 +97,15 @@ export interface AgentStateSnapshot {
 		pendingCount: number;
 		tool: string | null;
 		argsSummary: string | null;
+	} | null;
+	usage?: {
+		turnCount: number;
+		totalTokens: number;
+		totalCostUsd: number;
+		ratePerMinute: number;
+		projectedUsd: number;
+		budgetFraction: number;
+		alertLevel: "none" | "info" | "warning" | "critical";
 	} | null;
 	anomaly?: {
 		severity: string;
@@ -57,6 +133,8 @@ export interface AgentStateSnapshot {
 			truncated: boolean;
 		}>;
 	} | null;
+	tokmeter?: TokmeterProjectSnapshot | null;
+	continuity?: ContinuityStateSnapshot | null;
 	updatedAt: number;
 }
 
@@ -120,6 +198,14 @@ export interface HttpBridgeConfig {
 	cidrAllowlist?: string[];
 	onSend?: (text: string) => Promise<void>;
 	getStatus?: () => Promise<unknown>;
+	/** Return continuity summary for mobile/browser companion surfaces. */
+	getContinuityState?: () => Promise<ContinuityStateSnapshot | null>;
+	/** Redeem a short-lived continuity grant into a trusted attached peer. */
+	redeemContinuityGrant?: (input: { grantId: string; nonce: string; kind?: string }) => Promise<ContinuityRedeemResult>;
+	/** Refresh one attached companion peer without granting new authority. */
+	heartbeatContinuityPeer?: (input: { peerId: string; companionToken: string }) => Promise<ContinuityPeerActionResult>;
+	/** Explicitly detach one attached companion peer. */
+	detachContinuityPeer?: (input: { peerId: string; companionToken: string }) => Promise<ContinuityPeerActionResult>;
 	/** Return the current agent state snapshot for a given PID (or current process). */
 	getAgentState?: (pid?: number) => Promise<AgentStateSnapshot | null>;
 	/** Return a list of all known agent PIDs. */
@@ -197,7 +283,11 @@ export class HttpBridgeServer {
 			if (!this.isAllowedIp(request.ip)) {
 				return reply.code(403).send({ error: "Forbidden: IP not in allowlist" });
 			}
-			if (this.config.bearerToken && !this.isLoopback(request.ip)) {
+			if (
+				this.config.bearerToken &&
+				!this.isLoopback(request.ip) &&
+				!isCompanionContinuityRoute(request.method, request.raw.url)
+			) {
 				const authHeader = request.headers.authorization;
 				if (!authHeader || !authHeader.startsWith("Bearer ")) {
 					return reply.code(401).send({ error: "Unauthorized: Missing or invalid token" });
@@ -214,6 +304,8 @@ export class HttpBridgeServer {
 			}
 			return reply.send({ status: "ok" });
 		});
+
+		registerContinuityRoutes(this.server, this.config);
 
 		this.server.get<{ Querystring: { timeout_ms?: string; fingerprint?: string } }>(
 			"/watch",
@@ -268,27 +360,6 @@ export class HttpBridgeServer {
 			return reply.code(501).send({ error: "Agent state not configured" });
 		});
 
-		this.server.get<{ Querystring: { limit?: string } }>("/sessions", async (request, reply) => {
-			if (!this.config.getSessionList) {
-				return reply.code(501).send({ error: "Session list not configured" });
-			}
-			const rawLimit = parseInt(request.query.limit || "20", 10);
-			const limit = Number.isNaN(rawLimit) ? 20 : Math.max(1, Math.min(100, rawLimit));
-			const sessions = await this.config.getSessionList(limit);
-			return reply.send({ sessions });
-		});
-
-		this.server.get<{ Params: { sessionId: string } }>("/sessions/:sessionId", async (request, reply) => {
-			if (!this.config.getSessionDetail) {
-				return reply.code(501).send({ error: "Session detail not configured" });
-			}
-			const detail = await this.config.getSessionDetail(request.params.sessionId);
-			if (!detail) {
-				return reply.code(404).send({ error: "Session not found" });
-			}
-			return reply.send(detail);
-		});
-
 		this.server.post<{ Body: { text: string } }>("/send", async (request, reply) => {
 			if (!request.body || typeof request.body.text !== "string") {
 				return reply.code(400).send({ error: "Bad Request: Missing text property" });
@@ -299,177 +370,8 @@ export class HttpBridgeServer {
 			return reply.send({ success: true });
 		});
 
-		this.server.post<{ Params: { sessionId: string } }>("/sessions/:sessionId/attach", async (request, reply) => {
-			if (!this.config.onAttachSession) {
-				return reply.code(501).send({ error: "Session attach not configured" });
-			}
-			const result = await this.config.onAttachSession(request.params.sessionId);
-			if (!result.success) {
-				return reply.code(404).send({ error: result.error ?? "Session not found" });
-			}
-			return reply.send({ success: true });
-		});
-
-		this.server.post<{ Body: { action?: string; index?: number } }>("/extension-ui/respond", async (request, reply) => {
-			if (!this.config.respondExtensionPrompt) {
-				return reply.code(501).send({ error: "Extension UI response not configured" });
-			}
-			const action = request.body?.action;
-			if (action !== "confirm" && action !== "cancel" && action !== "pick") {
-				return reply.code(400).send({ error: "Bad Request: Invalid extension prompt action" });
-			}
-			if (action === "pick" && !Number.isInteger(request.body?.index)) {
-				return reply.code(400).send({ error: "Bad Request: Pick responses require an integer index" });
-			}
-			const result = await this.config.respondExtensionPrompt(
-				action === "pick" ? { action, index: request.body.index } : { action },
-			);
-			if (!result.success) {
-				return reply.code(409).send({ error: result.error ?? "Extension prompt response rejected" });
-			}
-			return reply.send({ success: true });
-		});
-
-		// ── Fleet observability endpoints ────────────────────────────────
-		this.server.get("/fleet", async (_request, reply) => {
-			if (!this.config.getFleetSummary) {
-				return reply.code(501).send({ error: "Fleet summary not configured" });
-			}
-			return reply.send(await this.config.getFleetSummary());
-		});
-
-		this.server.get("/alerts", async (_request, reply) => {
-			if (!this.config.getAlerts) {
-				return reply.code(501).send({ error: "Alerts not configured" });
-			}
-			return reply.send({ alerts: await this.config.getAlerts() });
-		});
-
-		this.server.post<{ Params: { alertId: string } }>("/alerts/:alertId/ack", async (request, reply) => {
-			if (!this.config.acknowledgeAlert) {
-				return reply.code(501).send({ error: "Alert acknowledgement not configured" });
-			}
-			const ok = await this.config.acknowledgeAlert(request.params.alertId);
-			if (!ok) return reply.code(404).send({ error: "Alert not found" });
-			return reply.send({ success: true });
-		});
-
-		this.server.get("/approvals", async (_request, reply) => {
-			if (!this.config.getPendingApprovals) {
-				return reply.code(501).send({ error: "Approval queue not configured" });
-			}
-			return reply.send({ approvals: await this.config.getPendingApprovals() });
-		});
-
-		this.server.post<{ Params: { approvalId: string; decision: string } }>(
-			"/approvals/:approvalId/:decision",
-			async (request, reply) => {
-				if (!this.config.decideApproval) {
-					return reply.code(501).send({ error: "Approval decisions not configured" });
-				}
-				if (request.params.decision !== "approve" && request.params.decision !== "deny") {
-					return reply.code(400).send({ error: "Bad Request: decision must be approve or deny" });
-				}
-				const ok = await this.config.decideApproval(
-					request.params.approvalId,
-					request.params.decision === "approve" ? "approved" : "denied",
-				);
-				if (!ok) return reply.code(404).send({ error: "Approval not found" });
-				return reply.send({ success: true });
-			},
-		);
-
-		this.server.get<{ Querystring: { sessionId?: string; kind?: string; limit?: string } }>(
-			"/artifacts",
-			async (request, reply) => {
-				if (!this.config.getArtifacts) {
-					return reply.code(501).send({ error: "Artifact listing not configured" });
-				}
-				const rawLimit = parseInt(request.query.limit || "20", 10);
-				const limit = Number.isNaN(rawLimit) ? 20 : Math.max(1, Math.min(100, rawLimit));
-				return reply.send({
-					artifacts: await this.config.getArtifacts(request.query.sessionId, request.query.kind, limit),
-				});
-			},
-		);
-
-		this.server.get<{ Params: { artifactId: string } }>("/artifacts/:artifactId", async (request, reply) => {
-			if (!this.config.getArtifact) {
-				return reply.code(501).send({ error: "Artifact detail not configured" });
-			}
-			const artifact = await this.config.getArtifact(request.params.artifactId);
-			if (!artifact) return reply.code(404).send({ error: "Artifact not found" });
-			return reply.send(artifact);
-		});
-
-		this.server.post<{ Params: { artifactId: string }; Body: { promoted?: boolean } }>(
-			"/artifacts/:artifactId/promote",
-			async (request, reply) => {
-				if (!this.config.setArtifactPromoted) {
-					return reply.code(501).send({ error: "Artifact promotion not configured" });
-				}
-				const promoted = request.body?.promoted ?? true;
-				const ok = await this.config.setArtifactPromoted(request.params.artifactId, promoted);
-				if (!ok) return reply.code(404).send({ error: "Artifact not found" });
-				return reply.send({ success: true, promoted });
-			},
-		);
-
-		this.server.get("/repo/diff", async (_request, reply) => {
-			if (!this.config.getRepoDiff) {
-				return reply.code(501).send({ error: "Repo diff not configured" });
-			}
-			return reply.send(await this.config.getRepoDiff());
-		});
-
-		this.server.post<{ Params: { pid: string } }>("/agent/:pid/interrupt", async (request, reply) => {
-			if (!this.config.onInterrupt) {
-				return reply.code(501).send({ error: "Interrupt not configured" });
-			}
-			const pid = parseInt(request.params.pid, 10);
-			if (Number.isNaN(pid)) return reply.code(400).send({ error: "Bad Request: Invalid PID" });
-			const ok = await this.config.onInterrupt(pid);
-			if (!ok) return reply.code(404).send({ error: "Agent not found" });
-			return reply.send({ success: true });
-		});
-
-		this.server.post<{ Params: { pid: string } }>("/agent/:pid/refresh", async (request, reply) => {
-			if (!this.config.onRefresh) {
-				return reply.code(501).send({ error: "Refresh not configured" });
-			}
-			const pid = parseInt(request.params.pid, 10);
-			if (Number.isNaN(pid)) return reply.code(400).send({ error: "Bad Request: Invalid PID" });
-			const ok = await this.config.onRefresh(pid);
-			if (!ok) return reply.code(404).send({ error: "Agent not found" });
-			return reply.send({ success: true });
-		});
-
-		this.server.get("/runtime/list", async (_request, reply) => {
-			if (!this.config.listRuntimes) {
-				return reply.code(501).send({ error: "Runtime listing not configured" });
-			}
-			return reply.send({ runtimes: await this.config.listRuntimes() });
-		});
-
-		this.server.post<{ Body: { sessionId?: string; provider?: string; model?: string } }>(
-			"/runtime/start",
-			async (request, reply) => {
-				if (!this.config.onStartRuntime) {
-					return reply.code(501).send({ error: "Runtime start not configured" });
-				}
-				const runtime = await this.config.onStartRuntime(request.body ?? {});
-				return reply.code(201).send(runtime);
-			},
-		);
-
-		this.server.post<{ Params: { runtimeId: string } }>("/runtime/:runtimeId/stop", async (request, reply) => {
-			if (!this.config.stopRuntime) {
-				return reply.code(501).send({ error: "Runtime stop not configured" });
-			}
-			const ok = await this.config.stopRuntime(request.params.runtimeId);
-			if (!ok) return reply.code(404).send({ error: "Runtime not found" });
-			return reply.send({ success: true });
-		});
+		registerHttpBridgeSessionRoutes(this.server, this.config);
+		registerHttpBridgeOperatorRoutes(this.server, this.config);
 
 		await this.server.listen({ port: this.config.port, host: this.config.host });
 	}

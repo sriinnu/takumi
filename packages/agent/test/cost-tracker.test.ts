@@ -35,6 +35,13 @@ describe("CostTracker", () => {
 			expect(tracker.total).toBeGreaterThan(0);
 		});
 
+		it("applies cache-read discount when provided", () => {
+			const snap = tracker.record(1000, 0, undefined, 500);
+			const expected = (1000 * 3) / 1_000_000 - (500 * 2.7) / 1_000_000;
+			expect(snap.totalUsd).toBeCloseTo(expected, 10);
+			expect(snap.turns[0]).toMatchObject({ cacheReadTokens: 500, cacheWriteTokens: 0 });
+		});
+
 		it("returns a snapshot after each record", () => {
 			const snap = tracker.record(500, 200);
 			expect(snap.totalUsd).toBeGreaterThan(0);
@@ -85,6 +92,21 @@ describe("CostTracker", () => {
 			tracker.record(1000, 1000);
 			const snap = tracker.snapshot();
 			expect(snap.budgetFraction).toBe(0);
+		});
+
+		it("preserves seeded totals when resuming an existing session", () => {
+			const resumed = new CostTracker({
+				model: "claude-sonnet-4-20250514",
+				initialInputTokens: 5_000,
+				initialOutputTokens: 2_500,
+				initialUsd: 0.125,
+			});
+
+			const snap = resumed.snapshot();
+			expect(snap.totalInputTokens).toBe(5_000);
+			expect(snap.totalOutputTokens).toBe(2_500);
+			expect(snap.totalUsd).toBe(0.125);
+			expect(snap.turns).toHaveLength(0);
 		});
 	});
 

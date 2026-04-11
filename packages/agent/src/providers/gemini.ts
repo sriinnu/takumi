@@ -41,6 +41,7 @@ export class GeminiProvider {
 	private maxTokens: number;
 	private thinking: boolean;
 	private thinkingBudget: number;
+	private endpoint: string;
 	private streamingTimeout: number;
 
 	constructor(config: GeminiProviderConfig) {
@@ -49,6 +50,7 @@ export class GeminiProvider {
 		this.maxTokens = config.maxTokens;
 		this.thinking = config.thinking;
 		this.thinkingBudget = config.thinkingBudget;
+		this.endpoint = config.endpoint ?? GEMINI_API_BASE;
 		this.streamingTimeout = STREAMING_TIMEOUT;
 	}
 
@@ -70,7 +72,7 @@ export class GeminiProvider {
 		const model = options?.model ?? this.model;
 		// Keep the API key out of the URL (where it could appear in logs and
 		// error messages) and send it via the x-goog-api-key header instead.
-		const url = `${GEMINI_API_BASE}/${model}:streamGenerateContent?alt=sse`;
+		const url = `${this.endpoint.replace(/\/+$/, "")}/${model}:streamGenerateContent?alt=sse`;
 
 		const body: Record<string, unknown> = {
 			contents: convertMessages(messages),

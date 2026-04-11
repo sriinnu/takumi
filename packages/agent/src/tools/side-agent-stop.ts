@@ -69,8 +69,10 @@ export function createAgentStopHandler(deps: SideAgentToolDeps): ToolHandler {
 		const cleanupErrors: string[] = [];
 		let clearedTmux = false;
 		let clearedWorktree = false;
+		let hadLiveWindow = false;
 		try {
-			if (await deps.tmux.isWindowAlive(id)) {
+			hadLiveWindow = await deps.tmux.isWindowAlive(id);
+			if (hadLiveWindow) {
 				await deps.tmux.killWindow(id);
 			}
 			clearedTmux = true;
@@ -101,8 +103,8 @@ export function createAgentStopHandler(deps: SideAgentToolDeps): ToolHandler {
 					id,
 					state: "stopped",
 					reason: OPERATOR_STOP_REASON,
-					closedWindow: Boolean(agent.tmuxWindow),
-					releasedWorktree: Boolean(agent.slotId),
+					closedWindow: hadLiveWindow && clearedTmux,
+					releasedWorktree: Boolean(agent.slotId) && clearedWorktree,
 					cleanupErrors: cleanupErrors.length > 0 ? cleanupErrors : undefined,
 				},
 				null,

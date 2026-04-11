@@ -4,7 +4,7 @@
 
 import type { FlatTreeEntry } from "@takumi/core";
 import { describe, expect, it } from "vitest";
-import { renderTree } from "../src/app-commands-tree.js";
+import { renderTree } from "../src/commands/app-commands-tree.js";
 
 describe("renderTree", () => {
 	it("renders empty tree message", () => {
@@ -63,14 +63,14 @@ describe("renderTree", () => {
 
 describe("Session tree command registration", () => {
 	it("exports registerSessionTreeCommands", async () => {
-		const mod = await import("../src/app-commands-tree.js");
+		const mod = await import("../src/commands/app-commands-tree.js");
 		expect(typeof mod.registerSessionTreeCommands).toBe("function");
 	});
 });
 
 describe("App commands wires tree commands", () => {
 	it("exports registerAppCommands", async () => {
-		const mod = await import("../src/app-commands.js");
+		const mod = await import("../src/commands/app-commands.js");
 		expect(typeof mod.registerAppCommands).toBe("function");
 	});
 });

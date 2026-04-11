@@ -19,6 +19,13 @@ export interface ModelPrice {
 	outputPerM: number;
 }
 
+export interface UsageCostInput {
+	inputTokens: number;
+	outputTokens: number;
+	cacheReadTokens?: number;
+	cacheWriteTokens?: number;
+}
+
 /** Per-model pricing in USD/1M tokens. Falls back to DEFAULT_PRICE. */
 export const MODEL_PRICING: Record<string, ModelPrice> = {
 	// Anthropic
@@ -52,6 +59,19 @@ const DEFAULT_PRICE: ModelPrice = { inputPerM: 5.0, outputPerM: 15.0 };
 export function estimateCost(inputTokens: number, outputTokens: number, model: string): number {
 	const price = MODEL_PRICING[model] ?? DEFAULT_PRICE;
 	return (inputTokens / 1_000_000) * price.inputPerM + (outputTokens / 1_000_000) * price.outputPerM;
+}
+
+/**
+ * Compute actual cost in USD for a completed API call, including cache-read
+ * discounts when available.
+ */
+export function estimateUsageCost(usage: UsageCostInput, model: string): number {
+	const baseCost = estimateCost(usage.inputTokens, usage.outputTokens, model);
+	const cacheReadTokens = usage.cacheReadTokens ?? 0;
+	if (cacheReadTokens <= 0) return baseCost;
+	const price = MODEL_PRICING[model] ?? DEFAULT_PRICE;
+	const cacheReadDiscount = (cacheReadTokens / 1_000_000) * price.inputPerM * 0.9;
+	return Math.max(0, baseCost - cacheReadDiscount);
 }
 
 /** Typical token consumption per agent role type (conservative estimates). */
@@ -103,6 +123,8 @@ export interface BudgetGuardOptions {
 	limitUsd: number;
 	/** Model ID used to price token usage. */
 	model: string;
+	/** Seed the guard when resuming an in-progress session. */
+	initialSpentUsd?: number;
 	/** Optional callback fired after each record() call (for status-bar updates). */
 	onUpdate?: (spentUsd: number, limitUsd: number) => void;
 }
@@ -114,11 +136,12 @@ export interface BudgetGuardOptions {
  */
 export class BudgetGuard {
 	private spentUsd = 0;
-	private readonly limitUsd: number;
+	private limitUsd: number;
 	private readonly model: string;
 	private readonly onUpdate?: (spentUsd: number, limitUsd: number) => void;
 
 	constructor(opts: BudgetGuardOptions) {
+		this.spentUsd = opts.initialSpentUsd ?? 0;
 		this.limitUsd = opts.limitUsd;
 		this.model = opts.model;
 		this.onUpdate = opts.onUpdate;
@@ -128,12 +151,18 @@ export class BudgetGuard {
 	 * Record token usage from a single LLM call.
 	 * Throws BudgetExceededError if the running total exceeds the limit.
 	 */
-	record(inputTokens: number, outputTokens: number): void {
-		this.spentUsd += estimateCost(inputTokens, outputTokens, this.model);
+	record(inputTokens: number, outputTokens: number, cacheReadTokens = 0, cacheWriteTokens = 0): void {
+		this.spentUsd += estimateUsageCost({ inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens }, this.model);
 		this.onUpdate?.(this.spentUsd, this.limitUsd);
 		if (this.spentUsd > this.limitUsd) {
 			throw new BudgetExceededError(this.spentUsd, this.limitUsd);
 		}
+	}
+
+	/** Update the active hard limit without resetting accumulated spend. */
+	setLimitUsd(limitUsd: number): void {
+		this.limitUsd = limitUsd;
+		this.onUpdate?.(this.spentUsd, this.limitUsd);
 	}
 
 	/** Current spend in USD. */

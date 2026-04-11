@@ -23,8 +23,12 @@ Subcommands:
   takumi daemon [action]     Manage the chitragupta daemon (start|stop|status|restart|logs)
   takumi doctor              Show CLI/platform readiness diagnostics
   takumi platform [watch]    Show or live-monitor the local platform surface
+  takumi init [action]       Create or inspect project TAKUMI.md instructions
+  takumi config [action]     Create, inspect, or reveal Takumi config files
   takumi package <action>    Manage Takumi workflow packages (list|inspect|doctor|scaffold)
   takumi side-agents <action> Inspect or repair the persisted side-agent registry
+  takumi ide [action]        Inspect IDE launchers or open the current project (status|open)
+  takumi keybindings [path]  Create or reveal the user keybindings config
 
 Options:
   -h, --help                Show this help message
@@ -89,8 +93,17 @@ Examples:
   pnpm takumi platform                          # Roll up doctor, jobs, daemon, and sessions
   pnpm takumi platform --json                   # Platform summary as structured JSON
   pnpm takumi platform watch                    # Live dashboard with single-keystroke controls
+  pnpm takumi init                              # Create and open TAKUMI.md in the project root
+  pnpm takumi init show                         # Show instruction-file search order and the active file
+  pnpm takumi config                            # Open the active Takumi config (or create the global one)
+  pnpm takumi config show                       # Show config search order and the active file
+  pnpm takumi config project                    # Create or reveal a project-local .takumi/config.json
   pnpm takumi side-agents inspect              # Inspect persisted side-agent registry health
   pnpm takumi side-agents repair               # Explicitly rewrite malformed registry state
+  pnpm takumi ide                               # Show detected IDE launchers for this project
+  pnpm takumi ide open cursor                   # Open the repo in Cursor
+  pnpm takumi keybindings                      # Create and reveal the keybindings config
+  pnpm takumi keybindings path                 # Print the keybindings config path only
   pnpm takumi package list                      # Show discovered Takumi packages
   pnpm takumi package inspect review-kit        # Inspect one package in detail
   pnpm takumi package doctor                    # Validate package inventory and warnings

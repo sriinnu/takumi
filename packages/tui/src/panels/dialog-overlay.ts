@@ -8,14 +8,15 @@
 import { KEY_CODES, type KeyEvent, listSessions, type Rect } from "@takumi/core";
 import type { Screen } from "@takumi/render";
 import { Component, effect } from "@takumi/render";
-import type { SlashCommandRegistry } from "../commands.js";
+import type { SlashCommandRegistry } from "../commands/commands.js";
 import { CommandPalette } from "../dialogs/command-palette.js";
 import { ExtensionPromptDialog } from "../dialogs/extension-prompt.js";
 import { ModelPicker } from "../dialogs/model-picker.js";
 import { type SessionEntry, SessionList } from "../dialogs/session-list.js";
 import type { ExtensionUiStore } from "../extension-ui-store.js";
-import type { KeyBindingRegistry } from "../keybinds.js";
+import type { KeyBindingRegistry } from "../input/keybinds.js";
 import type { AppState } from "../state.js";
+import { buildCommandPaletteDialogModel } from "./dialog-overlay-command-palette.js";
 
 export interface DialogOverlayProps {
 	state: AppState;
@@ -285,15 +286,8 @@ export class DialogOverlay extends Component {
 	private renderCommandPalette(screen: Screen, rect: Rect): void {
 		const palette = this.commandPalette;
 		if (!palette) return;
-		const items = palette.getItems().slice(0, 10);
-		const lines = [
-			`Filter: ${palette.filterText || "(type to search)"}`,
-			"",
-			...items.map(
-				(item, index) => `${index === palette.selectedIndex ? ">" : " "} ${item.name} — ${item.description}`,
-			),
-		];
-		this.renderBox(screen, rect, "Command Palette", lines, 88);
+		const model = buildCommandPaletteDialogModel(palette);
+		this.renderBox(screen, rect, model.title, model.lines, model.maxWidth);
 	}
 
 	private renderModelPicker(screen: Screen, rect: Rect): void {

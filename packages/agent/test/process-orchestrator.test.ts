@@ -47,6 +47,16 @@ describe("ProcessOrchestrator", () => {
 		expect(orch.listWindows()).toHaveLength(0);
 	});
 
+	it("isWindowAlive returns false after the child exits", async () => {
+		orch = new ProcessOrchestrator();
+		const win = await orch.createWindow("short-lived", "echo", ["done"]);
+
+		await new Promise((resolve) => setTimeout(resolve, 250));
+
+		expect(await orch.isWindowAlive(win.id)).toBe(false);
+		expect(orch.captureOutput(win.id)).toContain("done");
+	});
+
 	it("destroyAll cleans up all windows", async () => {
 		orch = new ProcessOrchestrator();
 		await orch.createWindow("a", "echo", ["1"]);

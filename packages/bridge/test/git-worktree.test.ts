@@ -10,6 +10,8 @@ function createRepo(): string {
 	execSync("git init", { cwd: repoRoot });
 	execSync('git config user.email "test@test.com"', { cwd: repoRoot });
 	execSync('git config user.name "Test"', { cwd: repoRoot });
+	execSync("git config commit.gpgsign false", { cwd: repoRoot });
+	execSync("git config tag.gpgsign false", { cwd: repoRoot });
 	writeFileSync(join(repoRoot, "README.md"), "# test\n");
 	execSync("git add .", { cwd: repoRoot });
 	execSync('git commit -m "init"', { cwd: repoRoot });
@@ -26,7 +28,7 @@ describe("git worktree helpers", () => {
 			rmSync(worktreePath, { recursive: true, force: true });
 			const added = gitWorktreeAdd(repoRoot, worktreePath, "HEAD", { newBranch: branchName });
 			const canonicalWorktreePath = realpathSync(worktreePath);
-			expect(added).toBe(worktreePath);
+			expect(added).toBe(canonicalWorktreePath);
 			expect(canonicalizePaths(gitWorktreeList(repoRoot))).toContain(canonicalWorktreePath);
 
 			const currentBranch = execSync("git branch --show-current", {

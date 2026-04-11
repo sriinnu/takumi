@@ -178,6 +178,15 @@ describe("koshaAutoDetect", () => {
 		const result = await koshaAutoDetect();
 		expect(result).toBeNull();
 	});
+
+	it("skips local runtimes when local provider discovery is disabled", async () => {
+		process.env.TAKUMI_DISABLE_LOCAL_PROVIDER_DISCOVERY = "1";
+		mockProvidersList.mockReturnValue([
+			makeProvider("ollama", false, "none", [makeModel("llama3:8b", "ollama")]),
+		]);
+		const result = await koshaAutoDetect();
+		expect(result).toBeNull();
+	});
 });
 
 // ── koshaProviders ───────────────────────────────────────────────────────────

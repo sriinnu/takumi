@@ -27,6 +27,7 @@ function succeedWith(...stdouts: string[]): void {
 	for (const stdout of stdouts) {
 		mockedExecFile.mockImplementationOnce((_cmd: string, _args: string[], cb: ExecFileCb) => {
 			cb(null, stdout, "");
+			return { stdin: { end: vi.fn() } };
 		});
 	}
 }
@@ -35,6 +36,7 @@ function succeedWith(...stdouts: string[]): void {
 function failWith(message = "command failed"): void {
 	mockedExecFile.mockImplementationOnce((_cmd: string, _args: string[], cb: ExecFileCb) => {
 		cb(new Error(message), "", "");
+		return { stdin: { end: vi.fn() } };
 	});
 }
 
@@ -52,6 +54,7 @@ describe("TmuxOrchestrator", () => {
 		// Prevent cleanup from throwing on leftover mocks.
 		mockedExecFile.mockImplementation((_cmd: string, _args: string[], cb: ExecFileCb) => {
 			cb(null, "", "");
+			return { stdin: { end: vi.fn() } };
 		});
 		await orch.cleanup();
 	});
@@ -151,18 +154,20 @@ describe("TmuxOrchestrator", () => {
 	// ── sendKeys ────────────────────────────────────────────────────────────
 
 	describe("sendKeys", () => {
-		it("sends text to the correct window target", async () => {
+		it("sends text to the correct window target via load-buffer + paste-buffer", async () => {
 			succeedWith(""); // has-session
 			succeedWith("@1:%0"); // new-window
 			await orch.createWindow("send-test", "/tmp");
 
-			succeedWith(""); // send-keys
+			succeedWith(""); // load-buffer
+			succeedWith(""); // paste-buffer
 			await orch.sendKeys("send-test", "echo hello");
 
-			const call = mockedExecFile.mock.calls[2];
-			expect(call[1]).toContain("send-keys");
-			expect(call[1]).toContain("echo hello");
-			expect(call[1]).toContain("Enter");
+			const loadCall = mockedExecFile.mock.calls[2];
+			const pasteCall = mockedExecFile.mock.calls[3];
+			expect(loadCall[1]).toContain("load-buffer");
+			expect(pasteCall[1]).toContain("paste-buffer");
+			expect(pasteCall[1]).toContain("test-session:@1");
 		});
 
 		it("throws for unknown agent id", async () => {
@@ -324,6 +329,56 @@ describe("TmuxOrchestrator", () => {
 			// Mutating the copy should not affect the orchestrator.
 			map.delete("map-test");
 			expect(orch.getWindows().size).toBe(1);
+		});
+	});
+
+	// ── waitForChannel ──────────────────────────────────────────────────────
+
+	describe("waitForChannel", () => {
+		it("resolves true when the channel is signaled", async () => {
+			mockedExecFile.mockImplementationOnce((_cmd: string, _args: string[], cb: ExecFileCb) => {
+				cb(null, "", "");
+				return { kill: vi.fn() };
+			});
+
+			const result = await orch.waitForChannel("test-chan", 5_000);
+			expect(result).toBe(true);
+			expect(mockedExecFile).toHaveBeenCalledWith("tmux", ["wait-for", "test-chan"], expect.any(Function));
+		});
+
+		it("resolves false when tmux wait-for errors", async () => {
+			mockedExecFile.mockImplementationOnce((_cmd: string, _args: string[], cb: ExecFileCb) => {
+				cb(new Error("dead"), "", "");
+				return { kill: vi.fn() };
+			});
+
+			const result = await orch.waitForChannel("test-chan", 5_000);
+			expect(result).toBe(false);
+		});
+
+		it("resolves false immediately when signal is already aborted", async () => {
+			const ac = new AbortController();
+			ac.abort();
+			const result = await orch.waitForChannel("test-chan", 5_000, ac.signal);
+			expect(result).toBe(false);
+			// Should not have called tmux at all.
+			expect(mockedExecFile).not.toHaveBeenCalled();
+		});
+
+		it("kills the process when abort fires mid-wait", async () => {
+			const killFn = vi.fn();
+			mockedExecFile.mockImplementationOnce((_cmd: string, _args: string[], _cb: ExecFileCb) => {
+				// Intentionally never call cb — simulates blocking wait-for.
+				return { kill: killFn };
+			});
+
+			const ac = new AbortController();
+			const promise = orch.waitForChannel("test-chan", 30_000, ac.signal);
+			ac.abort();
+
+			const result = await promise;
+			expect(result).toBe(false);
+			expect(killFn).toHaveBeenCalled();
 		});
 	});
 

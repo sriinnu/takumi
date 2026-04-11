@@ -343,6 +343,49 @@ describe("ChitraguptaBridge", () => {
 				recentContext: "",
 			});
 		});
+
+		it("prefers daemon-native session.handover in socket mode", async () => {
+			const mockSocket = {
+				isConnected: true,
+				call: vi.fn().mockResolvedValue({
+					sessionId: "sess-123",
+					project: "/tmp/project",
+					title: "Takumi interactive",
+					turnCount: 4,
+					cursor: 4,
+					filesModified: ["src/foo.ts"],
+					filesRead: ["src/bar.ts"],
+					decisions: ["The fix is to persist the route envelope."],
+					errors: [],
+					commands: ["pnpm build"],
+					recentContext: [{ turn: 4, preview: "Persist the lane envelope into session metadata." }],
+				}),
+			};
+
+			const socketBridge = new ChitraguptaBridge({
+				socketPath: "/tmp/test-chitragupta.sock",
+				projectPath: "/tmp/project",
+			});
+			// @ts-expect-error — testing internals
+			socketBridge._socket = mockSocket;
+			// @ts-expect-error — testing internals
+			socketBridge._socketMode = true;
+
+			const result = await socketBridge.handover();
+			expect(mockSocket.call).toHaveBeenCalledWith("session.handover", { project: "/tmp/project" });
+			expect(result).toMatchObject({
+				originalRequest: "Takumi interactive",
+				filesModified: ["src/foo.ts"],
+				filesRead: ["src/bar.ts"],
+				sessionId: "sess-123",
+				project: "/tmp/project",
+				title: "Takumi interactive",
+				turnCount: 4,
+				cursor: 4,
+				commands: ["pnpm build"],
+			});
+			expect(result.recentContext).toContain("Persist the lane envelope");
+		});
 	});
 
 	// ── akashaDeposit ───────────────────────────────────────────────────
@@ -512,6 +555,40 @@ describe("ChitraguptaBridge", () => {
 			sendResponse(2, { content: [{ type: "text", text: "NOT_JSON" }] });
 			const result = await promise;
 			expect(result).toEqual([]);
+		});
+
+		it("prefers daemon-native vasana.tendencies in socket mode", async () => {
+			const expected = [
+				{
+					tendency: "prefers-small-commits",
+					valence: "positive",
+					strength: 0.9,
+					stability: 0.85,
+					predictiveAccuracy: 0.78,
+					reinforcementCount: 14,
+					description: "Commits frequently with small focused diffs",
+				},
+			];
+			const mockSocket = {
+				isConnected: true,
+				call: vi.fn().mockResolvedValue({ tendencies: expected }),
+			};
+
+			const socketBridge = new ChitraguptaBridge({
+				socketPath: "/tmp/test-chitragupta.sock",
+				projectPath: "/tmp/project",
+			});
+			// @ts-expect-error — testing internals
+			socketBridge._socket = mockSocket;
+			// @ts-expect-error — testing internals
+			socketBridge._socketMode = true;
+
+			const result = await socketBridge.vasanaTendencies(7);
+			expect(mockSocket.call).toHaveBeenCalledWith("vasana.tendencies", {
+				project: "/tmp/project",
+				limit: 7,
+			});
+			expect(result).toEqual(expected);
 		});
 	});
 

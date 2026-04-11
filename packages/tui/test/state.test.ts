@@ -75,6 +75,11 @@ describe("AppState", () => {
 			expect(state.sessionId.value).toBe("");
 		});
 
+		it("starts with idle Chitragupta sync state", () => {
+			const state = new AppState();
+			expect(state.chitraguptaSync.value).toEqual({ status: "idle" });
+		});
+
 		it("defaults model to claude-sonnet-4-20250514", () => {
 			const state = new AppState();
 			expect(state.model.value).toBe("claude-sonnet-4-20250514");
@@ -241,6 +246,14 @@ describe("AppState", () => {
 			expect(state.totalCost.value).toBeCloseTo(expected, 10);
 		});
 
+		it("uses the provided model pricing instead of assuming Sonnet", () => {
+			const state = new AppState();
+			state.updateUsage(makeUsage({ inputTokens: 1000, outputTokens: 1000 }), "gpt-4o");
+
+			const expected = (1000 * 5) / 1_000_000 + (1000 * 15) / 1_000_000;
+			expect(state.totalCost.value).toBeCloseTo(expected, 10);
+		});
+
 		it("accumulates cost across multiple usage updates", () => {
 			const state = new AppState();
 			state.updateUsage(makeUsage({ inputTokens: 1000, outputTokens: 500 }));
@@ -301,6 +314,34 @@ describe("AppState", () => {
 			// 100000 output tokens = $1.50
 			state.updateUsage(makeUsage({ outputTokens: 100000 }));
 			expect(state.formattedCost.value).toBe("$1.50");
+		});
+	});
+
+	/* ---- cost telemetry --------------------------------------------------- */
+
+	describe("cost telemetry", () => {
+		it("derives live telemetry from a cost snapshot", () => {
+			const state = new AppState();
+			state.setCostSnapshot({
+				totalUsd: 0.12,
+				totalInputTokens: 1000,
+				totalOutputTokens: 500,
+				turns: [],
+				ratePerMinute: 0.15,
+				projectedUsd: 1.62,
+				budgetFraction: 0.8,
+				alertLevel: "warning",
+				avgCostPerTurn: 0.12,
+				elapsedSeconds: 30,
+			});
+
+			expect(state.totalCost.value).toBe(0.12);
+			expect(state.totalTokens.value).toBe(1500);
+			expect(state.costRatePerMinute.value).toBe(0.15);
+			expect(state.hasCostSpike.value).toBe(true);
+			expect(state.costTelemetryText.value).toContain("1,500t");
+			expect(state.costTelemetryText.value).toContain("▲$0.150/m");
+			expect(state.costTelemetryText.value).toContain("80% budget");
 		});
 	});
 
@@ -404,6 +445,17 @@ describe("AppState", () => {
 			state.turnCount.value = 5;
 			state.reset();
 			expect(state.turnCount.value).toBe(0);
+		});
+
+		it("clears Chitragupta sync status", () => {
+			const state = new AppState();
+			state.chitraguptaSync.value = {
+				lastSyncedMessageId: "msg-1",
+				lastSyncedAt: Date.now(),
+				status: "ready",
+			};
+			state.reset();
+			expect(state.chitraguptaSync.value).toEqual({ status: "idle" });
 		});
 
 		it("clears activeTool", () => {

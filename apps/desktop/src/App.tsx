@@ -9,6 +9,12 @@ function clampSidebarWidth(width: number): number {
 	return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));
 }
 
+function formatUsdCompact(value: number): string {
+	if (value < 0.01) return `$${value.toFixed(4)}`;
+	if (value < 1) return `$${value.toFixed(3)}`;
+	return `$${value.toFixed(2)}`;
+}
+
 export function App() {
 	const {
 		state,
@@ -24,10 +30,10 @@ export function App() {
 		fetchArtifactDetail,
 		promoteArtifact,
 		repoDiff,
-			refreshAgent,
-			respondExtensionPrompt,
-			runtimes,
-			sendMessage,
+		refreshAgent,
+		respondExtensionPrompt,
+		runtimes,
+		sendMessage,
 		startRuntime,
 		stopRuntime,
 		interruptAgent,
@@ -70,6 +76,13 @@ export function App() {
 				label: "Approvals",
 				value: approvals.length > 0 ? `${approvals.length} pending` : "clear",
 				accent: approvals.length > 0 ? "#d97706" : "#16a34a",
+			},
+			{
+				label: "Tokmeter",
+				value: state?.tokmeter
+					? `${formatUsdCompact(state.tokmeter.todayCostUsd)} today · ${formatUsdCompact(state.tokmeter.totalCostUsd)} total`
+					: "syncing",
+				accent: state?.tokmeter ? "#7c3aed" : "#6b7280",
 			},
 		],
 		[alerts.length, approvals.length, fleet, state],
@@ -114,13 +127,15 @@ export function App() {
 	const handleAttachSession = useCallback(
 		async (sessionId: string) => {
 			const ok = await attachSession(sessionId);
+			if (!ok) {
+				setAttachNotice(`Could not attach session ${sessionId}.`);
+				return;
+			}
 			setSelectedSessionId(sessionId);
 			setSelectedArtifactId(null);
 			setSelectedArtifactDetail(null);
-			setAttachNotice(ok ? `Attached Build Window to session ${sessionId}.` : `Could not attach session ${sessionId}.`);
-			if (ok) {
-				await loadSessionDetail(sessionId);
-			}
+			setAttachNotice(`Attached Build Window to session ${sessionId}.`);
+			await loadSessionDetail(sessionId);
 		},
 		[attachSession, loadSessionDetail],
 	);
@@ -305,12 +320,14 @@ export function App() {
 					liveRuntimeSource={state?.runtimeSource}
 					provider={state?.provider}
 					model={state?.model}
+					runtimes={runtimes}
 					onSelect={handleSelectSession}
 					onAttach={(sessionId) => void handleAttachSession(sessionId)}
 				/>
 
 				<ActivityPane
 					state={state}
+					sessionDetail={sessionDetail}
 					repoDiff={repoDiff}
 					selectedArtifactDetail={selectedArtifactDetail}
 					onClearArtifact={() => {
@@ -319,14 +336,14 @@ export function App() {
 					}}
 					onExportArtifact={handleExportArtifact}
 					onPromoteArtifact={() => void handlePromoteArtifact()}
-						onInterrupt={() => void handleInterrupt()}
-						onRefresh={() => void handleRefresh()}
-						onContinue={() => void handleContinue()}
-						onExtensionConfirm={() => void handleExtensionConfirm()}
-						onExtensionCancel={() => void handleExtensionCancel()}
-						onExtensionPick={(index) => void handleExtensionPick(index)}
-						canContinue={canContinue}
-					/>
+					onInterrupt={() => void handleInterrupt()}
+					onRefresh={() => void handleRefresh()}
+					onContinue={() => void handleContinue()}
+					onExtensionConfirm={() => void handleExtensionConfirm()}
+					onExtensionCancel={() => void handleExtensionCancel()}
+					onExtensionPick={(index) => void handleExtensionPick(index)}
+					canContinue={canContinue}
+				/>
 
 				<div className="app-sidebar-shell" style={{ minWidth: SIDEBAR_MIN_WIDTH, maxWidth: SIDEBAR_MAX_WIDTH, width: sidebarWidth }}>
 					<div

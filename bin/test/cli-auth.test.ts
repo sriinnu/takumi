@@ -15,12 +15,16 @@ vi.mock("node:child_process", () => ({
 	}),
 }));
 
-vi.mock("node:fs", () => ({
-	existsSync: vi.fn(() => false),
-	readFileSync: vi.fn(() => {
-		throw new Error("no such file");
-	}),
-}));
+vi.mock("node:fs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs")>();
+	return {
+		...actual,
+		existsSync: vi.fn(() => false),
+		readFileSync: vi.fn(() => {
+			throw new Error("no such file");
+		}),
+	};
+});
 
 const { koshaAutoDetect } = vi.hoisted(() => ({
 	koshaAutoDetect: vi.fn(async () => null),
@@ -72,11 +76,17 @@ beforeEach(() => {
 		"OPENAI_API_KEY",
 		"GEMINI_API_KEY",
 		"GOOGLE_API_KEY",
+		"XAI_API_KEY",
+		"GROK_API_KEY",
 		"GROQ_API_KEY",
 		"DEEPSEEK_API_KEY",
 		"MISTRAL_API_KEY",
 		"TOGETHER_API_KEY",
 		"OPENROUTER_API_KEY",
+		"ALIBABA_API_KEY",
+		"DASHSCOPE_API_KEY",
+		"BEDROCK_API_KEY",
+		"AWS_BEARER_TOKEN",
 		"ZAI_API_KEY",
 		"KIMI_API_KEY",
 		"MOONSHOT_API_KEY",
@@ -207,6 +217,16 @@ describe("autoDetectAuth", () => {
 		expect(result!.source).toBe("OPENAI_API_KEY");
 	});
 
+	it("returns github for GITHUB_TOKEN", async () => {
+		process.env.GITHUB_TOKEN = "ghp-env-token";
+		const result = await autoDetectAuth();
+		expect(result).not.toBeNull();
+		expect(result!.provider).toBe("github");
+		expect(result!.apiKey).toBe("ghp-env-token");
+		expect(result!.model).toBe("gpt-4.1");
+		expect(result!.source).toBe("GITHUB_TOKEN");
+	});
+
 	it("returns gemini for GEMINI_API_KEY", async () => {
 		process.env.GEMINI_API_KEY = "gm-test-key";
 		const result = await autoDetectAuth();
@@ -230,6 +250,14 @@ describe("autoDetectAuth", () => {
 		const result = await autoDetectAuth();
 		expect(result!.provider).toBe("groq");
 		expect(result!.apiKey).toBe("groq-test-key");
+	});
+
+	it("returns xai for XAI_API_KEY", async () => {
+		process.env.XAI_API_KEY = "xai-test-key";
+		const result = await autoDetectAuth();
+		expect(result!.provider).toBe("xai");
+		expect(result!.apiKey).toBe("xai-test-key");
+		expect(result!.source).toBe("XAI_API_KEY");
 	});
 
 	it("returns deepseek for DEEPSEEK_API_KEY", async () => {
@@ -258,6 +286,22 @@ describe("autoDetectAuth", () => {
 		const result = await autoDetectAuth();
 		expect(result!.provider).toBe("openrouter");
 		expect(result!.apiKey).toBe("or-test-key");
+	});
+
+	it("returns alibaba for DASHSCOPE_API_KEY", async () => {
+		process.env.DASHSCOPE_API_KEY = "dashscope-test-key";
+		const result = await autoDetectAuth();
+		expect(result!.provider).toBe("alibaba");
+		expect(result!.apiKey).toBe("dashscope-test-key");
+		expect(result!.source).toBe("DASHSCOPE_API_KEY");
+	});
+
+	it("returns bedrock for AWS_BEARER_TOKEN", async () => {
+		process.env.AWS_BEARER_TOKEN = "aws-bearer-token";
+		const result = await autoDetectAuth();
+		expect(result!.provider).toBe("bedrock");
+		expect(result!.apiKey).toBe("aws-bearer-token");
+		expect(result!.source).toBe("AWS_BEARER_TOKEN");
 	});
 
 	it("returns zai for ZAI_API_KEY", async () => {

@@ -4,6 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
+vi.mock("node:fs", async () => {
+	const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+	return {
+		...actual,
+		realpathSync: vi.fn((path: string) => path.replace("/symlink-repo", "/real-repo")),
+	};
+});
+
 vi.mock("node:child_process", () => ({
 	execFile: vi.fn(),
 }));
@@ -89,6 +97,23 @@ describe("auditSideAgentRuntime", () => {
 		expect(audit.issues.map((issue) => issue.code)).not.toContain("live_tmux_missing");
 		expect(vi.mocked(gitWorktreeList)).toHaveBeenCalledTimes(1);
 		expect(mockedExecFile).not.toHaveBeenCalled();
+	});
+
+	it("treats canonicalized worktree paths as present during audit", async () => {
+		const registryBaseDir = await createRegistry([
+			makeAgent({ worktreePath: "/symlink-repo/.takumi/worktrees/wt-0001" }),
+		]);
+		vi.mocked(gitWorktreeList).mockReturnValue(["/real-repo/.takumi/worktrees/wt-0001"]);
+		vi.mocked(gitBranch).mockReturnValue("takumi/side-agent/side-1-wt-0001");
+
+		const audit = await auditSideAgentRuntime({
+			repoRoot: "/symlink-repo",
+			registryBaseDir,
+			worktreeBaseDir: WORKTREE_BASE,
+			tmuxAvailable: false,
+		});
+
+		expect(audit.issues.map((issue) => issue.code)).not.toContain("live_worktree_missing");
 	});
 
 	it("reports live drift, terminal residue, and orphaned worktrees in one pass", async () => {

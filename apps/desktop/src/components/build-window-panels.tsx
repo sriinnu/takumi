@@ -1,4 +1,6 @@
 import type { CSSProperties } from "react";
+import { buildSessionRailEntries } from "./build-window-session-rail-model";
+import { TaskPanePanel } from "./build-window-task-pane";
 import { ReviewSurface } from "./review-surface";
 import type {
 	AgentState,
@@ -58,6 +60,16 @@ export function buttonStyle(primary: boolean): CSSProperties {
 	};
 }
 
+function sessionStatusStyle(tone: "neutral" | "success" | "warning" | "error"): CSSProperties {
+	const styles: Record<string, CSSProperties> = {
+		neutral: { background: "#f3f4f6", color: "#4b5563" },
+		success: { background: "#dcfce7", color: "#166534" },
+		warning: { background: "#fef3c7", color: "#92400e" },
+		error: { background: "#fee2e2", color: "#991b1b" },
+	};
+	return styles[tone] ?? styles.neutral;
+}
+
 export function SessionRail(props: {
 	sessions: SessionSummary[];
 	selectedSessionId: string | null;
@@ -66,47 +78,86 @@ export function SessionRail(props: {
 	liveRuntimeSource: string | null | undefined;
 	provider: string | null | undefined;
 	model: string | null | undefined;
+	runtimes: RuntimeSummary[];
 	onSelect(sessionId: string): void;
 	onAttach(sessionId: string): void;
 }) {
-	const { sessions, selectedSessionId, liveSessionId, liveActivity, liveRuntimeSource, provider, model, onSelect, onAttach } = props;
+	const {
+		sessions,
+		selectedSessionId,
+		liveSessionId,
+		liveActivity,
+		liveRuntimeSource,
+		provider,
+		model,
+		runtimes,
+		onSelect,
+		onAttach,
+	} = props;
+	const entries = buildSessionRailEntries({
+		sessions,
+		selectedSessionId,
+		liveSessionId,
+		liveActivity,
+		liveRuntimeSource,
+		provider,
+		model,
+		runtimes,
+	});
 	return (
 		<aside style={{ ...cardStyle, minHeight: 620 }}>
 			<div style={{ fontSize: 12, fontWeight: 700, color: "var(--c-text-secondary)", marginBottom: 10 }}>Session Rail</div>
 			<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-				{sessions.map((session) => {
-					const selected = session.id === selectedSessionId;
-					const live = session.id === liveSessionId;
+				{entries.map((entry) => {
 					return (
 						<div
-							key={session.id}
+							key={entry.id}
 							style={{
 								padding: 10,
 								borderRadius: 8,
-								border: selected ? "1px solid #2563eb" : "1px solid var(--c-border)",
-								background: selected ? "#eff6ff" : "white",
+								border: entry.selected ? "1px solid #2563eb" : "1px solid var(--c-border)",
+								background: entry.selected ? "#eff6ff" : "white",
 							}}
 						>
 							<div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-								{live && <ActivityBadge activity={liveActivity ?? "idle"} />}
-								<strong style={{ fontSize: 12, color: "var(--c-text)" }}>{session.title || "Untitled"}</strong>
+								{entry.live && <ActivityBadge activity={liveActivity ?? "idle"} />}
+								<strong style={{ fontSize: 12, color: "var(--c-text)" }}>{entry.title}</strong>
+								<span
+									style={{
+										...sessionStatusStyle(entry.statusTone),
+										fontSize: 10,
+										fontWeight: 700,
+										padding: "2px 6px",
+										borderRadius: 999,
+										textTransform: "uppercase",
+										letterSpacing: 0.3,
+									}}
+								>
+									{entry.statusLabel}
+								</span>
 							</div>
-							<div style={{ fontSize: 11, color: "var(--c-text-muted)" }}>{session.turns} turns</div>
-							<div style={{ fontSize: 11, color: "var(--c-text-muted)", marginTop: 2 }}>
-								{live ? `${provider ?? "unknown"} / ${model ?? "unknown"}` : "daemon session"}
-							</div>
-							{live && liveRuntimeSource && (
-								<div style={{ fontSize: 11, color: "var(--c-text-muted)", marginTop: 2 }}>Source: {liveRuntimeSource}</div>
+							<div style={{ fontSize: 11, color: "var(--c-text-muted)" }}>{entry.turnsLabel}</div>
+							<div style={{ fontSize: 11, color: "var(--c-text-muted)", marginTop: 2 }}>{entry.providerModelLabel}</div>
+							{entry.sourceLabel && (
+								<div style={{ fontSize: 11, color: "var(--c-text-muted)", marginTop: 2 }}>{entry.sourceLabel}</div>
+							)}
+							{entry.runtimeHint && (
+								<div style={{ fontSize: 11, color: "var(--c-text-dim)", marginTop: 2 }}>{entry.runtimeHint}</div>
 							)}
 							<div style={{ fontSize: 11, color: "var(--c-text-dim)", marginTop: 2 }}>
-								{new Date(session.timestamp).toLocaleString()}
+								{entry.updatedAtLabel}
 							</div>
 							<div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-								<button type="button" onClick={() => onSelect(session.id)} style={buttonStyle(false)}>
+								<button type="button" onClick={() => onSelect(entry.id)} style={buttonStyle(false)}>
 									Focus
 								</button>
-								<button type="button" onClick={() => onAttach(session.id)} style={buttonStyle(true)}>
-									Attach
+								<button
+									type="button"
+									onClick={() => onAttach(entry.id)}
+									disabled={entry.attachDisabled}
+									style={{ ...buttonStyle(true), opacity: entry.attachDisabled ? 0.6 : 1, cursor: entry.attachDisabled ? "default" : "pointer" }}
+								>
+									{entry.attachLabel}
 								</button>
 							</div>
 						</div>
@@ -120,6 +171,7 @@ export function SessionRail(props: {
 
 export function ActivityPane(props: {
 	state: AgentState | null;
+	sessionDetail: SessionDetail | null;
 	repoDiff: RepoDiffSnapshot | null;
 	selectedArtifactDetail: ArtifactDetail | null;
 	onClearArtifact(): void;
@@ -135,6 +187,7 @@ export function ActivityPane(props: {
 }) {
 	const {
 		state,
+		sessionDetail,
 		repoDiff,
 		selectedArtifactDetail,
 		onClearArtifact,
@@ -172,6 +225,7 @@ export function ActivityPane(props: {
 							Continue
 						</button>
 					</div>
+					<TaskPanePanel state={state} sessionDetail={sessionDetail} />
 					{state.routing && (
 						<div style={{ ...cardStyle, background: "var(--c-bg)", marginBottom: 12 }}>
 							<div style={{ fontSize: 12, fontWeight: 700, color: "var(--c-text-secondary)", marginBottom: 8 }}>Lane & Routing Board</div>
@@ -189,15 +243,6 @@ export function ActivityPane(props: {
 							</div>
 						</div>
 					)}
-					{state.toolsInFlight.length > 0 && <div style={{ fontSize: 13, color: "var(--c-text-secondary)", marginBottom: 8 }}>Tools: {state.toolsInFlight.join(", ")}</div>}
-						{state.contextPercent != null && (
-							<div style={{ marginBottom: 12 }}>
-							<div style={{ fontSize: 12, color: "var(--c-text-muted)", marginBottom: 2 }}>Context: {Math.round(state.contextPercent)}%</div>
-							<div style={{ height: 4, background: "#e5e7eb", borderRadius: 2 }}>
-								<div style={{ height: 4, borderRadius: 2, width: `${Math.min(100, state.contextPercent)}%`, background: state.contextPercent > 80 ? "#ef4444" : "#22c55e" }} />
-								</div>
-							</div>
-						)}
 						{extensionPrompt && (
 							<div style={{ ...cardStyle, background: "var(--c-bg)", marginBottom: 12 }}>
 								<div style={{ fontSize: 12, fontWeight: 700, color: "var(--c-text-secondary)", marginBottom: 8 }}>
@@ -272,10 +317,10 @@ export function ActivityPane(props: {
 						<ReviewSurface
 							repoDiff={repoDiff}
 							selectedArtifactDetail={selectedArtifactDetail}
-						onClearArtifact={onClearArtifact}
-						onExportArtifact={onExportArtifact}
-						onPromoteArtifact={onPromoteArtifact}
-					/>
+							onClearArtifact={onClearArtifact}
+							onExportArtifact={onExportArtifact}
+							onPromoteArtifact={onPromoteArtifact}
+						/>
 				</>
 			) : (
 				<div style={{ color: "var(--c-text-muted)", textAlign: "center", padding: 48 }}>Waiting for connection…</div>

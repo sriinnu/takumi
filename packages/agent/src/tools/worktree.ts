@@ -7,13 +7,22 @@
  * trial changes in isolation before merging into the live tree.
  */
 
-import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { exec as nodeExec } from "node:child_process";
+import { access, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import type { ToolDefinition } from "@takumi/core";
 import { LIMITS } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
+
+/** Promisified exec — lazy-init to avoid breaking test mocks that omit `exec`. */
+type ExecFn = (cmd: string, opts: object) => Promise<{ stdout: string; stderr: string }>;
+let _execAsync: ExecFn | undefined;
+function getExecAsync(): ExecFn {
+	_execAsync ??= promisify(nodeExec) as unknown as ExecFn;
+	return _execAsync;
+}
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -53,18 +62,20 @@ export const worktreeCreateHandler: ToolHandler = async (input) => {
 	const worktreeName = `${WORKTREE_PREFIX}${label}`;
 	const worktreePath = join(tmpdir(), worktreeName);
 
-	if (existsSync(worktreePath)) {
+	try {
+		await access(worktreePath);
 		return { output: `Worktree already exists at ${worktreePath}`, isError: true };
+	} catch {
+		// Expected — directory doesn't exist yet
 	}
 
 	try {
-		mkdirSync(worktreePath, { recursive: true });
-		rmSync(worktreePath, { recursive: true });
+		await mkdir(worktreePath, { recursive: true });
+		await rm(worktreePath, { recursive: true });
 
-		execSync(`git worktree add "${worktreePath}" ${branch}`, {
+		await getExecAsync()(`git worktree add "${worktreePath}" ${branch}`, {
 			timeout: 30_000,
 			encoding: "utf-8",
-			stdio: ["pipe", "pipe", "pipe"],
 		});
 
 		return {
@@ -114,22 +125,23 @@ export const worktreeExecHandler: ToolHandler = async (input) => {
 	const command = input.command as string;
 	const timeout = Math.min((input.timeout as number) || DEFAULT_VERIFY_TIMEOUT, 600_000);
 
-	if (!existsSync(worktreePath)) {
+	try {
+		await access(worktreePath);
+	} catch {
 		return { output: `Worktree not found: ${worktreePath}`, isError: true };
 	}
 
 	try {
-		const result = execSync(command, {
+		const { stdout } = await getExecAsync()(command, {
 			cwd: worktreePath,
 			timeout,
 			maxBuffer: LIMITS.MAX_BASH_OUTPUT,
 			encoding: "utf-8",
-			stdio: ["pipe", "pipe", "pipe"],
 			env: { ...process.env },
 		});
 
 		return {
-			output: (typeof result === "string" ? result : "") || "(no output)",
+			output: (typeof stdout === "string" ? stdout : "") || "(no output)",
 			isError: false,
 			metadata: { worktreePath, exitCode: 0 },
 		};
@@ -169,13 +181,15 @@ export const worktreeMergeDefinition: ToolDefinition = {
 export const worktreeMergeHandler: ToolHandler = async (input) => {
 	const worktreePath = input.worktree_path as string;
 
-	if (!existsSync(worktreePath)) {
+	try {
+		await access(worktreePath);
+	} catch {
 		return { output: `Worktree not found: ${worktreePath}`, isError: true };
 	}
 
 	try {
 		// Generate patch from worktree changes
-		const diff = execSync("git diff HEAD", {
+		const { stdout: diff } = await getExecAsync()("git diff HEAD", {
 			cwd: worktreePath,
 			encoding: "utf-8",
 			maxBuffer: LIMITS.MAX_BASH_OUTPUT,
@@ -186,11 +200,9 @@ export const worktreeMergeHandler: ToolHandler = async (input) => {
 		}
 
 		// Apply patch to main working directory
-		execSync("git apply --3way -", {
-			input: diff,
+		await getExecAsync()("git apply --3way -", {
 			encoding: "utf-8",
 			timeout: 30_000,
-			stdio: ["pipe", "pipe", "pipe"],
 		});
 
 		return {
@@ -228,22 +240,24 @@ export const worktreeDestroyHandler: ToolHandler = async (input) => {
 	const worktreePath = input.worktree_path as string;
 
 	try {
-		execSync(`git worktree remove --force "${worktreePath}"`, {
+		await getExecAsync()(`git worktree remove --force "${worktreePath}"`, {
 			encoding: "utf-8",
 			timeout: 15_000,
-			stdio: ["pipe", "pipe", "pipe"],
 		});
 
 		// Clean up remaining directory if git didn't fully remove it
-		if (existsSync(worktreePath)) {
-			rmSync(worktreePath, { recursive: true, force: true });
+		try {
+			await access(worktreePath);
+			await rm(worktreePath, { recursive: true, force: true });
+		} catch {
+			// Already gone — expected
 		}
 
 		return { output: `Destroyed worktree: ${worktreePath}`, isError: false };
 	} catch (_err: any) {
 		// Force cleanup even on git error
 		try {
-			rmSync(worktreePath, { recursive: true, force: true });
+			await rm(worktreePath, { recursive: true, force: true });
 		} catch {
 			/* ignore */
 		}

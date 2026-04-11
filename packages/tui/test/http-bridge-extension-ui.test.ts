@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { ExtensionUiStore } from "../src/extension-ui-store.js";
-import { buildExtensionUiSnapshot, resolveExtensionPromptResponse } from "../src/http-bridge-extension-ui.js";
+import {
+	buildExtensionUiSnapshot,
+	resolveExtensionPromptResponse,
+} from "../src/http-bridge/http-bridge-extension-ui.js";
 
 describe("http-bridge-extension-ui", () => {
 	it("builds indexed pick option snapshots", () => {

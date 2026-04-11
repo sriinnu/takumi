@@ -2,24 +2,22 @@
 
 import type { AgentEvent, PermissionDecision, ToolDefinition, ToolResult, Usage } from "@takumi/core";
 import { createLogger, LIMITS } from "@takumi/core";
-import {
-	compactMessagesDetailed,
-	estimateTotalPayloadTokens,
-	type PayloadCompactOptions,
-	shouldCompact,
-} from "./context/compact.js";
+import { estimateTotalPayloadTokens, type PayloadCompactOptions } from "./context/compact.js";
 import type { ExperienceMemory } from "./context/experience-memory.js";
 import type { CodebaseIndex } from "./context/indexer.js";
 import type { MemoryHooks } from "./context/memory-hooks.js";
 import type { PrincipleMemory } from "./context/principles.js";
 import type { PromptCache } from "./context/prompt-cache.js";
 import { formatRagContext, queryIndex } from "./context/rag.js";
+import { maybeCompactHistory } from "./context/window-optimizer.js";
 import type { BudgetGuard } from "./cost.js";
 import { BudgetExceededError } from "./cost.js";
 import type { ExtensionRunner } from "./extensions/extension-runner.js";
 import { injectNextSteeringDirective, setupPreemptWatcher } from "./loop-steering.js";
 import {
 	buildEnrichedSystemPrompt,
+	cacheAfterExec,
+	cacheGet,
 	coreToPayload,
 	mergeExtensionTools,
 	payloadToCore,
@@ -31,6 +29,7 @@ import type { ObservationCollector } from "./observation-collector.js";
 import { type RetryOptions, withRetry } from "./retry.js";
 import type { SteeringQueue } from "./steering-queue.js";
 import type { ToolRegistry } from "./tools/registry.js";
+import { ToolResultCache } from "./tools/tool-cache.js";
 
 const log = createLogger("agent-loop");
 
@@ -59,6 +58,8 @@ export interface AgentLoopOptions {
 	experienceMemory?: ExperienceMemory;
 	principleMemory?: PrincipleMemory;
 	codebaseIndex?: CodebaseIndex;
+	/** Tool result cache for skipping duplicate read-only tool executions. */
+	toolCache?: ToolResultCache;
 	checkToolPermission?: (
 		tool: string,
 		args: Record<string, unknown>,
@@ -100,6 +101,7 @@ export async function* agentLoop(
 	} = options;
 
 	const ext = options.extensionRunner;
+	const toolCache = options.toolCache ?? new ToolResultCache();
 	mergeExtensionTools(tools, ext);
 	const userTurn = typeof userMessage === "string" ? { text: userMessage } : userMessage;
 	const userText = userTurn.text;
@@ -117,9 +119,6 @@ export async function* agentLoop(
 	// Push onto caller history so subsequent turns retain the full tool/result context.
 	history.push({ role: "user", content: buildUserMessage(userText, userTurn.images) });
 	const messages: MessagePayload[] = history;
-
-	// Cumulative token tracking from usage_update events
-	let cumulativeTokens = 0;
 
 	let turn = 0;
 
@@ -141,29 +140,20 @@ export async function* agentLoop(
 
 		// Context compaction check before each turn
 		if (compactOptions !== false) {
-			const estimatedTokens = cumulativeTokens > 0 ? cumulativeTokens : estimateTotalPayloadTokens(messages);
-
-			if (shouldCompact(messages, estimatedTokens, maxContextTokens)) {
-				log.info(`Context compaction triggered: ~${estimatedTokens} tokens`);
-				const compacted = compactMessagesDetailed(messages, {
-					maxTokens: maxContextTokens,
-					...(typeof compactOptions === "object" ? compactOptions : {}),
-				});
-				options.experienceMemory?.archiveCompaction(
-					compacted.summary,
-					compacted.compactedMessages,
-					compacted.preservedMessages,
+			const estimatedTokens = estimateTotalPayloadTokens(messages);
+			const compaction = await maybeCompactHistory({
+				messages,
+				estimatedHistoryTokens: estimatedTokens,
+				totalContextTokens: maxContextTokens,
+				compactOptions,
+				extensionRunner: ext ?? undefined,
+				experienceMemory: options.experienceMemory,
+				signal,
+			});
+			if (compaction) {
+				log.info(
+					`Context compaction triggered: ${compaction.tokensBefore} -> ${compaction.tokensAfter} tokens (limit ${compaction.plan.hardLimitTokens})`,
 				);
-				// Inject file awareness from ExperienceMemory into the compacted summary
-				const fileAwareness = options.experienceMemory?.buildFileAwarenessSummary();
-				if (fileAwareness && compacted.messages.length > 0) {
-					const first = compacted.messages[0];
-					if (Array.isArray(first.content) && first.content[0]?.type === "text") {
-						first.content[0].text = `${first.content[0].text}\n\n${fileAwareness}`;
-					}
-				}
-				messages.splice(0, messages.length, ...compacted.messages);
-				cumulativeTokens = estimateTotalPayloadTokens(messages);
 			}
 		}
 
@@ -261,8 +251,6 @@ export async function* agentLoop(
 						break;
 					case "usage_update":
 						_usage = event.usage;
-						// Track cumulative tokens for compaction decisions
-						cumulativeTokens = event.usage.inputTokens + event.usage.outputTokens;
 						// Budget enforcement — throws BudgetExceededError if limit exceeded
 						if (options.budget) {
 							try {
@@ -357,8 +345,14 @@ export async function* agentLoop(
 			}
 
 			const t0 = Date.now();
-			let result = await tools.execute(tc.name, tc.input, watcher.signal, { permissionChecked: true });
+
+			// Tool result cache — skip re-execution for identical read-only calls
+			const cachedResult = cacheGet(toolCache, tc.name, tc.input);
+			let result: ToolResult =
+				cachedResult ?? (await tools.execute(tc.name, tc.input, watcher.signal, { permissionChecked: true }));
 			const elapsed = Date.now() - t0;
+
+			cacheAfterExec(toolCache, tc.name, tc.input, result, !!cachedResult);
 
 			// Phase 45 — emit tool_result (can modify result)
 			if (ext) {

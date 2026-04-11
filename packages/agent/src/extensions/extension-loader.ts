@@ -30,9 +30,11 @@ import type {
 	ExtensionFactory,
 	LoadExtensionsResult,
 	LoadedExtension,
+	LoadedExtensionOrigin,
 } from "./extension-loader-types.js";
+import { createExtensionStorage } from "./extension-storage.js";
 import type { ExtensionContext, ExtensionToolDefinition, RegisteredCommand } from "./extension-types.js";
-import { discoverTakumiPackages } from "./package-loader.js";
+import { buildPackageRuntimeSnapshotFromPaths, type PackageRuntimeSnapshot } from "./package-runtime-snapshot.js";
 
 const log = createLogger("extension-loader");
 
@@ -59,6 +61,15 @@ function resolvePath(extPath: string, cwd: string): string {
 /** Check if a filename looks like an extension entry point. */
 function isExtensionFile(name: string): boolean {
 	return name.endsWith(".ts") || name.endsWith(".js") || name.endsWith(".mjs");
+}
+
+interface ExtensionLoadCandidate {
+	path: string;
+	origin: LoadedExtensionOrigin;
+}
+
+function unknownExtensionOrigin(): LoadedExtensionOrigin {
+	return { residency: "unknown" };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -141,7 +152,11 @@ function readFileSync(filePath: string): string {
 }
 
 /** Create an empty LoadedExtension shell. */
-function createExtension(extPath: string, resolvedPath: string): LoadedExtension {
+function createExtension(
+	extPath: string,
+	resolvedPath: string,
+	origin: LoadedExtensionOrigin = unknownExtensionOrigin(),
+): LoadedExtension {
 	const notBound =
 		(name: string) =>
 		(..._args: unknown[]) => {
@@ -149,6 +164,7 @@ function createExtension(extPath: string, resolvedPath: string): LoadedExtension
 		};
 	const _actions: ExtensionActionSlots = {
 		sendUserMessage: notBound("sendUserMessage") as (c: string) => void,
+		getSessionId: notBound("getSessionId") as () => string | undefined,
 		getActiveTools: notBound("getActiveTools") as () => string[],
 		setActiveTools: notBound("setActiveTools") as (n: string[]) => void,
 		exec: notBound("exec") as ExtensionActionSlots["exec"],
@@ -158,6 +174,7 @@ function createExtension(extPath: string, resolvedPath: string): LoadedExtension
 	return {
 		path: extPath,
 		resolvedPath,
+		origin: { ...origin },
 		handlers: new Map(),
 		tools: new Map(),
 		commands: new Map(),
@@ -168,7 +185,17 @@ function createExtension(extPath: string, resolvedPath: string): LoadedExtension
 }
 
 /** Create the ExtensionAPI scoped to a specific extension. */
-function createExtensionAPI(extension: LoadedExtension, _cwd: string, bridge: ExtensionBridgeRegistry): ExtensionAPI {
+function createExtensionAPI(extension: LoadedExtension, cwd: string, bridge: ExtensionBridgeRegistry): ExtensionAPI {
+	if (!extension.storage) {
+		extension.storage = createExtensionStorage({
+			cwd,
+			extensionPath: extension.path,
+			resolvedPath: extension.resolvedPath,
+			manifestName: extension.manifest?.name,
+			getSessionId: () => extension._actions.getSessionId(),
+		});
+	}
+
 	return {
 		on(event: string, handler: (...args: unknown[]) => unknown): void {
 			const list = extension.handlers.get(event) ?? [];
@@ -199,6 +226,7 @@ function createExtensionAPI(extension: LoadedExtension, _cwd: string, bridge: Ex
 		getActiveTools: () => extension._actions.getActiveTools(),
 		setActiveTools: (names: string[]) => extension._actions.setActiveTools(names),
 		exec: (cmd: string, args?: string[]) => extension._actions.exec(cmd, args),
+		storage: extension.storage,
 		getSessionName: () => extension._actions.getSessionName(),
 		setSessionName: (name: string) => extension._actions.setSessionName(name),
 
@@ -225,6 +253,7 @@ async function loadOne(
 	extPath: string,
 	cwd: string,
 	bridge: ExtensionBridgeRegistry,
+	origin: LoadedExtensionOrigin = unknownExtensionOrigin(),
 ): Promise<{ extension: LoadedExtension | null; error: string | null }> {
 	const resolvedPath = resolvePath(extPath, cwd);
 
@@ -233,7 +262,7 @@ async function loadOne(
 		return { extension: null, error: `No valid factory function exported from ${extPath}` };
 	}
 
-	const extension = createExtension(extPath, resolvedPath);
+	const extension = createExtension(extPath, resolvedPath, origin);
 	// Extract manifest from defineExtension()-annotated factories
 	extension.manifest = getExtensionManifest(factory);
 	const api = createExtensionAPI(extension, cwd, bridge);
@@ -258,15 +287,25 @@ async function loadOne(
  * Load extensions from explicit file paths.
  */
 export async function loadExtensions(paths: string[], cwd: string): Promise<LoadExtensionsResult> {
+	return loadExtensionCandidates(
+		paths.map((path) => ({ path, origin: unknownExtensionOrigin() })),
+		cwd,
+	);
+}
+
+async function loadExtensionCandidates(
+	candidates: ExtensionLoadCandidate[],
+	cwd: string,
+): Promise<LoadExtensionsResult> {
 	const bridge = new ExtensionBridgeRegistry();
 	const extensions: LoadedExtension[] = [];
 	const errors: Array<{ path: string; error: string }> = [];
 
-	for (const extPath of paths) {
-		const { extension, error } = await loadOne(extPath, cwd, bridge);
+	for (const candidate of candidates) {
+		const { extension, error } = await loadOne(candidate.path, cwd, bridge, candidate.origin);
 		if (error) {
-			errors.push({ path: extPath, error });
-			log.warn(`Skipped extension ${extPath}: ${error}`);
+			errors.push({ path: candidate.path, error });
+			log.warn(`Skipped extension ${candidate.path}: ${error}`);
 			continue;
 		}
 		if (extension) extensions.push(extension);
@@ -291,29 +330,58 @@ export async function discoverAndLoadExtensions(
 	cwd: string,
 	configuredPackagePaths: string[] = [],
 ): Promise<LoadExtensionsResult> {
-	const allPaths: string[] = [];
+	const snapshot = buildPackageRuntimeSnapshotFromPaths(cwd, configuredPackagePaths);
+	const loadResult = await discoverAndLoadExtensionsFromSnapshot(snapshot, configuredPaths, cwd);
+	return {
+		extensions: loadResult.extensions,
+		errors: [...snapshot.report.errors, ...loadResult.errors],
+		bridge: loadResult.bridge,
+	};
+}
+
+/**
+ * Discover and load extensions using one already-computed package snapshot.
+ */
+export async function discoverAndLoadExtensionsFromSnapshot(
+	snapshot: PackageRuntimeSnapshot,
+	configuredPaths: string[],
+	cwd = snapshot.cwd,
+): Promise<LoadExtensionsResult> {
+	const candidates: ExtensionLoadCandidate[] = [];
 	const seen = new Set<string>();
 
-	const addPaths = (paths: string[]): void => {
-		for (const p of paths) {
-			const resolved = resolvePath(p, cwd);
-			if (!seen.has(resolved)) {
-				seen.add(resolved);
-				allPaths.push(p);
-			}
+	const addCandidate = (path: string, origin: LoadedExtensionOrigin): void => {
+		const resolved = resolvePath(path, cwd);
+		if (seen.has(resolved)) {
+			return;
+		}
+		seen.add(resolved);
+		candidates.push({
+			path,
+			origin: { ...origin },
+		});
+	};
+
+	const addPaths = (paths: string[], origin: LoadedExtensionOrigin): void => {
+		for (const path of paths) {
+			addCandidate(path, origin);
 		}
 	};
 
 	// 1. Project-local
-	addPaths(discoverInDir(localExtensionsDir(cwd)));
+	addPaths(discoverInDir(localExtensionsDir(cwd)), { residency: "project" });
 
 	// 2. Global
-	addPaths(discoverInDir(globalExtensionsDir()));
+	addPaths(discoverInDir(globalExtensionsDir()), { residency: "global" });
 
 	// 3. Package-provided extension entry points
-	const packageResult = discoverTakumiPackages(configuredPackagePaths, cwd);
-	for (const pkg of packageResult.packages) {
-		addPaths(pkg.extensions);
+	for (const entry of snapshot.views.extensionEntryPoints) {
+		addCandidate(entry.path, {
+			residency: "package",
+			packageId: entry.packageId,
+			packageName: entry.packageName,
+			packageSource: entry.source,
+		});
 	}
 
 	// 4. Configured paths (may be files or directories)
@@ -322,22 +390,17 @@ export async function discoverAndLoadExtensions(
 		if (existsSync(resolved) && statSync(resolved).isDirectory()) {
 			const entries = resolveEntryPoints(resolved);
 			if (entries) {
-				addPaths(entries);
+				addPaths(entries, unknownExtensionOrigin());
 			} else {
-				addPaths(discoverInDir(resolved));
+				addPaths(discoverInDir(resolved), unknownExtensionOrigin());
 			}
 		} else {
-			addPaths([resolved]);
+			addCandidate(resolved, unknownExtensionOrigin());
 		}
 	}
 
-	log.info(`Discovered ${allPaths.length} extension entry points`);
-	const loadResult = await loadExtensions(allPaths, cwd);
-	return {
-		extensions: loadResult.extensions,
-		errors: [...packageResult.errors, ...loadResult.errors],
-		bridge: loadResult.bridge,
-	};
+	log.info(`Discovered ${candidates.length} extension entry points`);
+	return loadExtensionCandidates(candidates, cwd);
 }
 
 /**
@@ -350,7 +413,7 @@ export async function loadExtensionFromFactory(
 	bridge?: ExtensionBridgeRegistry,
 ): Promise<LoadedExtension> {
 	const b = bridge ?? new ExtensionBridgeRegistry();
-	const extension = createExtension(extensionPath, extensionPath);
+	const extension = createExtension(extensionPath, extensionPath, unknownExtensionOrigin());
 	extension.manifest = getExtensionManifest(factory);
 	const api = createExtensionAPI(extension, cwd, b);
 	await factory(api);

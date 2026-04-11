@@ -48,6 +48,13 @@ export interface HandoverSummary {
 	decisions: string[];
 	errors: string[];
 	recentContext: string;
+	sessionId?: string;
+	project?: string;
+	title?: string;
+	turnCount?: number;
+	cursor?: number;
+	commands?: string[];
+	recentContextItems?: Array<{ turn: number; preview: string }>;
 }
 
 export interface AkashaTrace {
@@ -214,6 +221,70 @@ export interface Turn {
 /** Turn add result */
 export interface TurnAddResult {
 	added: boolean;
+}
+
+/** One artifact payload Takumi can promote through the daemon socket. */
+export interface ImportedArtifactInput {
+	localArtifactId: string;
+	kind: string;
+	producer: string;
+	summary: string;
+	body?: string;
+	path?: string;
+	confidence?: number;
+	createdAt: string;
+	taskId?: string;
+	laneId?: string;
+	localSessionId?: string;
+	canonicalSessionId?: string;
+	runId?: string;
+	contentHash: string;
+	metadata?: Record<string, unknown>;
+}
+
+/** Successful daemon import result for one local artifact. */
+export interface ImportedArtifactResult {
+	localArtifactId: string;
+	canonicalArtifactId: string;
+	contentHash: string;
+	promoted: true;
+}
+
+/** Daemon-owned imported artifact record. */
+export interface ImportedArtifactRecord extends ImportedArtifactResult {
+	consumer: string;
+	projectPath: string;
+	canonicalSessionId: string | null;
+	localSessionId: string | null;
+	runId: string | null;
+	kind: string;
+	producer: string;
+	summary: string;
+	body: string | null;
+	path: string | null;
+	confidence: number | null;
+	createdAt: string;
+	taskId: string | null;
+	laneId: string | null;
+	metadata: Record<string, unknown>;
+	importedAt: number;
+}
+
+/** Batch import response from the Chitragupta daemon. */
+export interface ArtifactImportBatchResult {
+	contractVersion: 1;
+	consumer: string;
+	projectPath: string;
+	imported: ImportedArtifactResult[];
+	skipped: Array<{ localArtifactId: string; reason: "duplicate" | "invalid" }>;
+	failed: Array<{ localArtifactId: string | null; error: string }>;
+}
+
+/** Imported artifact listing response from the Chitragupta daemon. */
+export interface ImportedArtifactListResult {
+	contractVersion: 1;
+	projectPath: string;
+	items: ImportedArtifactRecord[];
 }
 
 /** Max turn number result */

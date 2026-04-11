@@ -30,6 +30,8 @@ export class RenderScheduler {
 	private writeFn: (data: string) => void;
 	private lastFrameTime = 0;
 	private frameCount = 0;
+	/** When true, the back buffer must be cleared before the next render. */
+	private needsClear = true;
 
 	constructor(width: number, height: number, options?: RenderSchedulerOptions) {
 		this.screen = new Screen(width, height);
@@ -91,8 +93,12 @@ export class RenderScheduler {
 			computeLayout(this.root.yogaNode, this.screen.width, this.screen.height);
 		}
 
-		// 2. Clear back buffer
-		this.screen.clear();
+		// 2. Clear back buffer only when needed (resize/invalidation).
+		// After diff(), back ≡ front — unchanged cells naturally stay in sync.
+		if (this.needsClear) {
+			this.screen.clear();
+			this.needsClear = false;
+		}
 
 		// 3. Render component tree into back buffer
 		this.renderComponent(this.root, {
@@ -130,6 +136,7 @@ export class RenderScheduler {
 	resize(width: number, height: number): void {
 		this.screen.resize(width, height);
 		this.screen.invalidate();
+		this.needsClear = true;
 		this.scheduleRender();
 	}
 
@@ -137,6 +144,7 @@ export class RenderScheduler {
 	start(): void {
 		this.running = true;
 		this.screen.invalidate();
+		this.needsClear = true;
 		this.scheduleRender();
 	}
 

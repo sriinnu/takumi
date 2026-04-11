@@ -14,6 +14,7 @@ export type { ArtifactQuery } from "./artifact-store.js";
 // ── P-Track: Artifact Persistence ─────────────────────────────────────────────
 export { ArtifactStore } from "./artifact-store.js";
 export type {
+	ArtifactImportStatus,
 	ArtifactKind,
 	ArtifactProducer,
 	HandoffArtifactMeta,
@@ -22,7 +23,12 @@ export type {
 	ReflectionArtifactMeta,
 	ValidationArtifactMeta,
 } from "./artifact-types.js";
-export { createArtifactId, createHubArtifact, resetArtifactCounter } from "./artifact-types.js";
+export {
+	createArtifactContentHash,
+	createArtifactId,
+	createHubArtifact,
+	resetArtifactCounter,
+} from "./artifact-types.js";
 // ── P-Track: Benchmark / Eval Gate ────────────────────────────────────────────
 export type {
 	BenchmarkAssertion,
@@ -37,7 +43,24 @@ export type {
 	GateViolation,
 } from "./benchmark-types.js";
 export { computeMetrics, DEFAULT_GATE_THRESHOLDS, evaluateGate } from "./benchmark-types.js";
-export { DEFAULT_CONFIG, detectProviderFromModel, loadConfig, PROVIDER_ENDPOINTS } from "./config.js";
+export {
+	DEFAULT_CONFIG,
+	detectProviderFromModel,
+	getConfiguredPackagePaths,
+	getConfiguredPluginPaths,
+	loadConfig,
+	normalizePackageConfigEntries,
+	normalizePluginConfigEntries,
+	PROVIDER_ENDPOINTS,
+} from "./config.js";
+export type { TakumiConfigPathEntry, TakumiConfigPathKind } from "./config-locations.js";
+export {
+	findExistingTakumiConfigPath,
+	getGlobalTakumiConfigPaths,
+	getProjectTakumiConfigPaths,
+	getTakumiConfigSearchPaths,
+	inspectTakumiConfigPaths,
+} from "./config-locations.js";
 export {
 	ANSI,
 	KEY_CODES,
@@ -66,6 +89,7 @@ export type {
 	ExecFailureCategory,
 	ExecFailurePhase,
 	ExecLaneSnapshot,
+	ExecLocalFallbackSnapshot,
 	ExecPostRunPolicy,
 	ExecProtocolEvent,
 	ExecRoutingBinding,
@@ -102,8 +126,48 @@ export type {
 	ReattachResult,
 } from "./handoff-types.js";
 export { createHandoffId, resetHandoffCounter } from "./handoff-types.js";
+// ── P-Track: Hook Execution Policy ────────────────────────────────────────────
+export type { HookFailurePolicy, HookPolicyConfig, HookPolicyResult, HookWarning } from "./hook-policy.js";
+export { DEFAULT_HOOK_POLICY, executeWithHookPolicy, resolveHookPolicy } from "./hook-policy.js";
+export type {
+	FormatIdeStatusOptions,
+	IdeLauncherAvailability,
+	IdeLauncherDefinition,
+	IdeLauncherId,
+	OpenInIdeOptions,
+	OpenInIdeResult,
+} from "./ide-launch.js";
+export {
+	detectAvailableIdeLaunchers,
+	findIdeLauncher,
+	formatIdeStatus,
+	listIdeLauncherIds,
+	listIdeLaunchers,
+	openInIde,
+	resolveConfiguredIdeSelector,
+	resolveIdeTargetPath,
+	selectIdeLauncher,
+} from "./ide-launch.js";
 export type { Logger } from "./logger.js";
 export { createLogger, setLogLevel } from "./logger.js";
+// ── Track 8: Mission State Model ──────────────────────────────────────────────
+export type {
+	MissionAuthority,
+	MissionConstraints,
+	MissionPhase,
+	MissionState,
+	MissionStopReason,
+	MissionTransition,
+	TransitionResult,
+} from "./mission-state.js";
+export {
+	createMission,
+	isMissionDegraded,
+	isMissionTerminal,
+	isTransitionAllowed,
+	promoteArtifact,
+	transitionMission,
+} from "./mission-state.js";
 // ── P-Track: Observability ────────────────────────────────────────────────────
 export type {
 	AlertKind,
@@ -141,6 +205,22 @@ export {
 	resolveCacheDir,
 	resolveConfigDir,
 } from "./platform-detect.js";
+export type {
+	EnsuredTakumiProjectInstructionsFile,
+	ProjectInstructionPathEntry,
+	ProjectInstructionPathKind,
+	TakumiProjectInstructionsInspection,
+} from "./project-instructions-file.js";
+export {
+	buildTakumiProjectInstructionsTemplate,
+	ensureTakumiProjectInstructionsFile,
+	formatTakumiProjectInstructionsFile,
+	formatTakumiProjectInstructionsInspection,
+	getTakumiProjectInstructionsPath,
+	inspectTakumiProjectInstructions,
+	PROJECT_INSTRUCTION_FILES,
+	tryRevealTakumiProjectInstructionsFile,
+} from "./project-instructions-file.js";
 export {
 	collectConfiguredProviders,
 	loadMergedEnv,
@@ -150,6 +230,25 @@ export {
 	resolveProviderCredential,
 	resolveProviderEndpoint,
 } from "./provider-env.js";
+export type {
+	ContinuityAttachedPeer,
+	ContinuityAttachGrant,
+	ContinuityAuditEvent,
+	ContinuityAuditEventKind,
+	ContinuityCompanionRole,
+	ContinuityExecutorLease,
+	ContinuityExecutorLeaseState,
+	ContinuityLeaseBlocker,
+	ContinuityLeaseBlockerKind,
+	ContinuityPeerKind,
+	ContinuityPeerRole,
+	ContinuityRuntimeRole,
+	ContinuityWorkspaceFingerprint,
+	ContinuityWorkspaceFingerprintTier,
+	CreateContinuityAttachGrantInput,
+	SessionContinuityState,
+} from "./session-continuity.js";
+export { createContinuityAttachGrant, generateContinuityNonce } from "./session-continuity.js";
 export type {
 	BranchResult,
 	FlatTreeEntry,
@@ -174,6 +273,14 @@ export {
 } from "./session-tree.js";
 export type {
 	AutoSaver,
+	SessionArtifactPromotionState,
+	SessionControlPlaneDegradedContext,
+	SessionControlPlaneDegradedSourceKind,
+	SessionControlPlaneDegradedSourceState,
+	SessionControlPlaneLanePolicyState,
+	SessionControlPlaneLaneState,
+	SessionControlPlaneState,
+	SessionControlPlaneSyncState,
 	SessionData,
 	SessionJsonlMessageRecord,
 	SessionJsonlMetaRecord,
@@ -191,7 +298,32 @@ export {
 	loadSession,
 	saveSession,
 } from "./sessions.js";
-export type { SideAgentConfig, SideAgentEvent, SideAgentInfo, SideAgentState } from "./side-agent-types.js";
+export type {
+	SideAgentConfig,
+	SideAgentDispatchKind,
+	SideAgentEvent,
+	SideAgentInfo,
+	SideAgentState,
+} from "./side-agent-types.js";
+// ── Track 7: Task Graph ───────────────────────────────────────────────────────
+export type {
+	GraphValidation,
+	TaskGraph,
+	TaskNode,
+	TaskNodeKind,
+	TaskNodeStatus,
+} from "./task-graph.js";
+export {
+	addNode,
+	createTaskGraph,
+	createTaskNode,
+	nodesByStatus,
+	readyNodes,
+	removeTaskNode,
+	topologicalOrder,
+	updateNodeStatus,
+	validateGraph,
+} from "./task-graph.js";
 export type {
 	AgentDone,
 	AgentError,
@@ -210,6 +342,8 @@ export type {
 	KeyEvent,
 	Message,
 	MouseEvent,
+	NormalizedPackageConfigEntry,
+	NormalizedPluginConfigEntry,
 	PackageConfig,
 	PermissionDecision,
 	PermissionEngine,
@@ -221,6 +355,7 @@ export type {
 	Size,
 	StatusBarConfig,
 	TakumiConfig,
+	TakumiModelPolicy,
 	TextBlock,
 	ThemeConfig,
 	ThinkingBlock,
@@ -231,4 +366,19 @@ export type {
 	ToolUseBlock,
 	Usage,
 } from "./types.js";
+export type {
+	EnsuredTakumiConfigFile,
+	TakumiConfigFileTarget,
+	TakumiConfigInspection,
+	TakumiConfigTemplate,
+} from "./user-config-file.js";
+export {
+	buildTakumiConfigTemplate,
+	ensureTakumiConfigFile,
+	formatTakumiConfigFile,
+	formatTakumiConfigInspection,
+	getTakumiConfigPath,
+	inspectTakumiUserConfig,
+	tryRevealTakumiConfigFile,
+} from "./user-config-file.js";
 export { normalisePath, resolveExeName, winToWslPath, wslToWinPath } from "./win-paths.js";

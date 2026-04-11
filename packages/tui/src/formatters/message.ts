@@ -12,7 +12,7 @@ import { bold, dim, fg, getTheme, renderMarkdown, reset } from "@takumi/render";
  */
 export function formatUserMessage(message: Message): string {
 	const lines: string[] = [];
-	lines.push(`${bold(`${fg(14)}You${reset()}`)}`);
+	lines.push(`${bold(`${fg(14)}● You${reset()}`)}${dim(`${fg(8)}  •  request${reset()}`)}`);
 
 	for (const block of message.content) {
 		if (block.type === "text") {
@@ -28,7 +28,7 @@ export function formatUserMessage(message: Message): string {
  */
 export function formatAssistantMessage(message: Message): string {
 	const lines: string[] = [];
-	lines.push(`${bold(`${fg(12)}Takumi${reset()}`)}`);
+	lines.push(`${bold(`${fg(12)}◆ Takumi${reset()}`)}${dim(`${fg(8)}  •  ${formatAssistantMeta(message)}${reset()}`)}`);
 
 	for (const block of message.content) {
 		switch (block.type) {
@@ -67,4 +67,9 @@ export function formatAssistantMessage(message: Message): string {
 export function formatMessage(message: Message): string {
 	if (message.role === "user") return formatUserMessage(message);
 	return formatAssistantMessage(message);
+}
+
+function formatAssistantMeta(message: Message): string {
+	if (!message.usage) return "response";
+	return `${message.usage.inputTokens} in • ${message.usage.outputTokens} out`;
 }

@@ -2,8 +2,8 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { registerImageCommands } from "../src/app-commands-image.js";
-import { SlashCommandRegistry } from "../src/commands.js";
+import { registerImageCommands } from "../src/commands/app-commands-image.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
 import { AppState } from "../src/state.js";
 
 function createContext() {

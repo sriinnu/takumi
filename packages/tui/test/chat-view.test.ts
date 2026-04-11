@@ -1,6 +1,6 @@
 import type { TakumiConfig } from "@takumi/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SlashCommandRegistry } from "../src/commands.js";
+import { SlashCommandRegistry } from "../src/commands/commands.js";
 import { AppState } from "../src/state.js";
 import { ChatView } from "../src/views/chat.js";
 
@@ -37,6 +37,7 @@ describe("ChatView", () => {
 		expect(state.turnCount.value).toBe(1);
 		expect(state.messages.value).toHaveLength(1);
 		expect(state.messages.value[0]?.role).toBe("user");
+		expect(state.messages.value[0]?.sessionTurn).toBe(true);
 		expect(state.messages.value[0]?.content).toEqual([{ type: "text", text: "hello takumi" }]);
 	});
 

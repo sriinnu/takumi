@@ -30,6 +30,66 @@ describe("ExperienceMemory", () => {
 		expect(prompt).toContain("src/app.ts");
 	});
 
+	it("finds relevant archives by file, tool, and summary overlap", () => {
+		const memory = new ExperienceMemory();
+		memory.archiveCompaction(
+			"Updated src/config.ts after tracing the env loader.",
+			[
+				{
+					role: "assistant",
+					content: [{ type: "tool_use", id: "cfg-1", name: "write_file", input: { path: "src/config.ts" } }],
+				},
+			],
+			[],
+		);
+		memory.archiveCompaction(
+			"Reviewed README wording for docs cleanup.",
+			[
+				{
+					role: "assistant",
+					content: [{ type: "tool_use", id: "docs-1", name: "read_file", input: { path: "README.md" } }],
+				},
+			],
+			[],
+		);
+
+		const recalled = memory.findRelevantArchives("fix the config loader in src/config.ts");
+
+		expect(recalled[0]?.archive.summary).toContain("src/config.ts");
+		expect(recalled[0]?.reason).toContain("src/config.ts");
+		expect(recalled.some((entry) => entry.archive.summary.includes("README"))).toBe(false);
+	});
+
+	it("builds a selective rehydration section instead of dumping unrelated archives", () => {
+		const memory = new ExperienceMemory();
+		memory.archiveCompaction(
+			"Investigated flaky tests in src/cache.ts.",
+			[
+				{
+					role: "assistant",
+					content: [{ type: "tool_use", id: "cache-1", name: "grep", input: { path: "src/cache.ts" } }],
+				},
+			],
+			[],
+		);
+		memory.archiveCompaction(
+			"Edited docs/reference.md to explain the CLI.",
+			[
+				{
+					role: "assistant",
+					content: [{ type: "tool_use", id: "docs-1", name: "write_file", input: { path: "docs/reference.md" } }],
+				},
+			],
+			[],
+		);
+
+		const prompt = memory.buildRehydrationPromptSection("debug cache invalidation in src/cache.ts");
+
+		expect(prompt).toContain("Relevant Archived Experience");
+		expect(prompt).toContain("src/cache.ts");
+		expect(prompt).not.toContain("docs/reference.md");
+	});
+
 	it("ranks tools using query overlap and recent runtime state", () => {
 		const memory = new ExperienceMemory();
 		memory.recordToolUse("read_file", { path: "README.md" }, { output: "docs", isError: false });

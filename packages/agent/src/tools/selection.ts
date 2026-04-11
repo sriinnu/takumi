@@ -15,6 +15,18 @@ export interface RankedTool {
 
 const DEFAULT_ALWAYS_INCLUDE = ["ask"];
 
+/** Cache tokenized tool descriptions — tool definitions don't change within a session. */
+const toolTokenCache = new WeakMap<ToolDefinition, Set<string>>();
+
+function getToolTokens(tool: ToolDefinition): Set<string> {
+	let tokens = toolTokenCache.get(tool);
+	if (!tokens) {
+		tokens = tokenize(`${tool.name} ${tool.description} ${tool.category}`);
+		toolTokenCache.set(tool, tokens);
+	}
+	return tokens;
+}
+
 export function rankToolDefinitions(
 	tools: ToolDefinition[],
 	query: string,
@@ -35,7 +47,7 @@ export function rankToolDefinitions(
 				reasons.push(runtime.reason);
 			}
 
-			const searchable = tokenize(`${tool.name} ${tool.description} ${tool.category}`);
+			const searchable = getToolTokens(tool);
 			for (const token of searchable) {
 				if (queryTokens.has(token)) {
 					score += 3;

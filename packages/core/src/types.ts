@@ -175,6 +175,8 @@ export interface Message {
 	content: ContentBlock[];
 	timestamp: number;
 	usage?: Usage;
+	/** True when this message is part of the conversational turn history. */
+	sessionTurn?: boolean;
 }
 
 export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock | ImageBlock;
@@ -241,14 +243,36 @@ export interface StatusBarConfig {
 }
 
 export interface PluginConfig<TOptions = Record<string, unknown>> {
-	name: string;
+	/** Canonical filesystem path for an explicitly configured extension entry or directory. */
+	path?: string;
+	/** @deprecated Use `path` instead. Legacy input alias retained for config compatibility. */
+	name?: string;
 	options?: TOptions;
 }
 
 export interface PackageConfig<TOptions = Record<string, unknown>> {
-	name: string;
+	/** Canonical filesystem path for an explicitly configured package root or bundle directory. */
+	path?: string;
+	/** @deprecated Use `path` instead. Legacy input alias retained for config compatibility. */
+	name?: string;
 	options?: TOptions;
 }
+
+/** Normalized plugin config entry returned by config loaders/helpers. */
+export type NormalizedPluginConfigEntry<TOptions = Record<string, unknown>> = Omit<
+	PluginConfig<TOptions>,
+	"name" | "path"
+> & {
+	path: string;
+};
+
+/** Normalized package config entry returned by config loaders/helpers. */
+export type NormalizedPackageConfigEntry<TOptions = Record<string, unknown>> = Omit<
+	PackageConfig<TOptions>,
+	"name" | "path"
+> & {
+	path: string;
+};
 
 export interface ThemeConfig {
 	name: string;
@@ -271,6 +295,21 @@ export interface ThemeConfig {
 	 * being merged key-by-key with the base theme.
 	 */
 	ansi?: Record<string, number>;
+}
+
+/**
+ * Startup-only model-intent policy resolved through Kosha.
+ *
+ * `allow` constrains which model aliases/IDs Takumi may bind locally.
+ * `prefer` reorders startup selection before falling back to the requested
+ * `model` or remaining allowed entries.
+ */
+export interface TakumiModelPolicy {
+	/** Allowed startup model aliases or canonical model IDs. */
+	allow?: string[];
+
+	/** Preferred startup model aliases or canonical model IDs. */
+	prefer?: string[];
 }
 
 export interface TakumiConfig {
@@ -301,6 +340,9 @@ export interface TakumiConfig {
 	/** Provider name: anthropic, openai, gemini, groq, ollama, openrouter, deepseek, mistral, together, zai, custom */
 	provider: string;
 
+	/** Optional startup-only model-intent policy resolved through Kosha. */
+	modelPolicy?: TakumiModelPolicy;
+
 	/** Custom API endpoint (for openai-compat providers, ollama, etc.) */
 	endpoint: string;
 
@@ -325,10 +367,10 @@ export interface TakumiConfig {
 	/** Status bar configuration */
 	statusBar?: StatusBarConfig;
 
-	/** Plugins configuration */
+	/** Plugins configuration. `loadConfig()` canonicalizes legacy aliases to path-only entries. */
 	plugins?: PluginConfig[];
 
-	/** Takumi package configuration */
+	/** Takumi package configuration. `loadConfig()` canonicalizes legacy aliases to path-only entries. */
 	packages?: PackageConfig[];
 
 	/** Maximum total spend in USD before the session is halted. */

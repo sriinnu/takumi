@@ -16,11 +16,14 @@ export function measureText(text: string): number {
 /**
  * Segment a string into grapheme clusters using Intl.Segmenter.
  * Falls back to Array.from for environments without Segmenter.
+ * Caches the Segmenter instance to avoid re-construction per call.
  */
+let cachedSegmenter: Intl.Segmenter | null = null;
+
 export function segmentGraphemes(text: string): string[] {
 	if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
-		const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-		return [...segmenter.segment(text)].map((s) => s.segment);
+		cachedSegmenter ??= new Intl.Segmenter(undefined, { granularity: "grapheme" });
+		return [...cachedSegmenter.segment(text)].map((s) => s.segment);
 	}
 	// Fallback: Array.from handles most surrogate pairs
 	return Array.from(text);

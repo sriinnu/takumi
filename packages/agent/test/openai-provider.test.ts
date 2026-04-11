@@ -969,6 +969,30 @@ describe("OpenAIProvider", () => {
 		vi.unstubAllGlobals();
 	});
 
+	it("omits Authorization for keyless local endpoints", async () => {
+		let capturedHeaders: any;
+		let capturedUrl = "";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: string, init: RequestInit) => {
+				capturedUrl = url;
+				capturedHeaders = init.headers;
+				const sse = `${chunk({ content: "ok" })}data: [DONE]\n\n`;
+				return mockResponse(sse);
+			}),
+		);
+
+		const provider = createProvider({
+			apiKey: "",
+			endpoint: "http://127.0.0.1:11434/v1/chat/completions",
+		});
+		await collectProviderEvents(provider, [{ role: "user", content: "Hi" }], "sys");
+
+		expect(capturedUrl).toBe("http://127.0.0.1:11434/v1/chat/completions");
+		expect(capturedHeaders.Authorization).toBeUndefined();
+		vi.unstubAllGlobals();
+	});
+
 	it("includes tools in request when provided", async () => {
 		let capturedBody: any;
 		vi.stubGlobal(

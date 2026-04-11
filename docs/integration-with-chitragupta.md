@@ -26,10 +26,22 @@ I want this to be easy to scan and easy to turn into implementation work.
   - `requestId`
   - `traceId`
 - `[have]` I now have the same canonical bootstrap envelope exposed on daemon RPC, MCP, and HTTP attachment surfaces.
-- `[have]` The bootstrap and attachment envelopes now carry daemon-owned execution identity:
+- `[have]` Bootstrap consumer hints now fail closed across:
+  - top-level `consumer`
+  - `session.consumer`
+  - `route.consumer`
+- `[have]` The bootstrap and attachment envelopes now carry daemon-canonicalized execution identity:
   - `taskId`
   - `laneId`
+  - if Takumi supplies either id, Chitragupta preserves it
+  - if either id is absent, Chitragupta mints only the missing canonical id
+- `[have]` HTTP and MCP attachment surfaces now accept the same execution identity inputs as daemon RPC bootstrap:
+  - top-level `taskId?`
+  - top-level `laneId?`
+  - `execution.task.id?`
+  - `execution.lane.id?`
 - `[have]` Those execution identities are now preserved end-to-end by the Takumi bridge, coding router, and MCP coding surface when the daemon is reachable, instead of being synthesized independently by compatibility bridges.
+- `[rule]` If Takumi sends both top-level and nested execution ids, they must match. Chitragupta now fail-closes bootstrap when they disagree.
 
 ## 2. Transport Order
 
@@ -39,12 +51,12 @@ I want this to be easy to scan and easy to turn into implementation work.
   3. direct local/provider execution only as explicit degraded fallback
 - `[rule]` MCP is a transport fallback, not a different authority model.
 - `[rule]` Direct local execution is non-canonical and must be marked degraded.
-- `[have]` I now have an explicit daemon-side error taxonomy for:
-  - unreachable
-  - reachable but degraded
-  - unauthorized
-  - invalid route metadata
-  - project access denied
+- `[have]` I now have an explicit transport/error split:
+  - transport/availability states such as `unreachable` or `reachable but degraded` come from bridge and health/status surfaces
+  - typed daemon RPC failures are the daemon app/error codes such as:
+    - `AUTH_FAILED`
+    - `INVALID_ROUTE_METADATA`
+    - `PROJECT_ACCESS_DENIED`
 - `[have]` I now have explicit capability freshness semantics on `bridge.info`, `bridge.capabilities`, and `bridge.bootstrap.capabilities`:
   - `snapshotAt`
   - `expiresAt: null`
@@ -52,7 +64,35 @@ I want this to be easy to scan and easy to turn into implementation work.
   - `authoritativeSource: "daemon"`
   - `stale: false`
   - `staleReason: null`
-- `[rule]` Takumi must treat capability truth as request-scoped daemon authority and refresh it on the next authoritative bootstrap or attach instead of reusing stale local snapshots across reconnects.
+- `[rule]` Takumi must treat capability truth as request-scoped
+- `[have]` I now have one canonical `routingDecision` envelope reused across:
+  - `route.resolve`
+  - `bridge.bootstrap`
+  - `models.recommend`
+- `[have]` That envelope now carries:
+  - `authority`
+  - `source`
+  - `routeClass`
+  - `capability`
+  - `selectedCapabilityId`
+  - `provider`
+  - `model`
+  - `requestedBudget`
+  - `effectiveBudget`
+  - `degraded`
+  - `reasonCode`
+  - `reason`
+  - `policyTrace`
+  - `fallbackChain`
+  - `discoverableOnly`
+  - `requestId`
+  - `traceId`
+  - `snapshotAt`
+  - `expiresAt`
+  - `cacheScope`
+- `[rule]` Takumi must branch on `routingDecision.reasonCode`, not prose `reason`.
+- `[rule]` Takumi must treat `routingDecision` as request-scoped and non-reusable across reconnects or fresh bootstraps.
+ daemon authority and refresh it on the next authoritative bootstrap or attach instead of reusing stale local snapshots across reconnects.
 - `[rule]` If daemon authority is unavailable, Takumi must fail closed on `bridge.info` / `bridge.capabilities` truth instead of inventing a local capability registry.
 
 ## 3. Bootstrap
@@ -67,13 +107,17 @@ I want this to be easy to scan and easy to turn into implementation work.
 - `[have]` `bridge.bootstrap` may also open or collaborate a session and resolve a route in the same authoritative response.
 - `[rule]` Interactive, headless, desktop, and future device clients should consume the same bootstrap truth.
 - `[have]` I now have one canonical bootstrap response shape on daemon RPC via `bridge.bootstrap`:
+  - `contractVersion`
+  - `protocol`
   - `connected`
   - `degraded`
   - `transport`
   - `authority`
+  - `auth`
   - `binding`
   - `session`
   - `route`
+  - `routingDecision`
   - `warnings`
   - `requestId`
   - `traceId`
@@ -104,19 +148,42 @@ I want this to be easy to scan and easy to turn into implementation work.
 - `[rule]` Takumi should call `session.collaborate` only for explicit shared-thread continuity.
 - `[rule]` Takumi must always pass a real `project`.
 - `[rule]` Takumi must preserve the returned canonical `sessionId`.
-- `[need]` I need exact session concurrency semantics:
-  - can multiple surfaces write the same session concurrently
-  - is attach optimistic or exclusive
-  - is there active-lane ownership
-  - is there presence or heartbeat
-  - how should metadata conflicts resolve
+- `[have]` Session attachment semantics are now explicit:
+  - attachment is optimistic, not exclusive
+  - multiple surfaces may attach to the same `sessionId`
+  - canonical writes are serialized per session, but attach is not a lock
+  - there is no active-lane ownership or presence heartbeat in the current contract
+  - metadata conflict resolution is runtime queue order / last accepted write, not merge semantics
 - `[have]` `session.open` and `session.collaborate` now support replay-safe mutation identity via:
   - `requestId`
   - `idempotencyKey`
+- `[have]` `session.create`, `session.delete`, and `session.meta.update` now support the same replay-safe mutation identity via:
+  - `requestId`
+  - `idempotencyKey`
+- `[have]` `session.create`, `session.delete`, and `session.meta.update` now fail closed when the same replay key is reused for a different durable payload or delete identity.
+- `[have]` External daemon RPC no longer treats `authScopeSubject` as a caller-owned partition key:
+  - Chitragupta derives it from the bound socket identity
+  - `daemon-user:<tenant>:<principalUserId>` when the socket proves a bound end-user principal
+  - `daemon-auth:<tenant>:<keyId>` when auth is present but no principal user is bound
+  - `daemon-client:<clientId>` when the socket is external but no auth principal is bound
+  - only trusted internal bridge calls may carry an explicit end-user auth scope through to the daemon
+- `[rule]` Takumi must not try to mint or spoof `authScopeSubject` on direct daemon RPC session mutations.
+- `[have]` External daemon RPC session creation is now budgeted by Chitragupta itself:
+  - the daemon enforces a per-actor, per-project mutation budget on `session.create`
+  - that same budget applies to `session.open` / `session.collaborate` only when they would create a new session
+  - idempotent replay and pure existing-session loads do not consume the create budget
+  - rate-limited calls return typed `RATE_LIMITED` failure data with `retryAfterMs`
 - `[have]` Retry-safe return behavior now includes:
   - `created`
   - `idempotent?`
   - `idempotencyKey?`
+  - `requestId?`
+- `[have]` Keyed `session.delete` now returns:
+  - `deleted`
+  - `existed`
+  - `idempotent?`
+  - `idempotencyKey?`
+  - `requestId?`
 - `[have]` HTTP attachment surfaces now accept the same session-open fields Takumi needs:
   - `project` or compatibility `projectPath`
   - `title?`
@@ -148,7 +215,12 @@ I want this to be easy to scan and easy to turn into implementation work.
   - with explicit `requestId` or `idempotencyKey` and a provided `turnNumber`, Chitragupta deduplicates an exact same-number durable turn
   - with explicit `requestId` or `idempotencyKey` and no `turnNumber`, Chitragupta deduplicates only when there is exactly one durable equivalent canonical turn
   - ambiguous keyed replay fails closed
-- `[need]` I still need the same replay-safe identity on the remaining session mutation surfaces beyond `session.open`, `session.collaborate`, `turn.add`, and `session.turn`.
+  - duplicate comparison canonicalizes structured `contentParts` / `toolCalls`, so nested object key order alone does not create a second durable turn
+  - if a keyed retry resolves through an already-durable explicit `turnId`, Chitragupta backfills the keyed receipt so later retries stay anchored to the same turn
+  - omitted `turnNumber` can use a verified cached-tail fast path on the common append/retry case, but only when canonical markdown mtime and indexed max-turn still agree
+  - if the canonical markdown source changes while Chitragupta is reading it or before replace, `turn.add` / `session.turn` fail closed and Takumi must reload canonical session truth before retrying
+- `[need]` The remaining replay-safe identity gap is now narrower:
+  - any future session mutation surfaces that still mutate state without caller-supplied idempotency
 
 ## 5. Turns And History
 
@@ -160,6 +232,7 @@ I want this to be easy to scan and easy to turn into implementation work.
   - `turn.since`
   - `turn.max_number`
 - `[have]` normalized turn fields already include:
+  - `turnId`
   - `turnNumber`
   - `role`
   - `content`
@@ -173,7 +246,10 @@ I want this to be easy to scan and easy to turn into implementation work.
   - ordering is `turn_number_asc`
   - pagination is `none`
   - `turn.list` and `turn.since` return a `cursor` block with `kind`, `orderedBy`, `pagination`, `inclusive`, `requestedSinceTurnNumber`, `nextSinceTurnNumber`, `maxTurn`, and `hasMore`
+  - `turn.since` preserves stable `turnId` values even when Chitragupta falls back to markdown truth
   - `turn.max_number` returns canonical durable max-turn truth and the same turn-number cursor metadata
+  - when canonical markdown is missing, `turn.max_number` first attempts indexed rebuild before returning a durable max
+  - when canonical markdown is corrupt or missing and not rebuildable, `turn.max_number` fails closed instead of trusting stale indexed state
 - `[rule]` Takumi should use `turn.max_number` then `turn.since`, and treat `hasMore=false` with `pagination="none"` as authoritative.
 - `[need]` I still need explicit delete/import semantics if Chitragupta later adds turn-history rewriting surfaces.
 - `[need]` I need a contract for tool outcome persistence:
@@ -209,12 +285,13 @@ I want this to be easy to scan and easy to turn into implementation work.
 - `[rule]` Takumi should not stuff full conversation history into memory scopes.
 - `[rule]` Project-scoped writes must fail closed when project access cannot be proven.
 - `[have]` Current memory write semantics are explicit:
-  - `memory.append` is serialized per scope, defaults `dedupe=true`, uses heuristic normalized-content dedupe, may drop low-signal entries, truncates oldest entries to stay within the `500_000` byte budget, and requires a bound principal identity for user-scoped writes
-  - `memory.update` is serialized per scope, whole-scope overwrite, last-write-wins, and requires a bound principal identity for user-scoped writes
-  - `memory.delete` is idempotent, returns success even when the scope did not exist before deletion, and requires a bound principal identity for user-scoped deletes
+  - `memory.append` is serialized per scope, defaults `dedupe=true`, uses heuristic normalized-content dedupe, may drop low-signal entries, truncates oldest entries to stay within the `500_000` byte budget, requires a bound principal identity for user-scoped writes, and is daemon-rate-limited per actor and scope on external RPC
+  - `memory.update` is serialized per scope, whole-scope overwrite, last-write-wins, requires a bound principal identity for user-scoped writes, and is daemon-rate-limited per actor and scope on external RPC
+  - `memory.delete` is idempotent, returns success even when the scope did not exist before deletion, requires a bound principal identity for user-scoped deletes, and is daemon-rate-limited per actor and scope on external RPC
   - there is still no compare-and-swap or revision precondition; queue order is the conflict rule
 - `[have]` Recall semantics are now explicit:
   - `memory.search` / `memory.recall` are turn-oriented recall/search surfaces
+  - `memory.recall` now follows the same project-scope rule as `memory.unified_recall`: on a multi-project socket, Takumi must send explicit `project`
   - `memory.file_search` is raw memory-file search
   - `memory.unified_recall` is cross-layer recall across sessions, memory, day files, Akasha, and related stores
   - `context.load` is prompt-time assembly, not a raw recall listing surface
@@ -235,16 +312,22 @@ I want this to be easy to scan and easy to turn into implementation work.
 - `[rule]` If Takumi wants hard pinning, Takumi should call `models.status` and then pass explicit values.
 - `[rule]` If an authoritative route envelope is returned, Takumi must not silently substitute a different provider or model.
 - `[have]` I now have one authoritative route envelope shape from `route.resolve` / `bridge.bootstrap.route.resolved`:
-  - `authority`
-  - `routeClass`
-  - `capability`
-  - `selectedCapabilityId`
-  - `provider`
-  - `model`
-  - `degraded`
-  - `reason`
-  - `expiresAt`
+  - `contractVersion`
+  - `resolved.authority`
+  - `resolved.routeClass`
+  - `resolved.capability`
+  - `resolved.selectedCapabilityId`
+  - `resolved.provider`
+  - `resolved.model`
+  - `resolved.degraded`
+  - `resolved.reasonCode`
+  - `resolved.reason`
+  - `resolved.snapshotAt`
+  - `resolved.expiresAt`
+  - `resolved.cacheScope`
+  - `routingDecision`
 - `[rule]` `laneId` is not part of the route envelope. Takumi must read execution identity from `bridge.bootstrap`.
+- `[rule]` Takumi must branch on `resolved.reasonCode` for stable route handling and treat prose `resolved.reason` as explanation text only.
 - `[have]` I now have explicit freshness semantics for provider and model inventory:
   - model surfaces expose `freshness.snapshotAt`, `freshness.expiresAt`, `freshness.cacheScope`, `freshness.authoritativeSource`, `freshness.stale`, and `freshness.staleReason`
   - daemon-owned model responses are request-scoped snapshots
@@ -257,11 +340,14 @@ I want this to be easy to scan and easy to turn into implementation work.
 - `[have]` Primary daemon chat methods are:
   - `chat.complete`
   - `chat.stream`
+  - `chat.cancel`
 - `[rule]` Preferred flow is:
   1. resolve canonical session
   2. choose route or pin explicitly
   3. call chat surface
   4. let daemon chat own canonical persistence for that exchange
+- `[rule]` Takumi must provide `projectPath` when starting a new chat session.
+- `[rule]` Takumi may omit `projectPath` only when it is resuming an existing canonical session through `sessionId`.
 - `[have]` I now have an exact daemon `chat.stream` event contract:
   - `start`
   - `assistant_delta` via `type: text_delta`
@@ -271,7 +357,15 @@ I want this to be easy to scan and easy to turn into implementation work.
   - `completed` via `type: done`
   - `error`
 - `[rule]` daemon chat does not execute tools in-stream, so this surface does not emit `tool_result` events.
-- `[need]` I still need a first-class cancel or abort acknowledgement if daemon RPC grows cancellable stream requests.
+- `[rule]` if a stream already emitted notifications and then fails, Takumi must treat the RPC as failed; Chitragupta does not fabricate a final success envelope after a mid-stream provider failure.
+- `[have]` I now have a first-class cancel path:
+  - `chat.cancel`
+  - explicit acknowledgement by `streamId` or `requestId`
+  - terminal `aborted` stream event instead of forcing Takumi to infer cancel from a transport error
+- `[have]` daemon chat request replay is now execution-safe:
+  - one owner-scoped `requestId` maps to one live daemon chat execution
+  - duplicate `chat.complete` / `chat.stream` retries reuse the in-flight or completed result instead of re-running the model
+  - reusing one owner-scoped `requestId` for a different normalized chat payload fails closed with `request_id_payload_mismatch`
 - `[have]` Streamed events now carry:
   - `sessionId`
   - `requestId`
@@ -279,10 +373,26 @@ I want this to be easy to scan and easy to turn into implementation work.
   - route metadata
   - final `userTurnNumber`
   - final `assistantTurnNumber`
+  - final `persistenceDegraded`
+  - final `persistenceWarnings`
+  - final `semanticDegraded`
+  - final `semanticWarnings`
+  - final `semanticFailedStages`
+- `[have]` Chat write freshness stays degraded if either persisted turn misses semantic refresh:
+  - a later assistant-turn semantic success does not clear an earlier user-turn semantic failure
 - `[have]` I now have a rule for `history` input:
   - if `sessionId` is present, Chitragupta uses canonical session turns
   - Takumi must not also send `history` in that case
   - Takumi may send `history` only for a new or ad-hoc chat request without canonical session continuity
+- `[have]` Serve/API-instance surfaces guard the live user-message ingress path before Lucy/model execution:
+  - daemon `chat.complete` / `chat.stream` now follow the same ingress contract
+  - they sanitize secret and opaque payloads first
+  - they detect obvious prompt-injection text that tries to override higher-priority instructions, reveal hidden prompts, or extract secrets/tools
+  - when they flag that text, they prepend a deterministic untrusted-content safety notice to the effective prompt
+- `[rule]` Takumi must treat the canonical user turn and the effective guarded prompt as different truths:
+  - the canonical turn is the sanitized user-authored text
+  - the effective prompt may include Chitragupta-owned safety or guidance preamble
+  - Takumi must not rewrite the canonical turn to include that Chitragupta-owned preamble
 
 ## 9. Skills, Connectors, And UI Extensions
 
@@ -292,6 +402,12 @@ I want this to be easy to scan and easy to turn into implementation work.
   - vidhi
   - Tap connectors
   - UI extensions and widgets
+  - external MCP servers
+  - executor-agent adapters
+- `[have]` Current Tap call contract is strict:
+  - omitted `tap_call.input` is treated as `{}`
+  - present `tap_call.input` must be a JSON object
+  - malformed present values are rejected instead of coerced
 - `[rule]` If Chitragupta is reachable, Takumi should not create a second registry for these.
 - `[need]` I need a stronger operational contract for UI extensions:
   - prompt IDs
@@ -510,11 +626,10 @@ I want this to be easy to scan and easy to turn into implementation work.
 
 ## 14.1 Additional Contract Gaps I Should Not Miss
 
-- `[need]` I need explicit protocol and schema versioning:
-  - bootstrap contract version
+- `[need]` I need explicit protocol and schema versioning beyond the live bootstrap protocol descriptor:
   - stream event schema version
   - attachment and prompt schema version
-  - minimum supported version and compatibility failure shape
+  - cross-surface minimum supported version negotiation beyond bootstrap
 - `[rule]` Takumi must fail closed on incompatible control-plane schema versions instead of guessing field meanings.
 - `[need]` I need server-driven change notification semantics for dynamic registries:
   - skills changed
@@ -628,6 +743,7 @@ I want this to be easy to scan and easy to turn into implementation work.
 - `[have]` precise cursor and pagination contract for `turn.list`, `turn.since`, and `turn.max_number`
 - `[need]` replay-safe mutation parity on the remaining session mutation surfaces
 - `[have]` full daemon `chat.stream` event schema
+- `[have]` first-class `chat.cancel` acknowledgement and aborted terminal stream semantics
 - `[need]` degraded import and reconcile API
 - `[have]` daemon auth and access failure taxonomy on the RPC surface
 - `[need]` the same taxonomy normalized across MCP and HTTP attachment surfaces
@@ -637,7 +753,7 @@ I want this to be easy to scan and easy to turn into implementation work.
 - `[need]` canonical attach-state snapshot for multi-client terminal surfaces
 - `[need]` low-cost latency and performance observability fields beyond bootstrap
 - `[need]` canonical tracing envelope across every surface, not only daemon bootstrap
-- `[need]` schema version negotiation and compatibility failure semantics
+- `[need]` schema version negotiation and compatibility failure semantics beyond daemon bootstrap
 - `[need]` dynamic-registry change notifications and watch recovery rules
 - `[need]` approval lifetime and resume semantics
 - `[need]` artifact, attachment, and truncation contracts
@@ -650,6 +766,6 @@ I want this to be easy to scan and easy to turn into implementation work.
 - `[have]` I already have the right transport priority.
 - `[have]` I now have a canonical daemon bootstrap envelope and typed project and route failure classes.
 - `[have]` I already have the right separation between sessions, turns, memory, routes, and degraded fallback.
-- `[need]` I still need remaining session-mutation parity, cancel-ack, and fallback-reconcile semantics before Takumi can implement this cleanly end to end.
+- `[need]` I still need remaining session-mutation parity and fallback-reconcile semantics before Takumi can implement this cleanly end to end.
 - `[rule]` If Chitragupta is reachable, Takumi integrates with it.
 - `[lucy]` If Chitragupta is not reachable, Lucy keeps Takumi working locally without pretending to be canonical.

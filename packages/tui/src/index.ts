@@ -1,18 +1,19 @@
 // App
 
 // Agent runner
-export { AgentRunner } from "./agent-runner.js";
+export { AgentRunner } from "./agent/agent-runner.js";
+export type { CodingPhase, CodingTask } from "./agent/coding-agent.js";
+// Coding agent
+export { CodingAgent } from "./agent/coding-agent.js";
 export type { TakumiAppOptions } from "./app.js";
 export { formatMessagesAsMarkdown, parseMouseEvent, TakumiApp } from "./app.js";
-export type { AutocycleAgentOptions } from "./autocycle-agent.js";
+export { applyStartupControlPlaneState, formatStartupSummary, mapBootstrapLanesToSessionState } from "./app-startup.js";
+export type { AutocycleAgentOptions } from "./autocycle/autocycle-agent.js";
 // Autocycle agent
-export { AutocycleAgent } from "./autocycle-agent.js";
-export type { CodingPhase, CodingTask } from "./coding-agent.js";
-// Coding agent
-export { CodingAgent } from "./coding-agent.js";
-export type { SlashCommand } from "./commands.js";
+export { AutocycleAgent } from "./autocycle/autocycle-agent.js";
+export type { SlashCommand, SlashCommandMetadata } from "./commands/commands.js";
 // Commands
-export { SlashCommandRegistry } from "./commands.js";
+export { SlashCommandRegistry } from "./commands/commands.js";
 export type { CompletionItem, CompletionKind } from "./completion.js";
 // Completion
 export { CompletionEngine, CompletionPopup, MAX_VISIBLE_ITEMS, PROVIDER_MODELS } from "./completion.js";
@@ -25,17 +26,41 @@ export type { PermissionResponse } from "./dialogs/permission.js";
 export { PermissionDialog } from "./dialogs/permission.js";
 export type { SessionEntry } from "./dialogs/session-list.js";
 export { SessionList } from "./dialogs/session-list.js";
-export type { EditorOptions, EditorPosition, EditorSelection } from "./editor.js";
+export type { EditorOptions, EditorPosition, EditorSelection } from "./editor/editor.js";
 // Editor
-export { Editor } from "./editor.js";
+export { Editor } from "./editor/editor.js";
+export type { VimModeType } from "./editor/vim.js";
+// Vim
+export { VimMode } from "./editor/vim.js";
 export { formatError, formatErrorBrief } from "./formatters/error.js";
 // Formatters
 export { formatAssistantMessage, formatMessage, formatUserMessage } from "./formatters/message.js";
 export { formatThinkingBlock, formatThinkingSummary } from "./formatters/thinking.js";
 export { formatToolCall, formatToolResult, formatToolSummary } from "./formatters/tool-call.js";
-export type { KeyBinding } from "./keybinds.js";
+export type {
+	KeybindingConfigEntry,
+	KeybindingConfigFile,
+	KeybindingConfigLoadResult,
+	ResolvedKeybindingDefinition,
+} from "./input/keybinding-config.js";
+export {
+	buildKeybindingConfigFile,
+	DEFAULT_KEYBINDING_DEFINITIONS,
+	ensureUserKeybindingConfigFile,
+	formatKeybindingConfigFile,
+	formatKeybindingReloadSummary,
+	formatKeybindingStartupNotice,
+	getUserKeybindingConfigPath,
+	loadUserKeybindingDefinitions,
+	syncDefaultKeybindingRegistry,
+	tryRevealKeybindingConfigFile,
+} from "./input/keybinding-config.js";
+export type { KeyBinding } from "./input/keybinds.js";
 // Keybinds
-export { KeyBindingRegistry } from "./keybinds.js";
+export { KeyBindingRegistry } from "./input/keybinds.js";
+export type { ReplayKeyContext } from "./input/replay-keybinds.js";
+// Replay
+export { handleReplayKey } from "./input/replay-keybinds.js";
 export { EditorPanel } from "./panels/editor.js";
 export { detectLanguage, FilePreviewPanel } from "./panels/file-preview.js";
 export type { FileNode, FileTreePanelProps, FlatRow } from "./panels/file-tree.js";
@@ -57,9 +82,6 @@ export { StatusBarPanel } from "./panels/status-bar.js";
 export type { TimelinePanelProps } from "./panels/timeline.js";
 export { TimelinePanel } from "./panels/timeline.js";
 export { ToolOutputPanel } from "./panels/tool-output.js";
-export type { ReplayKeyContext } from "./replay-keybinds.js";
-// Replay
-export { handleReplayKey } from "./replay-keybinds.js";
 export type {
 	BuildScarlettIntegrityReportInput,
 	ScarlettIntegrityFinding,
@@ -67,6 +89,16 @@ export type {
 	ScarlettIntegrityState,
 } from "./scarlett-runtime.js";
 export { buildScarlettIntegrityReport, formatScarlettIntegrityReport } from "./scarlett-runtime.js";
+export type {
+	SlashCommandContribution,
+	SlashCommandContributionSpec,
+	SlashCommandPack,
+} from "./slash-commands/pack.js";
+export {
+	formatSlashCommandOrigin,
+	registerSlashCommandContribution,
+	registerSlashCommandPack,
+} from "./slash-commands/pack.js";
 export type { SpinnerLine, ToolSpinnerEntry } from "./spinner.js";
 // Spinner
 export { TOOL_SPINNER_FRAMES, ToolSpinner } from "./spinner.js";
@@ -84,6 +116,3 @@ export type { LogEntry, LogLevel } from "./views/logs.js";
 export { LogsView } from "./views/logs.js";
 // Views
 export { RootView } from "./views/root.js";
-export type { VimModeType } from "./vim.js";
-// Vim
-export { VimMode } from "./vim.js";

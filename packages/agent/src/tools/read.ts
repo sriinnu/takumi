@@ -2,7 +2,7 @@
  * Read file tool — reads file contents with optional line range.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { access, readFile, stat } from "node:fs/promises";
 import type { ToolDefinition } from "@takumi/core";
 import { LIMITS } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
@@ -34,24 +34,26 @@ export const readHandler: ToolHandler = async (input) => {
 		return { output: "Error: file_path is required", isError: true };
 	}
 
-	if (!existsSync(filePath)) {
+	try {
+		await access(filePath);
+	} catch {
 		return { output: `Error: File not found: ${filePath}`, isError: true };
 	}
 
 	try {
-		const stat = statSync(filePath);
-		if (stat.isDirectory()) {
+		const fileStat = await stat(filePath);
+		if (fileStat.isDirectory()) {
 			return { output: `Error: ${filePath} is a directory, not a file`, isError: true };
 		}
 
-		if (stat.size > LIMITS.MAX_FILE_SIZE) {
+		if (fileStat.size > LIMITS.MAX_FILE_SIZE) {
 			return {
-				output: `Error: File too large (${(stat.size / 1024 / 1024).toFixed(1)}MB). Max: ${LIMITS.MAX_FILE_SIZE / 1024 / 1024}MB`,
+				output: `Error: File too large (${(fileStat.size / 1024 / 1024).toFixed(1)}MB). Max: ${LIMITS.MAX_FILE_SIZE / 1024 / 1024}MB`,
 				isError: true,
 			};
 		}
 
-		const content = readFileSync(filePath, "utf-8");
+		const content = await readFile(filePath, "utf-8");
 		const allLines = content.split("\n");
 
 		if (allLines.length > LIMITS.MAX_FILE_LINES && !limit) {

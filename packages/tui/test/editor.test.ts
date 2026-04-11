@@ -1,7 +1,7 @@
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import { beforeEach, describe, expect, it } from "vitest";
-import { Editor } from "../src/editor.js";
+import { Editor } from "../src/editor/editor.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

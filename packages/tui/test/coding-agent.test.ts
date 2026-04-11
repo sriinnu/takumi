@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentRunner } from "../src/agent-runner.js";
-import { CodingAgent } from "../src/coding-agent.js";
+import type { AgentRunner } from "../src/agent/agent-runner.js";
+import { CodingAgent } from "../src/agent/coding-agent.js";
 import { AppState } from "../src/state.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
@@ -204,6 +204,74 @@ describe("CodingAgent", () => {
 	});
 
 	/* ---- cancellation ---------------------------------------------------- */
+
+	describe("resume", () => {
+		it("surfaces checkpoint compatibility summaries when resume is blocked", async () => {
+			const agent = new CodingAgent(state, runner);
+			const fakeOrchestrator = {
+				setChitraguptaMemory: vi.fn(),
+				resume: vi.fn(async () => {
+					throw new Error("resume blocked");
+				}),
+				getLastResumeCompatibility: vi.fn(() => ({
+					ok: false,
+					blocking: true,
+					warnings: [],
+					conflicts: [],
+					summary: "Checkpoint compatibility blocked resume for cluster-1: route policy mismatch",
+				})),
+			} as never;
+
+			(agent as any).orchestrator = fakeOrchestrator;
+
+			await agent.resume("cluster-1");
+
+			expect(fakeOrchestrator.setChitraguptaMemory).toHaveBeenCalledOnce();
+			expect(state.messages.value.at(-1)?.content[0]).toEqual(
+				expect.objectContaining({
+					type: "text",
+					text: expect.stringContaining("Checkpoint compatibility blocked resume for cluster-1: route policy mismatch"),
+				}),
+			);
+		});
+
+		it("surfaces checkpoint compatibility warnings before continuing resume", async () => {
+			const agent = new CodingAgent(state, runner);
+			const clusterState = {
+				id: "cluster-2",
+				phase: "PLANNING",
+				agents: new Map([["planner", {}]]),
+				validationAttempt: 0,
+				config: { taskDescription: "Resume task" },
+			} as never;
+			const fakeOrchestrator = {
+				setChitraguptaMemory: vi.fn(),
+				resume: vi.fn(async () => clusterState),
+				getLastResumeCompatibility: vi.fn(() => ({
+					ok: true,
+					blocking: false,
+					warnings: ["Checkpoint topology hierarchical differs from the current default swarm."],
+					conflicts: [],
+					summary:
+						"Checkpoint compatibility warnings for cluster-2: Checkpoint topology hierarchical differs from the current default swarm.",
+				})),
+				execute: vi.fn(async function* () {
+					yield { type: "cluster_complete", success: true };
+				}),
+				onAgentText: null,
+			} as never;
+
+			(agent as any).orchestrator = fakeOrchestrator;
+
+			await agent.resume("cluster-2");
+
+			const texts = state.messages.value.flatMap((message) =>
+				message.content.filter((block) => block.type === "text").map((block) => (block as { text: string }).text),
+			);
+			expect(texts.some((text) => text.includes("Checkpoint compatibility warnings for cluster-2"))).toBe(true);
+			expect(texts.some((text) => text.includes("Resuming cluster cluster-2 from phase PLANNING"))).toBe(true);
+		});
+	});
 
 	describe("cancellation", () => {
 		it("cancel stops the runner when a task is active", async () => {

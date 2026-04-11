@@ -1,7 +1,7 @@
 import type { KeyEvent, Message } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import { describe, expect, it, vi } from "vitest";
-import { handleReplayKey, type ReplayKeyContext } from "../src/replay-keybinds.js";
+import { handleReplayKey, type ReplayKeyContext } from "../src/input/replay-keybinds.js";
 import { AppState } from "../src/state.js";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */

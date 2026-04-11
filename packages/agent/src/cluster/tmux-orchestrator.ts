@@ -55,6 +55,23 @@ function target(win: TmuxWindow): string {
 	return `${win.sessionName}:${win.windowId}`;
 }
 
+/**
+ * Atomic send: load text into a tmux buffer from stdin, then paste into target.
+ * 2 sequential forks instead of N×2 for multi-line text.
+ */
+async function loadAndPaste(tgt: string, text: string): Promise<void> {
+	// Load text into tmux paste buffer via stdin ('-' reads from pipe)
+	await new Promise<void>((resolve, reject) => {
+		const proc = execFile("tmux", ["load-buffer", "-"], (err) => {
+			if (err) reject(err);
+			else resolve();
+		});
+		proc.stdin?.end(text);
+	});
+	// Paste the buffer contents into the target pane
+	await tmux("paste-buffer", "-t", tgt, "-d");
+}
+
 // ── Orchestrator ──────────────────────────────────────────────────────────────
 
 export class TmuxOrchestrator {
@@ -164,7 +181,10 @@ export class TmuxOrchestrator {
 	/** Send a command/text to a tmux window pane, followed by Enter. */
 	async sendKeys(agentId: string, text: string): Promise<void> {
 		const win = this.requireWindow(agentId);
-		await tmux("send-keys", "-t", target(win), text, "Enter");
+		// Use load-buffer + paste-buffer for atomic send (1 fork instead of N×2).
+		// tmux load-buffer accepts stdin via '-', then paste-buffer types it in.
+		const payload = text.replace(/\r\n/g, "\n");
+		await loadAndPaste(target(win), `${payload}\n`);
 	}
 
 	/**
@@ -211,6 +231,42 @@ export class TmuxOrchestrator {
 		} catch {
 			return false;
 		}
+	}
+
+	/**
+	 * I wait for a named tmux channel using `tmux wait-for`. The worker signals
+	 * the channel with `tmux wait-for -S <channel>`, waking us up instantly
+	 * instead of polling capture-pane in a hot loop.
+	 */
+	async waitForChannel(channel: string, timeoutMs: number, signal?: AbortSignal): Promise<boolean> {
+		return new Promise<boolean>((resolve) => {
+			if (signal?.aborted) {
+				resolve(false);
+				return;
+			}
+			let resolved = false;
+			let timer: ReturnType<typeof setTimeout>;
+			let proc: ReturnType<typeof execFile>;
+			const done = (value: boolean) => {
+				if (resolved) return;
+				resolved = true;
+				clearTimeout(timer);
+				signal?.removeEventListener("abort", onAbort);
+				resolve(value);
+			};
+			const onAbort = () => {
+				proc?.kill();
+				done(false);
+			};
+			proc = execFile("tmux", ["wait-for", channel], (err) => {
+				done(!err);
+			});
+			timer = setTimeout(() => {
+				proc.kill();
+				done(false);
+			}, timeoutMs);
+			signal?.addEventListener("abort", onAbort, { once: true });
+		});
 	}
 
 	/**

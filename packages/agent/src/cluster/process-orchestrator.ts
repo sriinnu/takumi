@@ -74,7 +74,7 @@ export class ProcessOrchestrator {
 	sendKeys(id: string, text: string): void {
 		const win = this.windows.get(id);
 		if (win?.process?.stdin?.writable) {
-			win.process.stdin.write(text);
+			win.process.stdin.write(`${text.replace(/\r\n/g, "\n")}\n`);
 		}
 	}
 
@@ -87,7 +87,8 @@ export class ProcessOrchestrator {
 
 	/** Check whether a process window is still tracked. */
 	async isWindowAlive(id: string): Promise<boolean> {
-		return this.windows.has(id);
+		const win = this.windows.get(id);
+		return win?.process !== null;
 	}
 
 	/** Kill a running process window. */

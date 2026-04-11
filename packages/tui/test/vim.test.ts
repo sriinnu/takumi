@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { VimMode } from "../src/vim.js";
+import { VimMode } from "../src/editor/vim.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
 	test: {
 		globals: true,
-		include: ["packages/*/test/**/*.test.ts", "bin/test/**/*.test.ts"],
+		include: ["packages/*/test/**/*.test.ts", "bin/test/**/*.test.ts", "apps/desktop/test/**/*.test.ts"],
 		alias: {
 			"@takumi/core": resolve(__dirname, "packages/core/src/index.ts"),
 			"@takumi/render": resolve(__dirname, "packages/render/src/index.ts"),
