@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- 
+    Takumi Logo - Final B
+    Concept: Kanji 匠 rendered as clean pixel blocks
+    8x8 grid cells (8px each), pure geometric
+  -->
+  <rect width="64" height="64" fill="#0F172A"/>
+  
+  <!-- 匠 rendered in 8x8 grid blocks -->
+  <g fill="#38BDF8">
+    <!-- Top enclosure bar -->
+    <rect x="8" y="8" width="48" height="6"/>
+    
+    <!-- Left vertical of enclosure -->
+    <rect x="8" y="8" width="6" height="32"/>
+    
+    <!-- Inner horizontal stroke -->
+    <rect x="14" y="20" width="28" height="5"/>
+    
+    <!-- Axe/tool vertical -->
+    <rect x="24" y="25" width="6" height="20"/>
+    
+    <!-- Axe head horizontal -->
+    <rect x="16" y="32" width="24" height="5"/>
+    
+    <!-- Bottom right diagonal hint -->
+    <rect x="36" y="40" width="6" height="6"/>
+    <rect x="42" y="46" width="6" height="6"/>
+    <rect x="48" y="52" width="8" height="6"/>
+  </g>
+  
+  <!-- Accent: subtle glow dot -->
+  <circle cx="54" cy="10" r="3" fill="#A78BFA" opacity="0.8"/>
+</svg>
