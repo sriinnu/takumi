@@ -63,18 +63,6 @@ When a doc is aspirational, it should be read as design direction, not as a clai
 | extensibility | packages, slash commands, prompt/config surfaces |
 | docs stance | tries to separate shipped behavior from target direction |
 
-### Packages
-
-<table>
-  <tr>
-    <td align="center"><a href="packages/core"><img src="packages/core/icon.svg" width="64" /><br/><code>@takumi/core</code></a><br/><sub>config · types · sessions</sub></td>
-    <td align="center"><a href="packages/render"><img src="packages/render/icon.svg" width="64" /><br/><code>@takumi/render</code></a><br/><sub>yoga layout · signals · ANSI</sub></td>
-    <td align="center"><a href="packages/bridge"><img src="packages/bridge/icon.svg" width="64" /><br/><code>@takumi/bridge</code></a><br/><sub>chitragupta · bootstrap</sub></td>
-    <td align="center"><a href="packages/agent"><img src="packages/agent/icon.svg" width="64" /><br/><code>@takumi/agent</code></a><br/><sub>agent loop · tools · LLM</sub></td>
-    <td align="center"><a href="packages/tui"><img src="packages/tui/icon.svg" width="64" /><br/><code>@takumi/tui</code></a><br/><sub>terminal UI · commands</sub></td>
-  </tr>
-</table>
-
 ## What Takumi stands for
 
 Takumi is opinionated about a few things that should stay true as the repo grows:

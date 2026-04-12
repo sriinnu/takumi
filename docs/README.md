@@ -63,19 +63,7 @@ If you want the shortest accurate path:
 
 ## Branding assets
 
-- [`logo.svg`](./logo.svg) — main Takumi logo (earthy stone monument with kanji 匠, forest twilight, fireflies)
-- [`badge.svg`](./badge.svg) — compact badge (stone tablet variant)
-
-### Package icons
-
-Each package has a nature-inspired pixel-art icon at `packages/<name>/icon.svg`:
-
-| Package | Icon | Motif |
-|---------|------|-------|
-| `@takumi/core` | [icon.svg](../packages/core/icon.svg) | Acorn seed in earth — the foundation everything grows from |
-| `@takumi/render` | [icon.svg](../packages/render/icon.svg) | Aurora over mountain ridge — painting light on the screen |
-| `@takumi/bridge` | [icon.svg](../packages/bridge/icon.svg) | Wooden rope bridge over misty ravine — connecting worlds |
-| `@takumi/agent` | [icon.svg](../packages/agent/icon.svg) | Wise owl on a branch — watchful intelligence in the dark |
-| `@takumi/tui` | [icon.svg](../packages/tui/icon.svg) | Paper lantern in a forest — warm light in terminal darkness |
+- [`logo.svg`](./logo.svg) — main Takumi wordmark/logo
+- [`badge.svg`](./badge.svg) — compact badge asset
 
 Use SVG assets in user-facing docs rather than inventing one-off text branding. Tiny branding discipline; fewer future oopsies.
