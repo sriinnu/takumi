@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/200.svg" viewBox="0 0 100 100" width="100%" height="100%">
+  <rect width="100" height="100" fill="#0A0A0A" />
+  <g fill="#00FF9D" fill-rule="evenodd">
+    <!-- Clean Pixel representation of Japanese Kanji '匠' (Takumi) inside a Terminal Window -->
+    <path d="M10,10 h80 v80 h-80 v-80 z m5,5 v70 h70 v-70 h-70 z" /> <!-- Outer and inner border -->
+    
+    <!-- Top horizontal bar -->
+    <rect x="25" y="25" width="50" height="5" />
+    <rect x="25" y="30" width="5" height="40" /> <!-- Left descending vertical -->
+    
+    <!-- Inner axe/tool shape of Takumi -->
+    <rect x="40" y="40" width="25" height="5" />
+    <rect x="45" y="45" width="5" height="15" />
+    <rect x="40" y="60" width="25" height="5" />
+    
+    <!-- Blinking command prompt cursor -->
+    <rect x="75" y="70" width="5" height="5">
+      <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite" />
+    </rect>
+  </g>
+</svg>
