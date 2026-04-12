@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    Takumi Logo — V2: Terminal Craftsman
+    A pixel-art terminal window floating in twilight. Inside: kanji 匠 glowing
+    warm gold. Subtle yantra triangles in the background. Cherry blossom petals
+    drift past. Says "coding tool" at first glance, "something deeper" on second look.
+  -->
+  <defs>
+    <radialGradient id="v2bg" cx="50%" cy="45%" r="65%">
+      <stop offset="0%" stop-color="#1e1926"/>
+      <stop offset="100%" stop-color="#0c0a12"/>
+    </radialGradient>
+    <linearGradient id="v2chrome" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3a3248"/>
+      <stop offset="100%" stop-color="#2a2236"/>
+    </linearGradient>
+    <linearGradient id="v2body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#16121e"/>
+      <stop offset="100%" stop-color="#0e0b14"/>
+    </linearGradient>
+    <filter id="v2glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="v2soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="32" fill="url(#v2bg)"/>
+
+  <!-- Very subtle yantra triangles behind everything -->
+  <polygon points="256,60 370,260 142,260" fill="none" stroke="#cba6f7" stroke-width="0.8" opacity="0.06"/>
+  <polygon points="256,280 142,80 370,80" fill="none" stroke="#d4a56a" stroke-width="0.8" opacity="0.05"/>
+
+  <!-- Distant pixel stars -->
+  <g fill="#cdd6f4">
+    <rect x="56" y="32" width="3" height="3" opacity="0.4"><animate attributeName="opacity" values="0.4;0.08;0.4" dur="3s" repeatCount="indefinite"/></rect>
+    <rect x="148" y="20" width="2" height="2" opacity="0.35"/>
+    <rect x="368" y="28" width="3" height="3" opacity="0.45"><animate attributeName="opacity" values="0.45;0.1;0.45" dur="4s" repeatCount="indefinite"/></rect>
+    <rect x="440" y="48" width="2" height="2" opacity="0.3"/>
+    <rect x="88" y="72" width="2" height="2" opacity="0.25"/>
+    <rect x="420" y="80" width="2" height="2" opacity="0.3"/>
+  </g>
+
+  <!-- ===== TERMINAL WINDOW ===== -->
+  <!-- Shadow under terminal -->
+  <rect x="76" y="92" width="364" height="296" rx="16" fill="#000000" opacity="0.3" transform="translate(4,4)"/>
+
+  <!-- Terminal chrome bar -->
+  <rect x="72" y="84" width="368" height="40" rx="16" ry="16" fill="url(#v2chrome)"/>
+  <rect x="72" y="108" width="368" height="16" fill="url(#v2chrome)"/>
+
+  <!-- Pixel traffic lights -->
+  <g>
+    <rect x="92" y="96" width="14" height="14" rx="3" fill="#f38ba8"/>
+    <rect x="116" y="96" width="14" height="14" rx="3" fill="#f9e2af"/>
+    <rect x="140" y="96" width="14" height="14" rx="3" fill="#a6e3a1"/>
+  </g>
+  <!-- Title dots in chrome -->
+  <g fill="#4a4258" opacity="0.5">
+    <rect x="240" y="100" width="4" height="4" rx="1"/>
+    <rect x="250" y="100" width="4" height="4" rx="1"/>
+    <rect x="260" y="100" width="4" height="4" rx="1"/>
+  </g>
+
+  <!-- Terminal body -->
+  <rect x="72" y="120" width="368" height="256" rx="0" fill="url(#v2body)"/>
+  <!-- Bottom rounded corners -->
+  <rect x="72" y="352" width="368" height="24" rx="16" ry="16" fill="url(#v2body)"/>
+  <rect x="72" y="352" width="368" height="12" fill="url(#v2body)"/>
+
+  <!-- Subtle scanlines -->
+  <g opacity="0.03">
+    <rect x="72" y="124" width="368" height="1" fill="#cdd6f4"/>
+    <rect x="72" y="128" width="368" height="1" fill="#cdd6f4"/>
+    <rect x="72" y="132" width="368" height="1" fill="#cdd6f4"/>
+    <rect x="72" y="136" width="368" height="1" fill="#cdd6f4"/>
+    <rect x="72" y="140" width="368" height="1" fill="#cdd6f4"/>
+  </g>
+
+  <!-- Inner glow — warm amber emanating from kanji position -->
+  <ellipse cx="256" cy="230" rx="100" ry="80" fill="#d4a56a" opacity="0.04" filter="url(#v2soft)"/>
+
+  <!-- ===== PIXEL CODE LINES (faint, ambient) ===== -->
+  <!-- Top area: ghost code to establish "this is a terminal" -->
+  <g opacity="0.15">
+    <rect x="96" y="136" width="40" height="6" rx="1" fill="#cba6f7"/>
+    <rect x="144" y="136" width="60" height="6" rx="1" fill="#6c7086"/>
+    <rect x="96" y="150" width="24" height="6" rx="1" fill="#89b4fa"/>
+    <rect x="128" y="150" width="80" height="6" rx="1" fill="#6c7086"/>
+    <rect x="216" y="150" width="32" height="6" rx="1" fill="#a6e3a1"/>
+    <rect x="96" y="164" width="48" height="6" rx="1" fill="#6c7086"/>
+    <rect x="152" y="164" width="56" height="6" rx="1" fill="#f5c2e7"/>
+  </g>
+
+  <!-- ===== KANJI 匠 — center of terminal, warm gold ===== -->
+  <text
+    x="256" y="252"
+    text-anchor="middle"
+    dominant-baseline="central"
+    font-family="'Noto Sans JP','Hiragino Kaku Gothic Pro','Yu Gothic',sans-serif"
+    font-size="120"
+    font-weight="900"
+    fill="#d4a56a"
+    filter="url(#v2glow)"
+    opacity="0.9"
+  >匠</text>
+
+  <!-- Thin mandala circle around kanji — very subtle -->
+  <circle cx="256" cy="245" r="85" fill="none" stroke="#cba6f7" stroke-width="0.6" opacity="0.08"/>
+  <!-- 8 mandala dots on circle -->
+  <g fill="#cba6f7" opacity="0.1">
+    <circle cx="256" cy="160" r="2"/>
+    <circle cx="316" cy="185" r="2"/>
+    <circle cx="341" cy="245" r="2"/>
+    <circle cx="316" cy="305" r="2"/>
+    <circle cx="256" cy="330" r="2"/>
+    <circle cx="196" cy="305" r="2"/>
+    <circle cx="171" cy="245" r="2"/>
+    <circle cx="196" cy="185" r="2"/>
+  </g>
+
+  <!-- Bottom code lines (faint) -->
+  <g opacity="0.12">
+    <rect x="96" y="328" width="32" height="6" rx="1" fill="#89b4fa"/>
+    <rect x="136" y="328" width="72" height="6" rx="1" fill="#6c7086"/>
+    <rect x="96" y="342" width="56" height="6" rx="1" fill="#a6e3a1"/>
+    <rect x="160" y="342" width="44" height="6" rx="1" fill="#6c7086"/>
+  </g>
+
+  <!-- Prompt line with blinking cursor -->
+  <rect x="96" y="356" width="8" height="6" rx="1" fill="#a6e3a1" opacity="0.6"/>
+  <rect x="108" y="356" width="2" height="6" fill="#d4a56a" opacity="0.7">
+    <animate attributeName="opacity" values="0.7;0.1;0.7" dur="1.2s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- ===== CHERRY BLOSSOM PETALS drifting ===== -->
+  <g fill="#f5c2e7">
+    <rect x="420" y="120" width="5" height="4" rx="2" opacity="0.35" transform="rotate(15,422,122)">
+      <animate attributeName="y" values="120;380;120" dur="12s" repeatCount="indefinite"/>
+      <animate attributeName="x" values="420;390;420" dur="12s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.35;0.1;0.35" dur="12s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="460" y="160" width="4" height="3" rx="1.5" opacity="0.25" transform="rotate(-20,462,161)">
+      <animate attributeName="y" values="160;400;160" dur="15s" repeatCount="indefinite"/>
+      <animate attributeName="x" values="460;440;460" dur="15s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="52" y="180" width="4" height="3" rx="1.5" opacity="0.2">
+      <animate attributeName="y" values="180;420;180" dur="14s" repeatCount="indefinite"/>
+      <animate attributeName="x" values="52;68;52" dur="14s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+
+  <!-- ===== WORDMARK ===== -->
+  <text
+    x="256" y="432"
+    text-anchor="middle"
+    font-family="'SF Mono','Fira Code','JetBrains Mono',monospace"
+    font-size="32"
+    font-weight="600"
+    fill="#cdd6f4"
+    letter-spacing="10"
+    opacity="0.85"
+  >TAKUMI</text>
+
+  <!-- Warm accent underline -->
+  <rect x="160" y="448" width="192" height="2" rx="1" fill="#d4a56a" opacity="0.3"/>
+
+  <!-- Subtitle -->
+  <text
+    x="256" y="476"
+    text-anchor="middle"
+    font-family="'SF Mono','Fira Code','JetBrains Mono',monospace"
+    font-size="12"
+    fill="#6c7086"
+    letter-spacing="3"
+    opacity="0.5"
+  >terminal craftsman</text>
+</svg>

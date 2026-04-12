@@ -1,0 +1,192 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    Takumi Logo — V5: Pixel Chisel
+    A craftsman's chisel carving code into obsidian stone. The act of
+    creation itself — the tool meets the medium. Sparks fly from the
+    contact point, each spark is a pixel. The carved lines ARE code syntax.
+    Subtle yantra geometry etched into the stone face.
+  -->
+  <defs>
+    <linearGradient id="v5bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#11111b"/>
+      <stop offset="100%" stop-color="#0a0a0f"/>
+    </linearGradient>
+    <linearGradient id="v5chisel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#585b70"/>
+      <stop offset="60%" stop-color="#45475a"/>
+      <stop offset="100%" stop-color="#313244"/>
+    </linearGradient>
+    <linearGradient id="v5stone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e1e2e"/>
+      <stop offset="100%" stop-color="#181825"/>
+    </linearGradient>
+    <linearGradient id="v5handle" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7f5539"/>
+      <stop offset="50%" stop-color="#9c6644"/>
+      <stop offset="100%" stop-color="#6b3f28"/>
+    </linearGradient>
+    <filter id="v5spark" x="-200%" y="-200%" width="500%" height="500%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="v5carveglow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.5"/>
+    </filter>
+  </defs>
+
+  <!-- Workshop background -->
+  <rect width="512" height="512" rx="32" fill="url(#v5bg)"/>
+
+  <!-- Stone texture hints (pixel grain) -->
+  <g fill="#313244" opacity="0.15">
+    <rect x="48" y="100" width="4" height="4"/>
+    <rect x="56" y="108" width="4" height="4"/>
+    <rect x="120" y="96" width="4" height="4"/>
+    <rect x="200" y="104" width="4" height="4"/>
+    <rect x="300" y="92" width="4" height="4"/>
+    <rect x="380" y="100" width="4" height="4"/>
+    <rect x="420" y="96" width="4" height="4"/>
+      <rect x="60" y="300" width="4" height="4"/>
+    <rect x="380" y="320" width="4" height="4"/>
+    <rect x="440" y="300" width="4" height="4"/>
+  </g>
+
+  <!-- ===== OBSIDIAN STONE TABLET ===== -->
+  <g transform="translate(56, 80)">
+    <!-- Stone face — dark, polished -->
+    <rect x="0" y="0" width="280" height="320" rx="6" fill="url(#v5stone)" stroke="#313244" stroke-width="2"/>
+    <!-- Stone edge highlight -->
+    <rect x="0" y="0" width="280" height="2" rx="1" fill="#45475a" opacity="0.25"/>
+    <rect x="0" y="0" width="2" height="320" rx="1" fill="#45475a" opacity="0.15"/>
+
+    <!-- Very subtle yantra triangles etched into stone -->
+    <polygon points="140,30 80,120 200,120" fill="none" stroke="#d4a56a" stroke-width="0.7" opacity="0.04"/>
+    <polygon points="140,130 80,40 200,40" fill="none" stroke="#d4a56a" stroke-width="0.7" opacity="0.03"/>
+
+    <!-- ===== CARVED CODE LINES ===== -->
+    <!-- These are "carved" into the stone — brighter with a subtle inset effect -->
+    <!-- Line 1: import statement -->
+    <rect x="24" y="44" width="44" height="8" rx="1" fill="#cba6f7" opacity="0.5"/>
+    <rect x="74" y="44" width="20" height="8" rx="1" fill="#cdd6f4" opacity="0.35"/>
+    <rect x="100" y="44" width="60" height="8" rx="1" fill="#a6e3a1" opacity="0.45"/>
+    <rect x="166" y="44" width="32" height="8" rx="1" fill="#cdd6f4" opacity="0.3"/>
+    <rect x="204" y="44" width="48" height="8" rx="1" fill="#a6e3a1" opacity="0.45"/>
+
+    <!-- Line 2: function declaration -->
+    <rect x="24" y="64" width="36" height="8" rx="1" fill="#89b4fa" opacity="0.5"/>
+    <rect x="66" y="64" width="56" height="8" rx="1" fill="#f9e2af" opacity="0.5"/>
+    <rect x="128" y="64" width="8" height="8" rx="1" fill="#cdd6f4" opacity="0.3"/>
+    <rect x="142" y="64" width="24" height="8" rx="1" fill="#f5c2e7" opacity="0.4"/>
+    <rect x="172" y="64" width="8" height="8" rx="1" fill="#cdd6f4" opacity="0.3"/>
+
+    <!-- Line 3: body -->
+    <rect x="40" y="84" width="28" height="8" rx="1" fill="#cba6f7" opacity="0.45"/>
+    <rect x="74" y="84" width="48" height="8" rx="1" fill="#89b4fa" opacity="0.4"/>
+    <rect x="128" y="84" width="24" height="8" rx="1" fill="#a6e3a1" opacity="0.45"/>
+
+    <!-- Line 4 -->
+    <rect x="40" y="104" width="40" height="8" rx="1" fill="#f9e2af" opacity="0.4"/>
+    <rect x="86" y="104" width="56" height="8" rx="1" fill="#6c7086" opacity="0.3"/>
+    <rect x="148" y="104" width="20" height="8" rx="1" fill="#cba6f7" opacity="0.35"/>
+
+    <!-- KANJI 匠 — carved deep, largest element -->
+    <text
+      x="140" y="236"
+      text-anchor="middle"
+      font-family="'Noto Serif JP','Hiragino Mincho ProN',serif"
+      font-size="110"
+      fill="#d4a56a"
+      opacity="0.75"
+    >匠</text>
+    <!-- Carve depth glow -->
+    <text
+      x="140" y="236"
+      text-anchor="middle"
+      font-family="'Noto Serif JP','Hiragino Mincho ProN',serif"
+      font-size="110"
+      fill="#d4a56a"
+      opacity="0.15"
+      filter="url(#v5carveglow)"
+    >匠</text>
+
+    <!-- More code below kanji (being carved now) -->
+    <rect x="24" y="272" width="52" height="8" rx="1" fill="#89b4fa" opacity="0.35"/>
+    <rect x="82" y="272" width="36" height="8" rx="1" fill="#a6e3a1" opacity="0.3"/>
+    <rect x="124" y="272" width="44" height="8" rx="1" fill="#cdd6f4" opacity="0.2"/>
+
+    <!-- Active carve line — the chisel is HERE -->
+    <rect x="24" y="292" width="64" height="8" rx="1" fill="#f9e2af" opacity="0.5"/>
+    <rect x="94" y="292" width="40" height="8" rx="1" fill="#cba6f7" opacity="0.4"/>
+    <!-- Carve point glow -->
+    <circle cx="134" cy="296" r="6" fill="#f9e2af" opacity="0.3" filter="url(#v5carveglow)"/>
+  </g>
+
+  <!-- ===== THE CHISEL ===== -->
+  <g transform="translate(310, 240) rotate(-40)">
+    <!-- Blade (steel) -->
+    <rect x="0" y="-6" width="80" height="12" rx="1" fill="url(#v5chisel)"/>
+    <!-- Blade edge (bright) -->
+    <rect x="0" y="-6" width="4" height="12" rx="1" fill="#bac2de" opacity="0.7"/>
+    <!-- Ferrule (metal collar) -->
+    <rect x="80" y="-8" width="12" height="16" rx="2" fill="#6c7086"/>
+    <!-- Handle (wood) -->
+    <rect x="92" y="-7" width="100" height="14" rx="4" fill="url(#v5handle)"/>
+    <!-- Handle wood grain lines -->
+    <rect x="110" y="-3" width="60" height="1" fill="#5a3a20" opacity="0.25"/>
+    <rect x="105" y="1" width="70" height="1" fill="#5a3a20" opacity="0.2"/>
+    <rect x="115" y="5" width="50" height="1" fill="#5a3a20" opacity="0.15"/>
+  </g>
+
+  <!-- ===== SPARKS ===== -->
+  <!-- Flying from the carve point (where chisel meets stone) -->
+  <g filter="url(#v5spark)">
+    <circle cx="190" cy="372" r="2.5" fill="#f9e2af" opacity="0.8">
+      <animate attributeName="cx" values="190;140;100" dur="1.5s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="372;340;310" dur="1.5s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.8;0.3;0" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="190" cy="372" r="2" fill="#fab387" opacity="0.7">
+      <animate attributeName="cx" values="190;220;240" dur="1.2s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="372;350;320" dur="1.2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.7;0.2;0" dur="1.2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="190" cy="372" r="1.5" fill="#f9e2af" opacity="0.6">
+      <animate attributeName="cx" values="190;160;130" dur="0.9s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="372;355;330" dur="0.9s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;0.15;0" dur="0.9s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="190" cy="372" r="1.5" fill="#cba6f7" opacity="0.5">
+      <animate attributeName="cx" values="190;200;215" dur="1.8s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="372;345;305" dur="1.8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.5;0.1;0" dur="1.8s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Tiny pixel sparks (no animation, frozen mid-flight) -->
+    <rect x="165" y="348" width="3" height="3" fill="#f9e2af" opacity="0.35"/>
+    <rect x="210" y="340" width="2" height="2" fill="#fab387" opacity="0.3"/>
+    <rect x="150" y="332" width="2" height="2" fill="#f9e2af" opacity="0.25"/>
+  </g>
+
+  <!-- ===== WORDMARK ===== -->
+  <text
+    x="256" y="448"
+    text-anchor="middle"
+    font-family="'SF Mono','Fira Code','JetBrains Mono',monospace"
+    font-size="30"
+    font-weight="600"
+    fill="#cdd6f4"
+    letter-spacing="10"
+    opacity="0.8"
+  >TAKUMI</text>
+
+  <rect x="168" y="460" width="176" height="2" rx="1" fill="#d4a56a" opacity="0.2"/>
+
+  <text
+    x="256" y="484"
+    text-anchor="middle"
+    font-family="'SF Mono','Fira Code','JetBrains Mono',monospace"
+    font-size="11"
+    fill="#6c7086"
+    letter-spacing="4"
+    opacity="0.4"
+  >code, carved</text>
+</svg>
