@@ -1,285 +1,114 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!--
-    Takumi (匠) — The Sacred Forge
-    Indian Vedic × Japanese craftsman fusion.
-    A homa fire altar with yantra geometry, the kanji rising from sacred flame,
-    a lotus blooming at the base, mandala star ring overhead.
-    Craft is devotion. The forge is the altar.
-  -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
   <defs>
-    <!-- Deep cosmic background -->
-    <radialGradient id="cosmos" cx="50%" cy="40%" r="65%">
-      <stop offset="0%" stop-color="#1e1926"/>
-      <stop offset="50%" stop-color="#16121e"/>
-      <stop offset="100%" stop-color="#0c0a12"/>
+    <!-- Subtle gradient for the background -->
+    <radialGradient id="bgGlow" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#262640" />
+      <stop offset="100%" stop-color="#1e1e2e" />
     </radialGradient>
-    <!-- Fire core gradient -->
-    <radialGradient id="fireCore" cx="50%" cy="70%" r="50%">
-      <stop offset="0%" stop-color="#f9e2af" stop-opacity="0.9"/>
-      <stop offset="40%" stop-color="#e8a040" stop-opacity="0.6"/>
-      <stop offset="80%" stop-color="#c05030" stop-opacity="0.3"/>
-      <stop offset="100%" stop-color="#1e1926" stop-opacity="0"/>
-    </radialGradient>
-    <!-- Sacred flame glow -->
-    <filter id="flameGlow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="b"/>
-      <feColorMatrix in="b" type="matrix"
-        values="1 0 0 0 0
-                0.6 0.3 0 0 0
-                0 0 0.2 0 0
-                0 0 0 0.5 0" result="g"/>
-      <feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <!-- Kanji glow — warm gold -->
+
+    <!-- Mauve glow for the kanji -->
     <filter id="kanjiGlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur" />
+      <feColorMatrix in="blur" type="matrix"
+        values="0.8 0 0 0 0
+                0 0.65 0 0 0
+                0 0 0.97 0 0
+                0 0 0 0.35 0" result="glow" />
+      <feMerge>
+        <feMergeNode in="glow" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
     </filter>
-    <!-- Subtle mandala glow -->
-    <filter id="dotGlow" x="-100%" y="-100%" width="300%" height="300%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="2"/>
-    </filter>
+
+    <!-- Subtle scanline effect -->
+    <pattern id="scanlines" patternUnits="userSpaceOnUse" width="400" height="4">
+      <rect width="400" height="2" fill="transparent" />
+      <rect y="2" width="400" height="2" fill="#000000" opacity="0.04" />
+    </pattern>
   </defs>
 
-  <!-- ===== COSMIC BACKGROUND ===== -->
-  <rect width="512" height="512" rx="32" fill="url(#cosmos)"/>
+  <!-- Background -->
+  <rect width="400" height="400" rx="24" ry="24" fill="url(#bgGlow)" />
 
-  <!-- ===== MANDALA RING — 16 sacred dots in a circle ===== -->
-  <!-- Representing the cosmic order, Vedic rta / Japanese wa (harmony) -->
-  <!-- Outer ring: 16 dots at r=210 from center (256,210) — positioned above the fire -->
-  <g opacity="0.3" filter="url(#dotGlow)">
-    <circle cx="256" cy="0" r="4" fill="#cba6f7" transform="rotate(0,256,210)" opacity="0.6"/>
-    <circle cx="256" cy="0" r="4" fill="#d4a56a" transform="rotate(22.5,256,210)" opacity="0.4"/>
-    <circle cx="256" cy="0" r="4" fill="#cba6f7" transform="rotate(45,256,210)" opacity="0.6"/>
-    <circle cx="256" cy="0" r="4" fill="#d4a56a" transform="rotate(67.5,256,210)" opacity="0.4"/>
-    <circle cx="256" cy="0" r="4" fill="#cba6f7" transform="rotate(90,256,210)" opacity="0.6"/>
-    <circle cx="256" cy="0" r="4" fill="#d4a56a" transform="rotate(112.5,256,210)" opacity="0.4"/>
-    <circle cx="256" cy="0" r="4" fill="#cba6f7" transform="rotate(135,256,210)" opacity="0.6"/>
-    <circle cx="256" cy="0" r="4" fill="#d4a56a" transform="rotate(157.5,256,210)" opacity="0.4"/>
-    <circle cx="256" cy="0" r="4" fill="#cba6f7" transform="rotate(180,256,210)" opacity="0.6"/>
-    <circle cx="256" cy="0" r="4" fill="#d4a56a" transform="rotate(202.5,256,210)" opacity="0.4"/>
-    <circle cx="256" cy="0" r="4" fill="#cba6f7" transform="rotate(225,256,210)" opacity="0.6"/>
-    <circle cx="256" cy="0" r="4" fill="#d4a56a" transform="rotate(247.5,256,210)" opacity="0.4"/>
-    <circle cx="256" cy="0" r="4" fill="#cba6f7" transform="rotate(270,256,210)" opacity="0.6"/>
-    <circle cx="256" cy="0" r="4" fill="#d4a56a" transform="rotate(292.5,256,210)" opacity="0.4"/>
-    <circle cx="256" cy="0" r="4" fill="#cba6f7" transform="rotate(315,256,210)" opacity="0.6"/>
-    <circle cx="256" cy="0" r="4" fill="#d4a56a" transform="rotate(337.5,256,210)" opacity="0.4"/>
-  </g>
-  <!-- Inner ring: 8 dots, tighter -->
-  <g opacity="0.2" filter="url(#dotGlow)">
-    <circle cx="256" cy="50" r="3" fill="#89b4fa" transform="rotate(0,256,210)"/>
-    <circle cx="256" cy="50" r="3" fill="#89b4fa" transform="rotate(45,256,210)"/>
-    <circle cx="256" cy="50" r="3" fill="#89b4fa" transform="rotate(90,256,210)"/>
-    <circle cx="256" cy="50" r="3" fill="#89b4fa" transform="rotate(135,256,210)"/>
-    <circle cx="256" cy="50" r="3" fill="#89b4fa" transform="rotate(180,256,210)"/>
-    <circle cx="256" cy="50" r="3" fill="#89b4fa" transform="rotate(225,256,210)"/>
-    <circle cx="256" cy="50" r="3" fill="#89b4fa" transform="rotate(270,256,210)"/>
-    <circle cx="256" cy="50" r="3" fill="#89b4fa" transform="rotate(315,256,210)"/>
-  </g>
+  <!-- Scanline overlay -->
+  <rect width="400" height="400" rx="24" ry="24" fill="url(#scanlines)" />
 
-  <!-- ===== SRI YANTRA TRIANGLES (simplified) ===== -->
-  <!-- Upward triangle (Shiva/masculine/fire ascending) -->
-  <polygon points="256,72 346,260 166,260"
-    fill="none" stroke="#d4a56a" stroke-width="1.2" opacity="0.12"/>
-  <!-- Downward triangle (Shakti/feminine/water descending) -->
-  <polygon points="256,300 166,112 346,112"
-    fill="none" stroke="#cba6f7" stroke-width="1.2" opacity="0.10"/>
-  <!-- Inner upward -->
-  <polygon points="256,110 320,240 192,240"
-    fill="none" stroke="#d4a56a" stroke-width="0.8" opacity="0.08"/>
-  <!-- Inner downward -->
-  <polygon points="256,262 192,136 320,136"
-    fill="none" stroke="#cba6f7" stroke-width="0.8" opacity="0.06"/>
+  <!-- Outer geometric frame — terminal window suggestion -->
+  <!-- Top-left bracket -->
+  <path d="M 60 80 L 60 60 L 80 60" fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+  <!-- Top-right bracket -->
+  <path d="M 320 60 L 340 60 L 340 80" fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+  <!-- Bottom-left bracket -->
+  <path d="M 60 280 L 60 300 L 80 300" fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+  <!-- Bottom-right bracket -->
+  <path d="M 320 300 L 340 300 L 340 280" fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
 
-  <!-- Bindu — the cosmic center point -->
-  <circle cx="256" cy="186" r="3" fill="#f9e2af" opacity="0.2"/>
+  <!-- Inner subtle border lines — code aesthetic -->
+  <line x1="90" y1="68" x2="310" y2="68" stroke="#45475a" stroke-width="0.75" opacity="0.5" />
+  <line x1="90" y1="292" x2="310" y2="292" stroke="#45475a" stroke-width="0.75" opacity="0.5" />
 
-  <!-- ===== HOMA FIRE ALTAR (KUNDA) ===== -->
-  <!-- Trapezoidal altar base — brick/stone -->
-  <g fill="#4a3828">
-    <!-- Wide base -->
-    <rect x="156" y="340" width="200" height="16" rx="2"/>
-    <!-- Middle tier -->
-    <rect x="168" y="326" width="176" height="16" rx="2"/>
-    <!-- Top tier (fire bed) -->
-    <rect x="180" y="312" width="152" height="16" rx="2"/>
-  </g>
-  <!-- Altar texture — brick lines -->
-  <g stroke="#3a2c1e" stroke-width="0.5" opacity="0.4">
-    <line x1="206" y1="340" x2="206" y2="356"/>
-    <line x1="256" y1="340" x2="256" y2="356"/>
-    <line x1="306" y1="340" x2="306" y2="356"/>
-    <line x1="218" y1="326" x2="218" y2="342"/>
-    <line x1="256" y1="326" x2="256" y2="342"/>
-    <line x1="294" y1="326" x2="294" y2="342"/>
-  </g>
-  <!-- Altar edge highlights -->
-  <rect x="156" y="340" width="200" height="2" fill="#5c4a38" opacity="0.4"/>
-  <rect x="168" y="326" width="176" height="2" fill="#5c4a38" opacity="0.35"/>
-  <rect x="180" y="312" width="152" height="2" fill="#5c4a38" opacity="0.3"/>
+  <!-- Terminal dots at top -->
+  <circle cx="96" cy="48" r="4" fill="#f38ba8" opacity="0.7" />
+  <circle cx="112" cy="48" r="4" fill="#f9e2af" opacity="0.7" />
+  <circle cx="128" cy="48" r="4" fill="#a6e3a1" opacity="0.7" />
 
-  <!-- Small yantra etching on altar face -->
-  <polygon points="256,332 248,344 264,344"
-    fill="none" stroke="#d4a56a" stroke-width="0.7" opacity="0.2"/>
-  <polygon points="256,346 248,334 264,334"
-    fill="none" stroke="#d4a56a" stroke-width="0.7" opacity="0.15"/>
+  <!-- Prompt cursor blinking line -->
+  <rect x="68" y="308" width="2" height="14" fill="#a6e3a1" opacity="0.8">
+    <animate attributeName="opacity" values="0.8;0.2;0.8" dur="1.5s" repeatCount="indefinite" />
+  </rect>
+  <text x="78" y="320" font-family="'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace" font-size="12" fill="#6c7086" letter-spacing="0.5">~/takumi</text>
 
-  <!-- ===== SACRED FIRE ===== -->
-  <!-- Fire aura / heat shimmer -->
-  <ellipse cx="256" cy="260" rx="80" ry="60" fill="url(#fireCore)" opacity="0.6"/>
-
-  <!-- Pixel fire — layered flames -->
-  <g filter="url(#flameGlow)">
-    <!-- Outer flames (red-orange) -->
-    <g fill="#c05030">
-      <rect x="208" y="280" width="12" height="16" rx="2" opacity="0.6"/>
-      <rect x="220" y="268" width="12" height="28" rx="2" opacity="0.7"/>
-      <rect x="280" y="268" width="12" height="28" rx="2" opacity="0.7"/>
-      <rect x="292" y="280" width="12" height="16" rx="2" opacity="0.6"/>
-      <rect x="196" y="288" width="10" height="12" rx="2" opacity="0.4"/>
-      <rect x="306" y="288" width="10" height="12" rx="2" opacity="0.4"/>
-    </g>
-    <!-- Middle flames (orange) -->
-    <g fill="#e08030">
-      <rect x="220" y="256" width="14" height="32" rx="2"/>
-      <rect x="236" y="244" width="14" height="40" rx="2"/>
-      <rect x="262" y="244" width="14" height="40" rx="2"/>
-      <rect x="278" y="256" width="14" height="32" rx="2"/>
-    </g>
-    <!-- Inner flames (gold/yellow) -->
-    <g fill="#e8a040">
-      <rect x="234" y="240" width="12" height="36" rx="2"/>
-      <rect x="248" y="228" width="16" height="48" rx="2"/>
-      <rect x="266" y="240" width="12" height="36" rx="2"/>
-    </g>
-    <!-- White-hot core -->
-    <g fill="#f9e2af">
-      <rect x="246" y="248" width="8" height="24" rx="2" opacity="0.9"/>
-      <rect x="256" y="252" width="8" height="20" rx="2" opacity="0.8"/>
-      <rect x="250" y="236" width="12" height="16" rx="2" opacity="0.7"/>
-    </g>
-    <!-- Flame tips (highest — reaching toward kanji) -->
-    <rect x="250" y="218" width="6" height="20" rx="2" fill="#f9e2af" opacity="0.5">
-      <animate attributeName="opacity" values="0.5;0.2;0.5" dur="1.5s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="258" y="224" width="5" height="16" rx="2" fill="#e8a040" opacity="0.4">
-      <animate attributeName="opacity" values="0.4;0.15;0.4" dur="1.8s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="242" y="226" width="5" height="14" rx="2" fill="#e8a040" opacity="0.35">
-      <animate attributeName="opacity" values="0.35;0.12;0.35" dur="2.1s" repeatCount="indefinite"/>
-    </rect>
-  </g>
-
-  <!-- Sparks rising from fire -->
-  <g fill="#f9e2af">
-    <rect x="240" y="198" width="3" height="3" rx="1" opacity="0.5">
-      <animate attributeName="opacity" values="0.5;0;0.5" dur="2s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="198;180;198" dur="3s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="268" y="192" width="2" height="2" rx="1" opacity="0.35">
-      <animate attributeName="opacity" values="0.35;0;0.35" dur="2.5s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="192;172;192" dur="3.5s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="252" y="186" width="2" height="2" rx="1" opacity="0.25">
-      <animate attributeName="opacity" values="0.25;0;0.25" dur="3s" repeatCount="indefinite"/>
-      <animate attributeName="y" values="186;162;186" dur="4s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="276" y="208" width="2" height="2" rx="1" opacity="0.3">
-      <animate attributeName="opacity" values="0.3;0;0.3" dur="2.8s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="228" y="206" width="2" height="2" rx="1" opacity="0.25">
-      <animate attributeName="opacity" values="0.25;0;0.25" dur="3.2s" repeatCount="indefinite"/>
-    </rect>
-  </g>
-
-  <!-- ===== KANJI 匠 — emerging from the fire ===== -->
-  <!-- Positioned in/above the flame — the craft forged in sacred fire -->
+  <!-- Kanji character -->
   <text
-    x="256" y="178"
+    x="200"
+    y="205"
     text-anchor="middle"
     dominant-baseline="central"
-    font-family="'Noto Sans JP','Hiragino Kaku Gothic Pro','Yu Gothic',sans-serif"
-    font-size="80"
-    font-weight="900"
-    fill="#f9e2af"
+    font-family="'Noto Sans JP', 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'MS Gothic', sans-serif"
+    font-size="150"
+    font-weight="700"
+    fill="#cba6f7"
     filter="url(#kanjiGlow)"
-    opacity="0.9"
   >匠</text>
 
-  <!-- ===== LOTUS AT BASE ===== -->
-  <!-- Padma — shared sacred symbol. Grows from darkness, untouched by it. -->
-  <g transform="translate(256, 370)">
-    <!-- Center petal (upright) -->
-    <ellipse cx="0" cy="-12" rx="6" ry="14" fill="#c07898" opacity="0.7"/>
-    <!-- Left petals -->
-    <ellipse cx="-14" cy="-6" rx="6" ry="12" fill="#c07898" opacity="0.55" transform="rotate(-30,−14,−6)"/>
-    <ellipse cx="-24" cy="0" rx="5" ry="10" fill="#b06888" opacity="0.4" transform="rotate(-55,−24,0)"/>
-    <!-- Right petals -->
-    <ellipse cx="14" cy="-6" rx="6" ry="12" fill="#c07898" opacity="0.55" transform="rotate(30,14,−6)"/>
-    <ellipse cx="24" cy="0" rx="5" ry="10" fill="#b06888" opacity="0.4" transform="rotate(55,24,0)"/>
-    <!-- Outer petals (more open) -->
-    <ellipse cx="-32" cy="6" rx="5" ry="8" fill="#a05878" opacity="0.25" transform="rotate(-70,−32,6)"/>
-    <ellipse cx="32" cy="6" rx="5" ry="8" fill="#a05878" opacity="0.25" transform="rotate(70,32,6)"/>
-    <!-- Golden pistil / bindu -->
-    <circle cx="0" cy="-4" r="4" fill="#d4a56a" opacity="0.6"/>
-    <circle cx="0" cy="-4" r="2" fill="#f9e2af" opacity="0.4"/>
-  </g>
+  <!-- Subtle decorative hexagon behind kanji -->
+  <polygon
+    points="200,90 270,130 270,230 200,270 130,230 130,130"
+    fill="none"
+    stroke="#cba6f7"
+    stroke-width="1"
+    opacity="0.12"
+  />
 
-  <!-- ===== STARS — scattered like devas witnessing ===== -->
-  <g fill="#cdd6f4">
-    <rect x="60" y="40" width="2" height="2" opacity="0.5">
-      <animate attributeName="opacity" values="0.5;0.1;0.5" dur="3.5s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="140" y="24" width="2" height="2" opacity="0.4"/>
-    <rect x="380" y="32" width="2" height="2" opacity="0.45">
-      <animate attributeName="opacity" values="0.45;0.08;0.45" dur="4s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="440" y="56" width="2" height="2" opacity="0.35"/>
-    <rect x="80" y="80" width="2" height="2" opacity="0.3"/>
-    <rect x="420" y="96" width="2" height="2" opacity="0.3"/>
-    <rect x="460" y="140" width="2" height="2" opacity="0.25"/>
-    <rect x="44" y="160" width="2" height="2" opacity="0.25"/>
-    <rect x="100" y="20" width="3" height="3" opacity="0.55">
-      <animate attributeName="opacity" values="0.55;0.1;0.55" dur="2.6s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="356" y="60" width="3" height="3" opacity="0.4">
-      <animate attributeName="opacity" values="0.4;0.08;0.4" dur="5s" repeatCount="indefinite"/>
-    </rect>
-  </g>
+  <!-- Second layer hexagon, rotated slightly -->
+  <polygon
+    points="200,100 262,136 262,224 200,260 138,224 138,136"
+    fill="none"
+    stroke="#89b4fa"
+    stroke-width="0.75"
+    opacity="0.08"
+  />
 
-  <!-- ===== WORDMARK ===== -->
+  <!-- TAKUMI text -->
   <text
-    x="256" y="440"
+    x="200"
+    y="352"
     text-anchor="middle"
-    font-family="'SF Mono','Fira Code','JetBrains Mono',monospace"
-    font-size="30"
+    font-family="'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace"
+    font-size="32"
     font-weight="600"
     fill="#cdd6f4"
-    letter-spacing="10"
-    opacity="0.8"
+    letter-spacing="12"
   >TAKUMI</text>
 
-  <!-- Accent line — warm amber -->
-  <rect x="164" y="454" width="184" height="2" rx="1" fill="#d4a56a" opacity="0.3"/>
+  <!-- Subtle underline accent -->
+  <line x1="130" y1="364" x2="270" y2="364" stroke="#cba6f7" stroke-width="1.5" opacity="0.4" />
 
-  <!-- Sanskrit-Japanese subtitle: dharma of craft -->
-  <text
-    x="256" y="478"
-    text-anchor="middle"
-    font-family="'Noto Sans JP','Noto Sans Devanagari',sans-serif"
-    font-size="13"
-    fill="#8a7a6a"
-    opacity="0.45"
-    letter-spacing="2"
-  >कर्म · 匠 · craft</text>
-
-  <!-- Tiny Om echo, top center — almost invisible -->
-  <text
-    x="256" y="500"
-    text-anchor="middle"
-    font-family="'Noto Sans Devanagari',sans-serif"
-    font-size="10"
-    fill="#cba6f7"
-    opacity="0.12"
-  >ॐ</text>
+  <!-- Small decorative dots — constellation pattern -->
+  <circle cx="100" cy="120" r="1.5" fill="#89b4fa" opacity="0.3" />
+  <circle cx="310" cy="140" r="1" fill="#a6e3a1" opacity="0.25" />
+  <circle cx="290" cy="260" r="1.5" fill="#89b4fa" opacity="0.2" />
+  <circle cx="115" cy="250" r="1" fill="#cba6f7" opacity="0.3" />
+  <circle cx="320" cy="100" r="1" fill="#f9e2af" opacity="0.2" />
+  <circle cx="85" cy="200" r="1" fill="#a6e3a1" opacity="0.2" />
 </svg>
