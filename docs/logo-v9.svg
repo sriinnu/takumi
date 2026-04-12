@@ -1,0 +1,243 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    Takumi Logo — V9: Deep Ocean Terminal
+    A bioluminescent deep-sea scene. An ancient terminal sits on the ocean floor,
+    overgrown with coral and barnacles. Its screen glows — the only light source.
+    Jellyfish drift past with trailing tentacles. The kanji 匠 is rendered in
+    bioluminescent plankton floating in the water column. Pixel bubbles rise.
+    Like finding Atlantis and it's running a terminal emulator.
+    Think Finding Nemo's abyss + Subnautica + a hacker's dream.
+  -->
+  <defs>
+    <linearGradient id="d9ocean" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#040810"/>
+      <stop offset="40%" stop-color="#060c18"/>
+      <stop offset="100%" stop-color="#020408"/>
+    </linearGradient>
+    <linearGradient id="d9screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0c1a2e"/>
+      <stop offset="100%" stop-color="#081420"/>
+    </linearGradient>
+    <filter id="d9bio" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="d9softbio" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="d9screenglow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8"/>
+    </filter>
+    <filter id="d9bubble" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="0.8"/>
+    </filter>
+  </defs>
+
+  <!-- Deep ocean abyss -->
+  <rect width="512" height="512" rx="32" fill="url(#d9ocean)"/>
+
+  <!-- Subtle light rays from the surface (impossibly far above) -->
+  <g opacity="0.015">
+    <polygon points="180,0 200,200 160,200" fill="#89b4fa"/>
+    <polygon points="280,0 310,180 250,180" fill="#89b4fa"/>
+    <polygon points="380,0 400,160 360,160" fill="#74c7ec"/>
+  </g>
+
+  <!-- Floating particulate matter / marine snow -->
+  <g fill="#cdd6f4" opacity="0.06">
+    <rect x="50" y="60" width="2" height="2"/>
+    <rect x="130" y="40" width="1" height="1"/>
+    <rect x="200" y="80" width="2" height="2"/>
+    <rect x="320" y="50" width="1" height="1"/>
+    <rect x="400" y="70" width="2" height="2"/>
+    <rect x="460" y="44" width="1" height="1"/>
+    <rect x="80" y="160" width="1" height="1"/>
+    <rect x="440" y="140" width="2" height="2"/>
+    <rect x="60" y="280" width="1" height="1"/>
+    <rect x="460" y="260" width="1" height="1"/>
+  </g>
+
+  <!-- ===== JELLYFISH (pixel art, bioluminescent) ===== -->
+  <!-- Jellyfish 1 — large, left side -->
+  <g transform="translate(60, 80)" filter="url(#d9softbio)">
+    <!-- Bell -->
+    <ellipse cx="40" cy="20" rx="28" ry="18" fill="#cba6f7" opacity="0.12"/>
+    <ellipse cx="40" cy="16" rx="24" ry="14" fill="#f5c2e7" opacity="0.08"/>
+    <!-- Oral arms -->
+    <rect x="26" y="36" width="2" height="40" fill="#cba6f7" opacity="0.06"/>
+    <rect x="36" y="38" width="2" height="52" fill="#f5c2e7" opacity="0.05"/>
+    <rect x="46" y="36" width="2" height="44" fill="#cba6f7" opacity="0.06"/>
+    <rect x="54" y="38" width="2" height="36" fill="#f5c2e7" opacity="0.04"/>
+    <animate attributeType="XML" attributeName="transform" type="translate"
+      values="60,80;56,70;60,80" dur="6s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- Jellyfish 2 — small, right side -->
+  <g transform="translate(400, 120)" filter="url(#d9softbio)">
+    <ellipse cx="20" cy="10" rx="14" ry="10" fill="#74c7ec" opacity="0.1"/>
+    <ellipse cx="20" cy="8" rx="10" ry="7" fill="#89b4fa" opacity="0.07"/>
+    <rect x="14" y="20" width="2" height="28" fill="#74c7ec" opacity="0.04"/>
+    <rect x="20" y="22" width="2" height="34" fill="#89b4fa" opacity="0.035"/>
+    <rect x="26" y="20" width="2" height="24" fill="#74c7ec" opacity="0.04"/>
+    <animate attributeType="XML" attributeName="transform" type="translate"
+      values="400,120;404,110;400,120" dur="5s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- ===== BIOLUMINESCENT KANJI 匠 ===== -->
+  <!-- The kanji composed of glowing plankton in the water column -->
+  <text
+    x="256" y="200"
+    text-anchor="middle"
+    font-family="'Noto Serif JP','Hiragino Mincho ProN',serif"
+    font-size="120"
+    fill="#74c7ec"
+    opacity="0.55"
+    filter="url(#d9bio)"
+  >匠</text>
+  <!-- Inner glow layer (brighter, tighter) -->
+  <text
+    x="256" y="200"
+    text-anchor="middle"
+    font-family="'Noto Serif JP','Hiragino Mincho ProN',serif"
+    font-size="120"
+    fill="#89b4fa"
+    opacity="0.25"
+  >匠</text>
+
+  <!-- Plankton dots around the kanji (bioluminescence) -->
+  <g fill="#74c7ec" filter="url(#d9softbio)">
+    <circle cx="180" cy="140" r="1.5" opacity="0.15">
+      <animate attributeName="opacity" values="0.15;0.05;0.15" dur="3s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="330" cy="150" r="1" opacity="0.12"/>
+    <circle cx="200" cy="220" r="1.5" opacity="0.1">
+      <animate attributeName="opacity" values="0.1;0.03;0.1" dur="4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="310" cy="210" r="1" opacity="0.13"/>
+    <circle cx="240" cy="240" r="1.5" opacity="0.1"/>
+    <circle cx="280" cy="120" r="1" opacity="0.08"/>
+  </g>
+
+  <!-- ===== OCEAN FLOOR ===== -->
+  <rect x="0" y="340" width="512" height="172" fill="#060c14"/>
+  <!-- Seafloor terrain (pixel rocks) -->
+  <g fill="#0a1420">
+    <rect x="0" y="332" width="16" height="12"/>
+    <rect x="16" y="336" width="12" height="8"/>
+    <rect x="40" y="330" width="20" height="14"/>
+    <rect x="64" y="334" width="12" height="10"/>
+    <rect x="100" y="328" width="16" height="16"/>
+    <rect x="380" y="330" width="20" height="14"/>
+    <rect x="412" y="326" width="16" height="18"/>
+    <rect x="440" y="332" width="12" height="12"/>
+    <rect x="460" y="328" width="20" height="16"/>
+    <rect x="488" y="334" width="24" height="10"/>
+  </g>
+
+  <!-- ===== THE SUNKEN TERMINAL ===== -->
+  <g transform="translate(140, 290)">
+    <!-- Terminal casing — old CRT style, barnacle-encrusted -->
+    <rect x="0" y="0" width="232" height="140" rx="8" fill="#0e1824" stroke="#1a2a3a" stroke-width="2"/>
+    <!-- Barnacles / coral growth on casing -->
+    <circle cx="10" cy="10" r="5" fill="#3a5a2e" opacity="0.3"/>
+    <circle cx="224" cy="6" r="4" fill="#4a6a3e" opacity="0.25"/>
+    <circle cx="6" cy="130" r="6" fill="#3a6a4e" opacity="0.2"/>
+    <rect x="220" y="120" width="8" height="16" rx="2" fill="#5a3a4e" opacity="0.15"/>
+    <!-- Small coral tuft -->
+    <rect x="226" y="60" width="4" height="12" rx="1" fill="#f38ba8" opacity="0.1"/>
+    <rect x="230" y="56" width="3" height="8" rx="1" fill="#f5c2e7" opacity="0.08"/>
+
+    <!-- Screen (the only light source down here) -->
+    <rect x="12" y="12" width="208" height="100" rx="4" fill="url(#d9screen)"/>
+    <!-- Screen glow (illuminates surroundings) -->
+    <rect x="12" y="12" width="208" height="100" rx="4" fill="#89b4fa" opacity="0.03" filter="url(#d9screenglow)"/>
+
+    <!-- Terminal chrome -->
+    <circle cx="24" cy="22" r="3" fill="#f38ba8" opacity="0.5"/>
+    <circle cx="34" cy="22" r="3" fill="#f9e2af" opacity="0.5"/>
+    <circle cx="44" cy="22" r="3" fill="#a6e3a1" opacity="0.5"/>
+
+    <!-- Code on screen -->
+    <g opacity="0.55">
+      <rect x="20" y="34" width="40" height="6" rx="1" fill="#cba6f7"/>
+      <rect x="66" y="34" width="60" height="6" rx="1" fill="#89b4fa"/>
+      <rect x="132" y="34" width="24" height="6" rx="1" fill="#a6e3a1"/>
+
+      <rect x="28" y="48" width="32" height="6" rx="1" fill="#f5c2e7"/>
+      <rect x="66" y="48" width="72" height="6" rx="1" fill="#6c7086"/>
+
+      <rect x="28" y="62" width="48" height="6" rx="1" fill="#a6e3a1"/>
+      <rect x="82" y="62" width="36" height="6" rx="1" fill="#89b4fa"/>
+      <rect x="124" y="62" width="20" height="6" rx="1" fill="#f9e2af"/>
+
+      <rect x="28" y="76" width="56" height="6" rx="1" fill="#f9e2af"/>
+      <rect x="90" y="76" width="40" height="6" rx="1" fill="#cba6f7"/>
+
+      <rect x="20" y="90" width="36" height="6" rx="1" fill="#89b4fa"/>
+      <rect x="62" y="90" width="28" height="6" rx="1" fill="#a6e3a1"/>
+      <!-- Cursor -->
+      <rect x="96" y="90" width="2" height="6" fill="#74c7ec" opacity="0.8">
+        <animate attributeName="opacity" values="0.8;0.15;0.8" dur="1.1s" repeatCount="indefinite"/>
+      </rect>
+    </g>
+
+    <!-- CRT base -->
+    <rect x="80" y="140" width="72" height="12" rx="2" fill="#0e1824" stroke="#1a2a3a" stroke-width="1"/>
+    <rect x="60" y="152" width="112" height="6" rx="1" fill="#0a1420"/>
+  </g>
+
+  <!-- Bubbles rising from terminal heat -->
+  <g filter="url(#d9bubble)">
+    <circle cx="290" cy="310" r="3" fill="none" stroke="#89b4fa" stroke-width="0.8" opacity="0.15">
+      <animate attributeName="cy" values="310;260;210;160" dur="8s" repeatCount="indefinite"/>
+      <animate attributeName="cx" values="290;294;288;292" dur="8s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="3;3.5;4;4.5" dur="8s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="270" cy="300" r="2" fill="none" stroke="#74c7ec" stroke-width="0.6" opacity="0.12">
+      <animate attributeName="cy" values="300;240;180;120" dur="10s" repeatCount="indefinite"/>
+      <animate attributeName="cx" values="270;266;272;268" dur="10s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="310" cy="320" r="2.5" fill="none" stroke="#89b4fa" stroke-width="0.7" opacity="0.1">
+      <animate attributeName="cy" values="320;270;220;170" dur="9s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Tiny bubbles -->
+    <circle cx="250" cy="330" r="1.5" fill="none" stroke="#74c7ec" stroke-width="0.5" opacity="0.08">
+      <animate attributeName="cy" values="330;280;230" dur="7s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- Sea anemone near terminal -->
+  <g transform="translate(100, 360)" opacity="0.15">
+    <rect x="0" y="0" width="3" height="16" rx="1" fill="#f38ba8"/>
+    <rect x="6" y="-4" width="3" height="20" rx="1" fill="#f5c2e7"/>
+    <rect x="12" y="-2" width="3" height="18" rx="1" fill="#f38ba8"/>
+    <rect x="18" y="2" width="3" height="14" rx="1" fill="#f5c2e7"/>
+    <!-- Sway animation -->
+    <animateTransform attributeName="transform" type="rotate" values="-2,112,376;2,112,376;-2,112,376" dur="4s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- ===== WORDMARK ===== -->
+  <text
+    x="256" y="470"
+    text-anchor="middle"
+    font-family="'SF Mono','Fira Code','JetBrains Mono',monospace"
+    font-size="26"
+    font-weight="600"
+    fill="#89b4fa"
+    letter-spacing="10"
+    opacity="0.6"
+  >TAKUMI</text>
+
+  <rect x="176" y="480" width="160" height="1.5" rx="0.75" fill="#74c7ec" opacity="0.12"/>
+
+  <text
+    x="256" y="498"
+    text-anchor="middle"
+    font-family="'SF Mono','Fira Code','JetBrains Mono',monospace"
+    font-size="10"
+    fill="#6c7086"
+    letter-spacing="4"
+    opacity="0.25"
+  >from the deep</text>
+</svg>

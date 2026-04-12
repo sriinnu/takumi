@@ -1,0 +1,227 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    Takumi Logo — V6: Neon Forge
+    A cyberpunk blacksmith's forge. The anvil IS the terminal. Molten code
+    drips from a pixel hammer strike. Neon signs in the background alley fog.
+    The kanji 匠 glows on the anvil face like heated metal — white-hot center,
+    amber edges, cooling to deep red. Sparks cascade in a Disney fountain arc.
+    Think Fantasia meets Blade Runner meets your local sushi bar's neon sign.
+  -->
+  <defs>
+    <linearGradient id="n6bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d0d1a"/>
+      <stop offset="60%" stop-color="#0a0a14"/>
+      <stop offset="100%" stop-color="#060608"/>
+    </linearGradient>
+    <linearGradient id="n6anvil" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a2a3c"/>
+      <stop offset="100%" stop-color="#1a1a28"/>
+    </linearGradient>
+    <linearGradient id="n6hammer" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#45475a"/>
+      <stop offset="100%" stop-color="#313244"/>
+    </linearGradient>
+    <linearGradient id="n6heat" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#fff5e0"/>
+      <stop offset="40%" stop-color="#f9a825"/>
+      <stop offset="80%" stop-color="#e65100"/>
+      <stop offset="100%" stop-color="#b71c1c"/>
+    </linearGradient>
+    <filter id="n6glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="b"/>
+      <feColorMatrix in="b" type="matrix" values="1 0 0 0 0  0.6 0.3 0 0 0  0 0 0.1 0 0  0 0 0 1 0" result="c"/>
+      <feMerge><feMergeNode in="c"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="n6neon" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="n6spark" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="n6fog">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="12"/>
+    </filter>
+  </defs>
+
+  <!-- Night sky / alley background -->
+  <rect width="512" height="512" rx="32" fill="url(#n6bg)"/>
+
+  <!-- Background building silhouettes (pixel art, distant) -->
+  <g fill="#0f0f1a" opacity="0.6">
+    <rect x="0" y="20" width="40" height="280"/>
+    <rect x="40" y="60" width="24" height="240"/>
+    <rect x="80" y="40" width="32" height="260"/>
+    <rect x="120" y="80" width="20" height="220"/>
+    <rect x="360" y="50" width="28" height="250"/>
+    <rect x="396" y="30" width="36" height="270"/>
+    <rect x="440" y="70" width="32" height="230"/>
+    <rect x="480" y="40" width="32" height="260"/>
+  </g>
+
+  <!-- Building windows (tiny glowing pixels) -->
+  <g fill="#89b4fa" opacity="0.15">
+    <rect x="10" y="40" width="4" height="4"/>
+    <rect x="22" y="60" width="4" height="4"/>
+    <rect x="10" y="100" width="4" height="4"/>
+    <rect x="22" y="140" width="4" height="4"/>
+    <rect x="90" y="60" width="4" height="4"/>
+    <rect x="98" y="100" width="4" height="4"/>
+    <rect x="370" y="80" width="4" height="4"/>
+    <rect x="370" y="120" width="4" height="4"/>
+    <rect x="408" y="50" width="4" height="4"/>
+    <rect x="420" y="90" width="4" height="4"/>
+    <rect x="450" y="100" width="4" height="4"/>
+    <rect x="490" y="60" width="4" height="4"/>
+    <rect x="490" y="120" width="4" height="4"/>
+  </g>
+  <!-- Warm windows -->
+  <g fill="#f9e2af" opacity="0.12">
+    <rect x="10" y="80" width="4" height="4"/>
+    <rect x="90" y="80" width="4" height="4"/>
+    <rect x="408" y="80" width="4" height="4"/>
+    <rect x="450" y="80" width="4" height="4"/>
+  </g>
+
+  <!-- Neon sign glow — top left, Japanese-style -->
+  <g filter="url(#n6neon)" transform="translate(28, 160)">
+    <text font-family="'Hiragino Kaku Gothic ProN',sans-serif" font-size="16" fill="#f38ba8" opacity="0.5">鍛</text>
+  </g>
+  <!-- Neon sign glow — top right -->
+  <g filter="url(#n6neon)" transform="translate(460, 140)">
+    <text font-family="'Hiragino Kaku Gothic ProN',sans-serif" font-size="14" fill="#89b4fa" opacity="0.4">冶</text>
+  </g>
+
+  <!-- Alley fog / steam -->
+  <ellipse cx="256" cy="340" rx="220" ry="50" fill="#585b70" opacity="0.04" filter="url(#n6fog)"/>
+  <ellipse cx="160" cy="300" rx="80" ry="30" fill="#cba6f7" opacity="0.02" filter="url(#n6fog)"/>
+
+  <!-- ===== THE ANVIL (it's a terminal) ===== -->
+  <g transform="translate(128, 220)">
+    <!-- Anvil body -->
+    <rect x="0" y="80" width="256" height="56" rx="4" fill="url(#n6anvil)" stroke="#3a3a4e" stroke-width="1.5"/>
+    <!-- Anvil horn (left) -->
+    <rect x="-20" y="88" width="28" height="32" rx="8" fill="#222236"/>
+    <!-- Anvil heel (right) -->
+    <rect x="248" y="88" width="16" height="40" rx="3" fill="#222236"/>
+    <!-- Anvil face (top surface — where the hot metal sits) -->
+    <rect x="8" y="72" width="240" height="12" rx="2" fill="#3a3a4e"/>
+    <!-- Terminal chrome on anvil face -->
+    <circle cx="22" cy="78" r="3" fill="#f38ba8" opacity="0.7"/>
+    <circle cx="32" cy="78" r="3" fill="#f9e2af" opacity="0.7"/>
+    <circle cx="42" cy="78" r="3" fill="#a6e3a1" opacity="0.7"/>
+    <!-- Anvil stand -->
+    <rect x="80" y="136" width="96" height="40" rx="3" fill="#1a1a24"/>
+    <rect x="60" y="176" width="136" height="8" rx="2" fill="#222234"/>
+
+    <!-- HOT KANJI on the anvil — white-hot center cooling outward -->
+    <text
+      x="128" y="60"
+      text-anchor="middle"
+      font-family="'Noto Serif JP','Hiragino Mincho ProN',serif"
+      font-size="100"
+      fill="url(#n6heat)"
+      filter="url(#n6glow)"
+    >匠</text>
+
+    <!-- Code lines being forged into the anvil surface — glowing syntax -->
+    <g opacity="0.4">
+      <rect x="16" y="94" width="36" height="5" rx="1" fill="#cba6f7"/>
+      <rect x="58" y="94" width="52" height="5" rx="1" fill="#89b4fa"/>
+      <rect x="116" y="94" width="28" height="5" rx="1" fill="#a6e3a1"/>
+      <rect x="16" y="106" width="24" height="5" rx="1" fill="#f5c2e7"/>
+      <rect x="46" y="106" width="68" height="5" rx="1" fill="#6c7086"/>
+      <rect x="120" y="106" width="40" height="5" rx="1" fill="#89b4fa"/>
+      <!-- Blinking cursor -->
+      <rect x="166" y="106" width="2" height="5" fill="#f9e2af" opacity="0.9">
+        <animate attributeName="opacity" values="0.9;0.1;0.9" dur="1s" repeatCount="indefinite"/>
+      </rect>
+    </g>
+  </g>
+
+  <!-- ===== THE HAMMER (mid-strike, frozen) ===== -->
+  <g transform="translate(290, 80) rotate(25)">
+    <!-- Hammer head -->
+    <rect x="0" y="0" width="60" height="36" rx="4" fill="url(#n6hammer)" stroke="#585b70" stroke-width="1"/>
+    <!-- Hammer face (striking surface — warm from use) -->
+    <rect x="-4" y="4" width="8" height="28" rx="2" fill="#6c7086"/>
+    <rect x="-2" y="8" width="4" height="20" fill="#f9e2af" opacity="0.12"/>
+    <!-- Hammer handle -->
+    <rect x="24" y="36" width="12" height="80" rx="3" fill="#7f5539"/>
+    <rect x="28" y="36" width="4" height="80" fill="#6b3f28" opacity="0.3"/>
+  </g>
+
+  <!-- ===== SPARK FOUNTAIN (Disney arc) ===== -->
+  <!-- Sparks erupt from the strike point in a parabolic fountain -->
+  <g filter="url(#n6spark)">
+    <!-- Main sparks — big, bright, arcing left -->
+    <circle cx="256" cy="212" r="3" fill="#fff5e0" opacity="0.9">
+      <animate attributeName="cx" values="256;200;150;120" dur="1.4s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="212;140;120;180" dur="1.4s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.9;0.7;0.3;0" dur="1.4s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="3;2.5;2;1" dur="1.4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="256" cy="212" r="2.5" fill="#f9a825" opacity="0.8">
+      <animate attributeName="cx" values="256;220;180;140" dur="1.7s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="212;130;100;160" dur="1.7s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.8;0.5;0.2;0" dur="1.7s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Arcing right -->
+    <circle cx="256" cy="212" r="2.5" fill="#fff5e0" opacity="0.85">
+      <animate attributeName="cx" values="256;310;360;390" dur="1.5s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="212;135;125;190" dur="1.5s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.85;0.6;0.25;0" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="256" cy="212" r="2" fill="#e65100" opacity="0.7">
+      <animate attributeName="cx" values="256;300;340;370" dur="1.8s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="212;145;140;200" dur="1.8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.7;0.4;0.15;0" dur="1.8s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Straight up -->
+    <circle cx="256" cy="212" r="2" fill="#f9e2af" opacity="0.75">
+      <animate attributeName="cy" values="212;120;90;130" dur="1.3s" repeatCount="indefinite"/>
+      <animate attributeName="cx" values="256;250;248;252" dur="1.3s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.75;0.5;0.15;0" dur="1.3s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Tiny pixel sparks (frozen, adding density) -->
+    <rect x="180" y="160" width="2" height="2" fill="#f9a825" opacity="0.4"/>
+    <rect x="200" y="140" width="3" height="3" fill="#fff5e0" opacity="0.3"/>
+    <rect x="310" y="150" width="2" height="2" fill="#e65100" opacity="0.35"/>
+    <rect x="330" y="170" width="3" height="3" fill="#f9a825" opacity="0.25"/>
+    <rect x="250" y="110" width="2" height="2" fill="#fff5e0" opacity="0.3"/>
+    <rect x="240" y="130" width="2" height="2" fill="#f9e2af" opacity="0.25"/>
+    <rect x="270" y="125" width="2" height="2" fill="#e65100" opacity="0.2"/>
+  </g>
+
+  <!-- ===== GROUND / FLOOR ===== -->
+  <rect x="0" y="410" width="512" height="102" rx="0" fill="#080810"/>
+  <!-- Puddle reflection (subtle) -->
+  <ellipse cx="256" cy="430" rx="100" ry="6" fill="#f9a825" opacity="0.03"/>
+
+  <!-- ===== WORDMARK ===== -->
+  <text
+    x="256" y="452"
+    text-anchor="middle"
+    font-family="'SF Mono','Fira Code','JetBrains Mono',monospace"
+    font-size="30"
+    font-weight="700"
+    fill="#cdd6f4"
+    letter-spacing="12"
+    opacity="0.85"
+  >TAKUMI</text>
+
+  <!-- Neon underline -->
+  <rect x="160" y="464" width="192" height="2" rx="1" fill="#f9a825" opacity="0.4" filter="url(#n6neon)"/>
+  <rect x="160" y="464" width="192" height="1" rx="0.5" fill="#f9e2af" opacity="0.5"/>
+
+  <text
+    x="256" y="490"
+    text-anchor="middle"
+    font-family="'SF Mono','Fira Code','JetBrains Mono',monospace"
+    font-size="11"
+    fill="#6c7086"
+    letter-spacing="5"
+    opacity="0.4"
+  >neon forge</text>
+</svg>
