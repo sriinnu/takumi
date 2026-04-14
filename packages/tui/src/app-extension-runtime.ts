@@ -6,8 +6,10 @@
  */
 
 import type { ExtensionRunner, NotifyLevel, SessionContextActions, UIContextActions } from "@takumi/agent";
-import type { Message } from "@takumi/core";
+import type { AgentEvent, Message, TakumiConfig, ToolDefinition } from "@takumi/core";
+import type { AgentRunner } from "./agent/agent-runner.js";
 import type { ExtensionUiStore } from "./extension-ui-store.js";
+import type { AppState } from "./state.js";
 
 export interface CreateExtensionUiActionsOptions {
 	addInfoMessage(text: string): void;
@@ -84,4 +86,72 @@ export function normalizeSessionTitle(title: string | null | undefined): string 
 function formatNotification(message: string, level: NotifyLevel): string {
 	if (level === "info") return message;
 	return `${level.toUpperCase()}: ${message}`;
+}
+
+/** Options for binding extension runner actions to the TUI runtime. */
+export interface BindExtensionActionsContext {
+	state: AppState;
+	agentRunner: AgentRunner | null;
+	config: TakumiConfig;
+	extensionUiStore: ExtensionUiStore;
+	getSessionTitleOverride(): string | null;
+	setSessionTitleOverride(title: string | null): void;
+	addInfoMessage(text: string): void;
+	quit(): void;
+}
+
+/** Wire the extension runner's four action surfaces into the live TUI runtime. */
+export async function bindExtensionRunnerActions(
+	runner: ExtensionRunner,
+	ctx: BindExtensionActionsContext,
+): Promise<void> {
+	runner.bindActions(
+		{
+			getModel: () => ctx.state.model.value || undefined,
+			getSessionId: () => ctx.state.sessionId.value || undefined,
+			getCwd: () => process.cwd(),
+			isIdle: () => !ctx.state.isStreaming.value,
+			abort: () => ctx.agentRunner?.cancel(),
+			getContextUsage: () => ({
+				tokens: ctx.state.contextTokens.value,
+				contextWindow: ctx.state.contextWindow.value,
+				percent: ctx.state.contextPercent.value,
+			}),
+			getSystemPrompt: () => ctx.config.systemPrompt || "",
+			compact: () => {
+				/* future: trigger manual compaction */
+			},
+			shutdown: () => void ctx.quit(),
+		},
+		{
+			sendUserMessage: (content) => ctx.agentRunner?.submit(content),
+			getActiveTools: () => (ctx.agentRunner ? ctx.agentRunner.getTools().listNames() : []),
+			setActiveTools: () => {
+				/* future: dynamic tool enable/disable */
+			},
+			exec: async (command, args) => {
+				const { execFile } = await import("node:child_process");
+				const { promisify } = await import("node:util");
+				const execFileAsync = promisify(execFile);
+				try {
+					const { stdout, stderr } = await execFileAsync(command, args ?? []);
+					return { stdout, stderr, exitCode: 0 };
+				} catch (err: unknown) {
+					const e = err as { stdout?: string; stderr?: string; code?: number };
+					return { stdout: e.stdout ?? "", stderr: e.stderr ?? "", exitCode: e.code ?? 1 };
+				}
+			},
+		},
+		createExtensionUiActions({
+			addInfoMessage: (text) => ctx.addInfoMessage(text),
+			uiStore: ctx.extensionUiStore,
+		}),
+		createExtensionSessionActions({
+			getMessages: () => ctx.state.messages.value,
+			getSessionId: () => ctx.state.sessionId.value,
+			getSessionTitle: () => ctx.getSessionTitleOverride(),
+			setSessionTitle: (title) => ctx.setSessionTitleOverride(title),
+		}),
+	);
+	await emitExtensionSessionStart(runner, ctx.state.sessionId.value);
 }

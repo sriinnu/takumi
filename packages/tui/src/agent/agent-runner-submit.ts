@@ -369,7 +369,10 @@ function finalizeAssistantMessage(
 	stream: SubmissionAccumulator,
 	emitExtensionEvent?: RunAgentRunnerSubmitOptions["emitExtensionEvent"],
 ): void {
-	if (!stream.fullText) {
+	// Guard: skip only when the model produced absolutely no content.
+	// Previously this checked `fullText` alone, silently dropping turns
+	// where the model emitted thinking blocks but no regular text.
+	if (!stream.fullText && !stream.fullThinking) {
 		return;
 	}
 
@@ -384,7 +387,9 @@ function finalizeAssistantMessage(
 	if (stream.fullThinking) {
 		assistantMessage.content.push({ type: "thinking", thinking: stream.fullThinking });
 	}
-	assistantMessage.content.push({ type: "text", text: stream.fullText });
+	if (stream.fullText) {
+		assistantMessage.content.push({ type: "text", text: stream.fullText });
+	}
 	state.addMessage(assistantMessage);
 	void syncPendingChitraguptaSessionTurns(state, emitExtensionEvent);
 

@@ -46,6 +46,14 @@ export class EditorPanel extends Component {
 		if (props.getCurrentProvider) this.engine.setCurrentProvider(props.getCurrentProvider);
 	}
 
+	override onUnmount(): void {
+		if (this.completionDebounceTimer !== null) {
+			clearTimeout(this.completionDebounceTimer);
+			this.completionDebounceTimer = null;
+		}
+		super.onUnmount();
+	}
+
 	/** Update the project root used for file completion. */
 	setProjectRoot(root: string): void {
 		this.engine.setProjectRoot(root);
@@ -72,6 +80,23 @@ export class EditorPanel extends Component {
 	/** Return the editor height Takumi should reserve in chat layout. */
 	getPreferredHeight(maxRows = 8): number {
 		return Math.min(Math.max(3, this.editor.lineCount + 2), maxRows);
+	}
+
+	/** Return the selected text, or null when nothing is selected. */
+	getSelectedText(): string | null {
+		return this.editor.getSelectedText();
+	}
+
+	/** Whether the editor currently has an active selection. */
+	hasSelection(): boolean {
+		return this.editor.getSelection() !== null;
+	}
+
+	/** Insert text at the cursor, replacing the selection if one exists. */
+	insertText(text: string): void {
+		const before = this.snapshot();
+		this.editor.insert(text);
+		this.afterEditorMutation(before);
 	}
 
 	/** Handle keys for completion, multiline editing, and submit. */
@@ -103,8 +128,9 @@ export class EditorPanel extends Component {
 		}
 
 		if ((event.ctrl && event.key === "j") || (event.shift && event.raw === KEY_CODES.ENTER)) {
+			const before = this.snapshot();
 			this.editor.newline();
-			this.afterEditorMutation();
+			this.afterEditorMutation(before);
 			return true;
 		}
 
@@ -134,18 +160,21 @@ export class EditorPanel extends Component {
 				this.markDirty();
 				return true;
 			}
+			const pre = this.snapshot();
 			this.editor.insert(" ".repeat(TAB_SIZE));
-			this.afterEditorMutation();
+			this.afterEditorMutation(pre);
 			return true;
 		}
 
-		if (this.hasFileTrigger(value, cursor)) {
+		// Async triggers: @file paths or /command <arguments>
+		if (this.hasFileTrigger(value, cursor) || this.hasSlashArgTrigger(value, cursor)) {
 			this.triggerCompletion();
 			return true;
 		}
 
+		const pre = this.snapshot();
 		this.editor.insert(" ".repeat(TAB_SIZE));
-		this.afterEditorMutation();
+		this.afterEditorMutation(pre);
 		return true;
 	}
 
@@ -170,7 +199,17 @@ export class EditorPanel extends Component {
 		};
 	}
 
-	private afterEditorMutation(before = this.snapshot()): void {
+	/**
+	 * React to an editor mutation by comparing pre/post state.
+	 * If anything changed, I reset history navigation and run the
+	 * completion engine via onInputChange(). Always marks dirty.
+	 *
+	 * The `before` snapshot is **required** — callers must capture it
+	 * before the mutation. A default-param version of this method once
+	 * captured state *after* the mutation, silently making before === after
+	 * and suppressing onInputChange entirely. Never again.
+	 */
+	private afterEditorMutation(before: { text: string; row: number; col: number }): void {
 		const after = this.snapshot();
 		if (before.text !== after.text || before.row !== after.row || before.col !== after.col) {
 			if (this.historyIndex !== null) {
@@ -258,7 +297,9 @@ export class EditorPanel extends Component {
 			return;
 		}
 
-		if (!this.hasFileTrigger(value, cursor)) {
+		// Async triggers: @file paths or /command <arguments>
+		const needsAsync = this.hasFileTrigger(value, cursor) || this.hasSlashArgTrigger(value, cursor);
+		if (!needsAsync) {
 			if (this.completionDebounceTimer !== null) {
 				clearTimeout(this.completionDebounceTimer);
 				this.completionDebounceTimer = null;
@@ -266,6 +307,10 @@ export class EditorPanel extends Component {
 			if (this.completion.isVisible.value) this.completion.hide();
 			return;
 		}
+
+		// Hide stale popup during debounce so parent commands don't linger
+		// while we wait for argument completions to load.
+		if (this.completion.isVisible.value) this.completion.hide();
 
 		if (this.completionDebounceTimer !== null) clearTimeout(this.completionDebounceTimer);
 		this.completionDebounceTimer = setTimeout(() => {
@@ -277,6 +322,15 @@ export class EditorPanel extends Component {
 	private hasFileTrigger(value: string, cursor: number): boolean {
 		const prefix = value.slice(0, cursor);
 		return /(^|\s)@[^\s]*$/.test(prefix);
+	}
+
+	/** Check if the input is a known /command followed by a space (argument zone). */
+	private hasSlashArgTrigger(value: string, cursor: number): boolean {
+		const before = value.slice(0, cursor);
+		if (!before.startsWith("/") || !before.includes(" ")) return false;
+		const spaceIndex = before.indexOf(" ");
+		const cmd = this.engine.getCommandByName(before.slice(0, spaceIndex));
+		return cmd?.getArgumentCompletions != null;
 	}
 
 	private getCursorOffset(): number {

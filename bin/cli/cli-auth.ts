@@ -66,12 +66,7 @@ export function tryResolveCliToken(provider: string): string | undefined {
 
 		// ── Anthropic / Claude Code ──────────────────────────────────
 		if (provider === "anthropic" || provider === "claude") {
-			// 1. Claude Code OAuth credentials (primary location)
-			const credPath = join(home, ".claude", ".credentials.json");
-			const creds = readJsonSafe(credPath);
-			if (creds?.claudeAiOauth?.accessToken) return creds.claudeAiOauth.accessToken;
-
-			// 2. Legacy / alternative config locations
+			// Only accept local config files that carry an actual API key.
 			const legacyPaths = [
 				join(home, ".claude.json"),
 				join(home, ".config", "claude", "config.json"),
@@ -82,7 +77,6 @@ export function tryResolveCliToken(provider: string): string | undefined {
 				if (!data) continue;
 				if (data.primaryApiKey) return data.primaryApiKey;
 				if (data.apiKey) return data.apiKey;
-				if (data.token) return data.token;
 			}
 		}
 
@@ -115,22 +109,20 @@ export function tryResolveCliToken(provider: string): string | undefined {
 			const authPath = join(codexHome, "auth.json");
 			const data = readJsonSafe(authPath);
 			if (data) {
-				// Codex CLI stores various key formats
-				const key = data.apiKey || data.api_key || data.token || data.openai_api_key;
-				if (key) return key;
+				const authMode = typeof data.auth_mode === "string" ? data.auth_mode.toLowerCase() : null;
+				const candidate = data.apiKey || data.api_key || data.openai_api_key || data.OPENAI_API_KEY;
+				if (typeof candidate === "string" && candidate.trim()) {
+					const key = candidate.trim();
+					if (authMode === "api_key" || key.startsWith("sk-")) return key;
+				}
 			}
 		}
 
 		// ── Gemini CLI ──────────────────────────────────────────────
 		if (provider === "gemini" || provider === "google") {
-			// 1. Gemini CLI dotenv file (fast, no subprocess)
 			const geminiEnvPath = join(home, ".gemini", ".env");
 			const geminiKey = readEnvFile(geminiEnvPath, "GEMINI_API_KEY");
 			if (geminiKey) return geminiKey;
-
-			// 2. gcloud CLI (slower, requires subprocess)
-			const gcloudToken = execSafe("gcloud auth print-access-token");
-			if (gcloudToken) return gcloudToken;
 		}
 	} catch {
 		// Ignore errors, fallback to undefined
@@ -180,9 +172,6 @@ function detectEnvironmentAuth(): AutoDetectedAuth | null {
 	if (env.ANTHROPIC_API_KEY) {
 		return { provider: "anthropic", apiKey: env.ANTHROPIC_API_KEY, source: "ANTHROPIC_API_KEY" };
 	}
-	if (env.CLAUDE_CODE_OAUTH_TOKEN) {
-		return { provider: "anthropic", apiKey: env.CLAUDE_CODE_OAUTH_TOKEN, source: "CLAUDE_CODE_OAUTH_TOKEN" };
-	}
 	if (env.OPENAI_API_KEY) {
 		return { provider: "openai", apiKey: env.OPENAI_API_KEY, source: "OPENAI_API_KEY" };
 	}
@@ -231,14 +220,17 @@ function detectEnvironmentAuth(): AutoDetectedAuth | null {
 	if (env.ZAI_API_KEY) {
 		return { provider: "zai", apiKey: env.ZAI_API_KEY, source: "ZAI_API_KEY" };
 	}
-	if (env.KIMI_API_KEY) {
-		return { provider: "zai", apiKey: env.KIMI_API_KEY, source: "KIMI_API_KEY" };
+	if (env.GLM_API_KEY) {
+		return { provider: "zai", apiKey: env.GLM_API_KEY, source: "GLM_API_KEY" };
 	}
 	if (env.MOONSHOT_API_KEY) {
-		return { provider: "zai", apiKey: env.MOONSHOT_API_KEY, source: "MOONSHOT_API_KEY" };
+		return { provider: "moonshot", apiKey: env.MOONSHOT_API_KEY, source: "MOONSHOT_API_KEY" };
 	}
-	if (env.TAKUMI_API_KEY) {
-		return { provider: "anthropic", apiKey: env.TAKUMI_API_KEY, source: "TAKUMI_API_KEY" };
+	if (env.KIMI_API_KEY) {
+		return { provider: "moonshot", apiKey: env.KIMI_API_KEY, source: "KIMI_API_KEY" };
+	}
+	if (env.MINIMAX_API_KEY) {
+		return { provider: "minimax", apiKey: env.MINIMAX_API_KEY, source: "MINIMAX_API_KEY" };
 	}
 	return null;
 }
@@ -251,17 +243,22 @@ function detectEnvironmentAuth(): AutoDetectedAuth | null {
 function detectFileBackedCliAuth(): AutoDetectedAuth | null {
 	const claudeToken = tryResolveCliToken("anthropic");
 	if (claudeToken) {
-		return { provider: "anthropic", apiKey: claudeToken, source: "Claude CLI (~/.claude/)" };
+		return { provider: "anthropic", apiKey: claudeToken, source: "Claude config API key" };
+	}
+
+	const codexToken = tryResolveCliToken("openai");
+	if (codexToken) {
+		return {
+			provider: "openai",
+			apiKey: codexToken,
+			model: "gpt-4.1",
+			source: "Codex auth (~/.codex/auth.json)",
+		};
 	}
 
 	const geminiEnvToken = readEnvFile(join(homedir(), ".gemini", ".env"), "GEMINI_API_KEY");
 	if (geminiEnvToken) {
 		return { provider: "gemini", apiKey: geminiEnvToken, source: "Gemini CLI (~/.gemini/)" };
-	}
-
-	const codexToken = tryResolveCliToken("codex");
-	if (codexToken) {
-		return { provider: "openai", apiKey: codexToken, source: "Codex CLI (~/.codex/)" };
 	}
 
 	const copilotToken = readGitHubCopilotToken();
@@ -315,11 +312,6 @@ function addFastProviderStatus(
  * them when fast env/file probes did not already settle the provider.
  */
 function detectCommandBackedCliAuth(): AutoDetectedAuth | null {
-	const geminiCliToken = tryResolveCliToken("gemini");
-	if (geminiCliToken) {
-		return { provider: "gemini", apiKey: geminiCliToken, source: "Gemini CLI (~/.gemini/)" };
-	}
-
 	const ghToken = execSafe("gh auth token");
 	if (ghToken) {
 		return {
@@ -341,7 +333,7 @@ export async function collectFastProviderStatus(): Promise<FastProviderStatus[]>
 	const providers = new Map<string, FastProviderStatus>();
 	const env = loadMergedEnv();
 
-	if (env.ANTHROPIC_API_KEY || env.CLAUDE_CODE_OAUTH_TOKEN) {
+	if (env.ANTHROPIC_API_KEY) {
 		addFastProviderStatus(providers, "anthropic", "env");
 	}
 	if (env.OPENAI_API_KEY) {
@@ -377,22 +369,25 @@ export async function collectFastProviderStatus(): Promise<FastProviderStatus[]>
 	if (env.BEDROCK_API_KEY || env.AWS_BEARER_TOKEN) {
 		addFastProviderStatus(providers, "bedrock", "env");
 	}
-	if (env.ZAI_API_KEY || env.KIMI_API_KEY || env.MOONSHOT_API_KEY) {
+	if (env.ZAI_API_KEY || env.GLM_API_KEY) {
 		addFastProviderStatus(providers, "zai", "env");
 	}
-	if (env.TAKUMI_API_KEY) {
-		addFastProviderStatus(providers, "anthropic", "env");
+	if (env.MOONSHOT_API_KEY || env.KIMI_API_KEY) {
+		addFastProviderStatus(providers, "moonshot", "env");
+	}
+	if (env.MINIMAX_API_KEY) {
+		addFastProviderStatus(providers, "minimax", "env");
 	}
 
 	if (tryResolveCliToken("anthropic")) {
 		addFastProviderStatus(providers, "anthropic", "cli");
 	}
+	if (tryResolveCliToken("openai")) {
+		addFastProviderStatus(providers, "openai", "config", ["gpt-4.1"]);
+	}
 	const geminiEnvToken = readEnvFile(join(homedir(), ".gemini", ".env"), "GEMINI_API_KEY");
 	if (geminiEnvToken) {
 		addFastProviderStatus(providers, "gemini", "cli");
-	}
-	if (tryResolveCliToken("codex")) {
-		addFastProviderStatus(providers, "openai", "cli");
 	}
 	if (readGitHubCopilotToken()) {
 		addFastProviderStatus(providers, "github", "oauth", ["gpt-4.1"]);

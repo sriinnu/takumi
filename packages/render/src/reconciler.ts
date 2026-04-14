@@ -13,7 +13,7 @@ import { Screen } from "./screen.js";
 import { computeLayout } from "./yoga.js";
 
 export interface RenderSchedulerOptions {
-	/** Target FPS (default: 30). */
+	/** Target FPS (default: 60). */
 	fps?: number;
 	/** Write function (default: process.stdout.write). */
 	write?: (data: string) => void;
@@ -25,13 +25,13 @@ export class RenderScheduler {
 	private scheduled = false;
 	private priorityScheduled = false;
 	private running = false;
+	/** Reentrancy guard — prevents render-during-render if a component calls forceRender(). */
+	private rendering = false;
 	private timer: ReturnType<typeof setTimeout> | null = null;
 	private frameInterval: number;
 	private writeFn: (data: string) => void;
 	private lastFrameTime = 0;
 	private frameCount = 0;
-	/** When true, the back buffer must be cleared before the next render. */
-	private needsClear = true;
 
 	constructor(width: number, height: number, options?: RenderSchedulerOptions) {
 		this.screen = new Screen(width, height);
@@ -86,35 +86,36 @@ export class RenderScheduler {
 
 	/** Perform a single render frame. */
 	private renderFrame(): void {
-		if (!this.root) return;
+		if (!this.root || !this.running || this.rendering) return;
+		this.rendering = true;
+		try {
+			// 1. Layout — compute positions via Yoga
+			if (this.root.yogaNode) {
+				computeLayout(this.root.yogaNode, this.screen.width, this.screen.height);
+			}
 
-		// 1. Layout — compute positions via Yoga
-		if (this.root.yogaNode) {
-			computeLayout(this.root.yogaNode, this.screen.width, this.screen.height);
-		}
-
-		// 2. Clear back buffer only when needed (resize/invalidation).
-		// After diff(), back ≡ front — unchanged cells naturally stay in sync.
-		if (this.needsClear) {
+			// 2. Always clear the back buffer so overlays (completion popups, dialogs)
+			// that shrink or disappear don't leave ghost pixels in unwritten cells.
 			this.screen.clear();
-			this.needsClear = false;
+
+			// 3. Render component tree into back buffer
+			this.renderComponent(this.root, {
+				x: 0,
+				y: 0,
+				width: this.screen.width,
+				height: this.screen.height,
+			});
+
+			// 4. Diff and flush
+			const patch = this.screen.diff();
+			if (patch.changedCells > 0) {
+				this.writeFn(patch.output);
+			}
+
+			this.frameCount++;
+		} finally {
+			this.rendering = false;
 		}
-
-		// 3. Render component tree into back buffer
-		this.renderComponent(this.root, {
-			x: 0,
-			y: 0,
-			width: this.screen.width,
-			height: this.screen.height,
-		});
-
-		// 4. Diff and flush
-		const patch = this.screen.diff();
-		if (patch.changedCells > 0) {
-			this.writeFn(patch.output);
-		}
-
-		this.frameCount++;
 	}
 
 	/** Recursively render a component and its children. */
@@ -125,9 +126,14 @@ export class RenderScheduler {
 		component.render(this.screen, rect);
 		component.clearDirty();
 
-		// Render children with their computed rects
+		// Render children that have Yoga-computed layout rects.
+		// Components whose parent manually calls child.render() with explicit
+		// rects (the common pattern in this codebase) don't need the recursive
+		// pass — they were already rendered above. Recursing into them with the
+		// default {0,0,0,0} rect would overwrite correctly-rendered cells.
 		for (const child of component.children) {
 			const childRect = child.getAbsoluteRect();
+			if (childRect.width === 0 && childRect.height === 0) continue;
 			this.renderComponent(child, childRect);
 		}
 	}
@@ -136,7 +142,6 @@ export class RenderScheduler {
 	resize(width: number, height: number): void {
 		this.screen.resize(width, height);
 		this.screen.invalidate();
-		this.needsClear = true;
 		this.scheduleRender();
 	}
 
@@ -144,14 +149,14 @@ export class RenderScheduler {
 	start(): void {
 		this.running = true;
 		this.screen.invalidate();
-		this.needsClear = true;
 		this.scheduleRender();
 	}
 
-	/** Stop the render loop. */
+	/** Stop the render loop. Queued setImmediate callbacks are guarded by the running flag. */
 	stop(): void {
 		this.running = false;
 		this.scheduled = false;
+		this.priorityScheduled = false;
 		if (this.timer !== null) {
 			clearTimeout(this.timer);
 			this.timer = null;

@@ -10,23 +10,32 @@ import type { EditorPanel } from "./editor.js";
 export function renderEditorCompletionPopup(panel: EditorPanel, screen: Screen, rect: Rect): void {
 	const items = panel.completion.items.value;
 	if (items.length === 0) return;
-	const visibleCount = Math.min(items.length, MAX_VISIBLE_ITEMS);
+
+	// Clamp visible rows to available space above the editor (chrome = 4: top/bottom border + title + footer).
+	const maxAbove = rect.y - 4;
+	if (maxAbove < 1) return; // not even 1 item fits
+	const visibleCount = Math.min(items.length, MAX_VISIBLE_ITEMS, maxAbove);
 	const selectedIdx = panel.completion.selectedIndex.value;
 	const selectedItem = items[selectedIdx] ?? items[0];
 	const titleText = ` ${formatCompletionTitle(selectedItem, items.length)} `;
 	const footerText = ` ${formatCompletionFooter(selectedItem)} `;
-	const popupWidth = Math.min(
-		Math.max(
-			...items.map((item) => formatCompletionRowText(item).length + 4),
-			titleText.length + 2,
-			footerText.length + 2,
-		),
-		rect.width - 2,
+
+	// Clamp scroll so the selected item stays within the (possibly reduced) visible window.
+	let scrollOff = panel.completion.scrollOffset.value;
+	if (selectedIdx < scrollOff) scrollOff = selectedIdx;
+	else if (selectedIdx >= scrollOff + visibleCount) scrollOff = selectedIdx - visibleCount + 1;
+
+	// Cap popup width: fit visible content but never exceed 60 chars or half the terminal.
+	const maxPopupWidth = Math.max(40, Math.min(60, Math.floor(rect.width / 2)));
+	const contentWidth = Math.max(
+		...items.slice(scrollOff, scrollOff + visibleCount).map((item) => item.label.length + 8),
+		titleText.length + 2,
+		footerText.length + 2,
 	);
+	const popupWidth = Math.min(contentWidth, maxPopupWidth, rect.width - 2);
 	const popupHeight = visibleCount + 4;
 	const popupX = rect.x + 1;
 	const popupY = rect.y - popupHeight;
-	if (popupY < 0) return;
 
 	screen.writeText(popupY, popupX, `┌${"─".repeat(popupWidth - 2)}┐`, { fg: 8 });
 	screen.writeText(popupY + 1, popupX, "│", { fg: 8 });
@@ -37,7 +46,6 @@ export function renderEditorCompletionPopup(panel: EditorPanel, screen: Screen, 
 	screen.writeText(popupY + 1, popupX + popupWidth - 1, "│", { fg: 8 });
 	screen.writeText(popupY + popupHeight - 1, popupX, `└${"─".repeat(popupWidth - 2)}┘`, { fg: 8 });
 
-	const scrollOff = panel.completion.scrollOffset.value;
 	for (let i = 0; i < visibleCount; i++) {
 		const itemIdx = scrollOff + i;
 		if (itemIdx >= items.length) break;

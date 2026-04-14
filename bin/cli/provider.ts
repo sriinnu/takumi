@@ -7,17 +7,29 @@ import { resolveStartupModelPolicy, type StartupModelPolicyResolution } from "./
 
 type BootstrapCredentialBridge = Pick<ChitraguptaBridge, "requestProviderCredential">;
 
-/** Only preserve a configured API key when the rebased provider still matches the original provider scope. */
-function resolveConfigApiKey(
-	providerName: string,
-	config: TakumiConfig,
-	bridge?: BootstrapCredentialBridge,
-): string | undefined {
-	if (!config.apiKey) return undefined;
+const DEFAULT_STARTUP_MODELS: Record<string, string> = {
+	anthropic: "claude-sonnet-4-20250514",
+	openai: "gpt-4.1",
+	github: "gpt-4.1",
+	gemini: "gemini-2.5-pro",
+	groq: "llama-3.3-70b-versatile",
+	xai: "grok-4",
+	deepseek: "deepseek-chat",
+	mistral: "mistral-large-latest",
+	together: "meta-llama/Llama-3-70b-chat-hf",
+	openrouter: "openai/gpt-4.1-mini",
+	alibaba: "qwen-max",
+	bedrock: "anthropic.claude-3-7-sonnet-20250219-v1:0",
+	zai: "glm-4.5-flash",
+	moonshot: "kimi-k2.5",
+	minimax: "MiniMax-M2.5",
+};
 
+/** I only preserve a configured API key when the rebased provider still matches the original provider scope. */
+function resolveConfigApiKey(providerName: string, config: TakumiConfig): string | undefined {
+	if (!config.apiKey) return undefined;
 	const configuredProvider = normalizeProviderName(config.provider || "anthropic") ?? (config.provider || "anthropic");
-	const explicitDirectApiKey = config.experimental?.takumiExplicitApiKey === true;
-	return configuredProvider === providerName && (!bridge || explicitDirectApiKey) ? config.apiKey : undefined;
+	return configuredProvider === providerName ? config.apiKey : undefined;
 }
 
 /** Normalize provider aliases and keep a stable default for startup paths. */
@@ -29,6 +41,17 @@ function normalizeOrDefaultProvider(providerName?: string): string {
 /** Format provider/model targets consistently for warnings and failures. */
 function describeProviderTarget(providerName: string, model?: string): string {
 	return model ? `${providerName} / ${model}` : providerName;
+}
+
+/** I respect a generic TAKUMI_API_KEY only when the caller pinned the provider explicitly. */
+function resolvePinnedTakumiApiKey(providerName: string, env: Record<string, string | undefined>): string | undefined {
+	const pinnedProvider = normalizeProviderName(env.TAKUMI_PROVIDER ?? "") ?? env.TAKUMI_PROVIDER;
+	return env.TAKUMI_API_KEY && pinnedProvider === providerName ? env.TAKUMI_API_KEY : undefined;
+}
+
+/** I fall back to a stable provider default when auth discovery did not include a model id. */
+function resolveDefaultStartupModel(providerName: string): string | undefined {
+	return DEFAULT_STARTUP_MODELS[providerName];
 }
 
 /** Keep daemon credential lookups on the daemon's canonical provider ids. */
@@ -67,7 +90,7 @@ export function rebaseProviderConfig(
 	return {
 		...config,
 		provider: normalizedProvider,
-		model: model ?? config.model,
+		model: model || config.model || resolveDefaultStartupModel(normalizedProvider) || "",
 		apiKey: apiKey ?? (preserveScopedFields ? config.apiKey : ""),
 		endpoint: preserveScopedFields ? config.endpoint : "",
 	};
@@ -102,7 +125,8 @@ export async function buildSingleProvider(
 ): Promise<any | null> {
 	const env = loadMergedEnv(config.workingDirectory || process.cwd());
 	const normalizedProvider = normalizeProviderName(providerName) ?? providerName;
-	const configApiKey = resolveConfigApiKey(normalizedProvider, config, bridge);
+	const configApiKey = resolveConfigApiKey(normalizedProvider, config);
+	const pinnedTakumiApiKey = resolvePinnedTakumiApiKey(normalizedProvider, env);
 	const daemonVaultKey = configApiKey ? undefined : await resolveDaemonVaultCredential(bridge, normalizedProvider);
 
 	// Resolve endpoint: CLI override → kosha-discovery → hardcoded fallback
@@ -121,34 +145,31 @@ export async function buildSingleProvider(
 	};
 
 	if (normalizedProvider === "anthropic") {
-		// Priority: CLI tools → env vars (pi-mono ecosystem standard)
 		const key =
 			configApiKey ||
+			pinnedTakumiApiKey ||
 			daemonVaultKey ||
 			tryResolveCliToken("anthropic") ||
-			env.ANTHROPIC_API_KEY ||
-			env.CLAUDE_CODE_OAUTH_TOKEN ||
-			env.TAKUMI_API_KEY;
+			env.ANTHROPIC_API_KEY;
 		if (!key) return null;
 		return new agent.DirectProvider({ ...config, provider: normalizedProvider, apiKey: key });
 	}
 
 	if (normalizedProvider === "gemini") {
-		// Priority: CLI tools → env vars
 		const key =
 			configApiKey ||
+			pinnedTakumiApiKey ||
 			daemonVaultKey ||
 			tryResolveCliToken("gemini") ||
 			env.GEMINI_API_KEY ||
-			env.GOOGLE_API_KEY ||
-			env.TAKUMI_API_KEY;
+			env.GOOGLE_API_KEY;
 		if (!key) return null;
 		const endpoint = await resolveEndpoint(normalizedProvider);
 		return new agent.GeminiProvider({
 			...config,
 			provider: normalizedProvider,
 			apiKey: key,
-			endpoint,
+			endpoint: endpoint || undefined,
 		});
 	}
 
@@ -164,23 +185,24 @@ export async function buildSingleProvider(
 		alibaba: "ALIBABA_API_KEY",
 		bedrock: "BEDROCK_API_KEY",
 		zai: "ZAI_API_KEY",
+		moonshot: "MOONSHOT_API_KEY",
+		minimax: "MINIMAX_API_KEY",
 		ollama: "",
 	};
 
 	const envVar = keyMap[normalizedProvider];
-	// Priority: CLI tools → env vars (pi-mono ecosystem standard)
 	const key =
 		configApiKey ||
+		pinnedTakumiApiKey ||
 		daemonVaultKey ||
-		(normalizedProvider === "openai" ? tryResolveCliToken("codex") : undefined) ||
+		(normalizedProvider === "openai" ? tryResolveCliToken("openai") : undefined) ||
 		(normalizedProvider === "github" ? tryResolveCliToken("github") : undefined) ||
-		tryResolveCliToken(normalizedProvider) ||
-		(normalizedProvider === "zai" ? env.KIMI_API_KEY || env.MOONSHOT_API_KEY : undefined) ||
+		(normalizedProvider === "zai" ? env.GLM_API_KEY : undefined) ||
+		(normalizedProvider === "moonshot" ? env.KIMI_API_KEY : undefined) ||
 		(normalizedProvider === "xai" ? env.GROK_API_KEY : undefined) ||
 		(normalizedProvider === "alibaba" ? env.DASHSCOPE_API_KEY : undefined) ||
 		(normalizedProvider === "bedrock" ? env.AWS_BEARER_TOKEN : undefined) ||
-		(envVar ? env[envVar] : undefined) ||
-		env.TAKUMI_API_KEY;
+		(envVar ? env[envVar] : undefined);
 	const allowMissingKey = normalizedProvider === "ollama" || canSkipApiKey({ ...config, provider: normalizedProvider });
 	if (!key && !allowMissingKey) return null;
 
@@ -190,7 +212,8 @@ export async function buildSingleProvider(
 		...config,
 		provider: normalizedProvider,
 		apiKey: key || "",
-		endpoint,
+		endpoint: endpoint || undefined,
+		providerName: normalizedProvider,
 	});
 }
 
@@ -356,7 +379,7 @@ function resolveStandaloneDetectedModel(
 	if (normalizeOrDefaultProvider(config.provider) === detectedProvider) {
 		return config.model;
 	}
-	return undefined;
+	return resolveDefaultStartupModel(detectedProvider);
 }
 
 /**

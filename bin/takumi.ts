@@ -33,6 +33,7 @@ import { cmdPackage } from "./cli/packages.js";
 import { bootstrapInteractiveContract } from "./cli/interactive-contract-bootstrap.js";
 import { resolveInteractiveProviderWithOnboarding } from "./cli/interactive-provider-onboarding.js";
 import { collectRuntimeBootstrap } from "./cli/runtime-bootstrap.js";
+import { deriveStartupProviderTruth } from "./cli/startup-provider-truth.js";
 import { cmdSideAgents } from "./cli/side-agents.js";
 import { describeStartupAuthSource } from "./cli/startup-auth-source.js";
 
@@ -90,6 +91,12 @@ async function runInteractiveApp(
 	const packageInspection = buildPackageInspection(packageSnapshot.report);
 	const packageDoctorReport = buildPackageDoctorReport(packageInspection);
 	const bootstrapBridge = runtimeBootstrap.chitragupta?.bridge ?? null;
+	const startupProviderTruth = deriveStartupProviderTruth(
+		availableProviderModels,
+		runtimeBootstrap.providerStatuses,
+		runtimeBootstrap.chitragupta?.bootstrapResult,
+	);
+	availableProviderModels = startupProviderTruth.providerModels;
 
 	try {
 		if (runtimeBootstrap.degradedLocalMode?.requiresOperatorConsent && !args.yes) {
@@ -108,13 +115,14 @@ async function runInteractiveApp(
 				strictPreferredRoute: interactiveBootstrap.strictPreferredRoute,
 				bootstrapBridge: bootstrapBridge ?? undefined,
 				providerModels: availableProviderModels,
-				providerStatuses: runtimeBootstrap.providerStatuses,
+				providerStatuses: startupProviderTruth.providerStatuses,
+				providerCatalogAuthority: startupProviderTruth.providerCatalogAuthority,
 				allowOnboarding: process.stdin.isTTY && process.stdout.isTTY && !args.yes,
 			}),
 		);
 		const provider = providerResolution.provider;
 		const resolvedConfig = providerResolution.resolvedConfig;
-		const localModels = runtimeBootstrap.providerStatuses.find((provider) => provider.id === "ollama")?.models.slice(0, 4) ?? [];
+		const localModels = startupProviderTruth.providerStatuses.find((provider) => provider.id === "ollama")?.models.slice(0, 4) ?? [];
 		syncModelTiersFromKosha(availableProviderModels);
 		const startupTraceLines = startupTrace.formatLines("Startup handoff");
 		const startupNotes = [
@@ -194,6 +202,7 @@ async function runInteractiveApp(
 				provider: resolvedConfig.provider,
 				model: resolvedConfig.model,
 				source: effectiveSource,
+				providerCatalogAuthority: startupProviderTruth.providerCatalogAuthority,
 				requestedModel,
 				resolvedIntent: providerResolution.startupModelSelection?.resolvedIntent,
 				resolvedVersion: providerResolution.startupModelSelection?.resolvedVersion,
@@ -250,18 +259,9 @@ async function main(): Promise<void> {
 		process.exit(EXEC_EXIT_CODES.USAGE);
 	}
 
-	if (args.version) {
-		console.log(`takumi v${VERSION}`);
-		process.exit(0);
-	}
-	if (args.help) {
-		printHelp(VERSION);
-		process.exit(0);
-	}
-
-	if (args.workingDirectory) {
-		process.chdir(args.workingDirectory);
-	}
+	if (args.version) { console.log(`takumi v${VERSION}`); process.exit(0); }
+	if (args.help) { printHelp(VERSION); process.exit(0); }
+	if (args.workingDirectory) process.chdir(args.workingDirectory);
 
 	const overrides: Partial<TakumiConfig> = {};
 	if (args.model) overrides.model = args.model;
@@ -276,6 +276,11 @@ async function main(): Promise<void> {
 	if (args.workingDirectory) overrides.workingDirectory = args.workingDirectory;
 
 	const config = loadConfig(overrides);
+
+	// Discard default model when provider is explicitly changed — the provider
+	// layer will resolve the correct startup model for the target provider.
+	if (args.provider && !args.model) config.model = "";
+
 	config.experimental = {
 		...config.experimental,
 		takumiExplicitApiKey: Boolean(args.apiKey),
@@ -426,8 +431,7 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	// Interactive startup no longer performs a credential preflight here; the
-	// runtime/bootstrap + provider layer is now the single source of startup truth.
+	// Interactive startup — provider layer is the single source of startup truth.
 	await runInteractiveApp(config, args, describeStartupAuthSource(config, args), startupTrace);
 }
 

@@ -38,6 +38,8 @@ const OPENAI_COMPAT_PROVIDERS = new Set([
 	"alibaba",
 	"bedrock",
 	"zai",
+	"moonshot",
+	"minimax",
 ]);
 
 // ── Git helpers ───────────────────────────────────────────────────────────────
@@ -107,6 +109,8 @@ export function normalizeExecProviderFamily(value?: string): string | null {
 		case "deepseek":
 		case "mistral":
 		case "together":
+		case "moonshot":
+		case "minimax":
 			return "openai-compat";
 		default:
 			return null;

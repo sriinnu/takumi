@@ -15,7 +15,7 @@ import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import type { Signal } from "@takumi/render";
 import { signal } from "@takumi/render";
-import type { SlashCommandRegistry } from "./commands/commands.js";
+import type { SlashCommand, SlashCommandRegistry } from "./commands/commands.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,10 +71,12 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
 	deepseek: ["deepseek-chat", "deepseek-reasoner"],
 	mistral: ["mistral-large-latest", "mistral-small-latest"],
 	together: ["meta-llama/Llama-3-70b-chat-hf", "mistralai/Mixtral-8x7B-v0.1"],
-	openrouter: ["anthropic/claude-3-5-sonnet", "openai/gpt-4o", "google/gemini-pro-1.5"],
+	openrouter: ["openai/gpt-4.1-mini", "openai/gpt-4.1", "google/gemini-2.0-flash-001", "anthropic/claude-sonnet-4"],
 	alibaba: ["qwen-max", "qwen-plus", "qwen-turbo"],
 	bedrock: ["anthropic.claude-3-7-sonnet-20250219-v1:0", "amazon.nova-pro-v1:0", "meta.llama3-1-70b-instruct-v1:0"],
-	zai: ["kimi-k2-0711-preview", "kimi-latest", "moonshot-v1-8k"],
+	zai: ["glm-4.5-flash", "glm-4.5-air", "glm-4.5", "glm-4.7-flash", "glm-4.7", "glm-5"],
+	moonshot: ["kimi-k2.5", "kimi-k2", "kimi-k2-thinking"],
+	minimax: ["MiniMax-M2.5", "MiniMax-M2.5-highspeed", "MiniMax-M2", "MiniMax-M2-Stable"],
 	ollama: ["llama3", "codellama", "mistral", "phi3"],
 };
 
@@ -98,8 +100,6 @@ export function applyCompletionEdit(text: string, item: CompletionItem): Applied
 	};
 }
 
-// ── CompletionEngine ─────────────────────────────────────────────────────────
-
 export class CompletionEngine {
 	private projectRoot = "";
 	private commands: SlashCommandRegistry | null = null;
@@ -114,6 +114,11 @@ export class CompletionEngine {
 	/** Set the command registry for slash command completions. */
 	setCommands(commands: SlashCommandRegistry): void {
 		this.commands = commands;
+	}
+
+	/** Look up a registered slash command by name. */
+	getCommandByName(name: string): SlashCommand | undefined {
+		return this.commands?.get(name);
 	}
 
 	/** Set the provider/model catalog source for /provider and /model completions. */
@@ -137,14 +142,16 @@ export class CompletionEngine {
 			const cmd = this.commands.get(before.slice(0, spaceIndex));
 			if (cmd?.getArgumentCompletions) {
 				try {
-					return (await cmd.getArgumentCompletions(before.slice(spaceIndex + 1))).map((label) => ({
-						label,
-						insertText: label,
-						replaceStart: spaceIndex + 1,
-						replaceEnd: cursorCol,
-						kind: "command" as CompletionKind,
-						detail: cmd.description,
-					}));
+					return (await cmd.getArgumentCompletions(before.slice(spaceIndex + 1)))
+						.slice(0, MAX_RESULTS)
+						.map((label) => ({
+							label,
+							insertText: label,
+							replaceStart: spaceIndex + 1,
+							replaceEnd: cursorCol,
+							kind: "command" as CompletionKind,
+							detail: cmd.description,
+						}));
 				} catch {}
 			}
 		}
@@ -182,8 +189,6 @@ export class CompletionEngine {
 		// Needs async file I/O
 		return null;
 	}
-
-	// ── File completions ──────────────────────────────────────────────────
 
 	/**
 	 * Get file path completions for the text after @.
@@ -275,8 +280,6 @@ export class CompletionEngine {
 		return results;
 	}
 
-	// ── Slash command completions ─────────────────────────────────────────
-
 	/**
 	 * Get slash command completions for the given partial input (e.g. "/th").
 	 */
@@ -284,7 +287,7 @@ export class CompletionEngine {
 		if (!this.commands) return [];
 
 		const cmds = this.commands.getCompletions(partial);
-		return cmds.map((cmd) => ({
+		return cmds.slice(0, MAX_RESULTS).map((cmd) => ({
 			label: cmd.name,
 			insertText: cmd.name,
 			replaceStart,
@@ -293,8 +296,6 @@ export class CompletionEngine {
 			detail: cmd.description,
 		}));
 	}
-
-	// ── Model completions ─────────────────────────────────────────────────
 
 	/**
 	 * Get model name completions for the partial text after "/model ".
@@ -321,8 +322,6 @@ export class CompletionEngine {
 				kind: "model" as CompletionKind,
 			}));
 	}
-
-	// ── Provider completions ──────────────────────────────────────────────
 
 	/**
 	 * Get provider name completions for the partial text after "/provider ".

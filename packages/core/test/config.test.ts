@@ -11,7 +11,6 @@ describe("loadConfig", () => {
 		for (const key of [
 			...Object.keys(process.env).filter((key) => key.startsWith("TAKUMI_")),
 			"ANTHROPIC_API_KEY",
-			"CLAUDE_CODE_OAUTH_TOKEN",
 			"OPENAI_API_KEY",
 			"GITHUB_TOKEN",
 			"GEMINI_API_KEY",
@@ -28,6 +27,7 @@ describe("loadConfig", () => {
 			"ZAI_API_KEY",
 			"KIMI_API_KEY",
 			"MOONSHOT_API_KEY",
+			"MINIMAX_API_KEY",
 			"BEDROCK_API_KEY",
 			"AWS_BEARER_TOKEN",
 			"XAI_ENDPOINT",
@@ -227,6 +227,7 @@ describe("PROVIDER_ENDPOINTS", () => {
 		const expected = [
 			"openai",
 			"github",
+			"gemini",
 			"groq",
 			"xai",
 			"deepseek",
@@ -235,6 +236,8 @@ describe("PROVIDER_ENDPOINTS", () => {
 			"openrouter",
 			"alibaba",
 			"zai",
+			"moonshot",
+			"minimax",
 		];
 		for (const p of expected) {
 			expect(PROVIDER_ENDPOINTS).toHaveProperty(p);

@@ -328,19 +328,19 @@ describe("CompletionEngine", () => {
 		});
 
 		it("uses the dynamic provider catalog for model completion", async () => {
-			engine.setProviderCatalog(() => ({ zai: ["kimi-latest", "moonshot-v1-8k"] }));
-			engine.setCurrentProvider(() => "zai");
+			engine.setProviderCatalog(() => ({ moonshot: ["kimi-k2.5", "kimi-k2"] }));
+			engine.setCurrentProvider(() => "moonshot");
 
 			const items = await engine.getCompletions("/model kim", 10);
-			expect(items.map((item) => item.label)).toContain("kimi-latest");
+			expect(items.map((item) => item.label)).toContain("kimi-k2.5");
 			expect(items.some((item) => item.label.includes("claude"))).toBe(false);
 		});
 
 		it("uses the dynamic provider catalog for provider completion", async () => {
-			engine.setProviderCatalog(() => ({ zai: ["kimi-latest"], alibaba: ["qwen-max"] }));
+			engine.setProviderCatalog(() => ({ moonshot: ["kimi-k2.5"], alibaba: ["qwen-max"] }));
 
-			const items = await engine.getCompletions("/provider za", 12);
-			expect(items.map((item) => item.label)).toEqual(["zai"]);
+			const items = await engine.getCompletions("/provider mo", 12);
+			expect(items.map((item) => item.label)).toEqual(["moonshot"]);
 		});
 
 		it("replaces only the model query when applying a model completion", async () => {

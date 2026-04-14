@@ -196,6 +196,8 @@ export interface VerticalRegistryBindContract {
 	attachMethod: string;
 	/** I record the identity method used after binding. */
 	identifyMethod: string;
+	/** I record the daemon RPC method that defines canonical lineage reuse headers, body fields, and daemon-derived scope partitioning. */
+	lineagePolicyMethod: string;
 	/** I record the daemon-owned metadata keys used for reuse and reattach. */
 	sessionReuseMetadata: string[];
 }
@@ -214,6 +216,10 @@ export interface VerticalRegistryReplayContract {
 	timelineEndpoint: string;
 	/** I record the session continuity method used during recovery. */
 	continuityMethod: string;
+	/** I record the session continuity field used for first-hydrate replay. */
+	continuityHydrateCursorField: string;
+	/** I record the session continuity field used for steady-state resume replay. */
+	continuityResumeCursorField: string;
 	/** I record the turn backfill method. */
 	turnCursorMethod: string;
 	/** I record the cursor field inside the backfill response. */

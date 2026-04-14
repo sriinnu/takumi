@@ -108,8 +108,8 @@ If you mainly want a browser-first chat product, Takumi is probably not the cozy
 
 - Node.js 22+
 - one of:
-  - a supported authenticated CLI (`claude`, `gh`, `gcloud`, `codex`)
   - a provider API key
+  - GitHub CLI auth for GitHub Models
   - a local Ollama instance
 
 ### Install
@@ -132,15 +132,21 @@ pnpm takumi
 ### Common startup paths
 
 ```bash
-# zero-config when a supported CLI is already authenticated
-takumi
-
 # direct provider key
 ANTHROPIC_API_KEY=sk-ant-... takumi
 
 # GitHub Models via gh auth
 gh auth login
 takumi --provider github
+
+# Z.AI / GLM
+ZAI_API_KEY=... takumi --provider zai --model glm-4.7-flash
+
+# Moonshot / Kimi
+MOONSHOT_API_KEY=... takumi --provider moonshot --model kimi-k2.5
+
+# MiniMax
+MINIMAX_API_KEY=... takumi --provider minimax --model MiniMax-M2.5
 
 # Ollama local runtime
 takumi --provider ollama
@@ -177,7 +183,7 @@ ZAI_API_KEY=...
 
 Recognized provider env vars include:
 
-- `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`
+- `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
 - `GITHUB_TOKEN`
 - `GEMINI_API_KEY`, `GOOGLE_API_KEY`
@@ -188,12 +194,16 @@ Recognized provider env vars include:
 - `TOGETHER_API_KEY`
 - `OPENROUTER_API_KEY`
 - `ALIBABA_API_KEY`, `DASHSCOPE_API_KEY`
-- `ZAI_API_KEY`, `KIMI_API_KEY`, `MOONSHOT_API_KEY`
+- `ZAI_API_KEY`, `GLM_API_KEY`
+- `MOONSHOT_API_KEY`, `KIMI_API_KEY`
+- `MINIMAX_API_KEY`
 - `BEDROCK_API_KEY`, `AWS_BEARER_TOKEN`
 
 For providers that need a custom compatible endpoint, Takumi also recognizes:
 
 - `TAKUMI_ENDPOINT`
+- `MOONSHOT_ENDPOINT`
+- `MINIMAX_ENDPOINT`
 - `XAI_ENDPOINT`, `GROK_ENDPOINT`
 - `ALIBABA_ENDPOINT`, `DASHSCOPE_ENDPOINT`
 - `ZAI_ENDPOINT`
@@ -274,6 +284,8 @@ Takumi can construct providers directly for:
 - OpenRouter
 - Alibaba / DashScope-compatible endpoints
 - Bedrock-compatible gateway endpoints
+- Moonshot / Kimi
+- MiniMax
 - Ollama
 
 ### 2. Darpana proxy mode

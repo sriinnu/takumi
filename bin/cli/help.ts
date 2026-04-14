@@ -62,24 +62,31 @@ Providers:
   gemini                 Google Gemini
   github                 GitHub Models (free — uses gh auth token)
   groq                   Groq (fast inference)
+  xai                    xAI / Grok-compatible endpoints
   deepseek               DeepSeek
   mistral                Mistral AI
   together               Together AI
   openrouter             OpenRouter (multi-provider)
-  zai                    Z.AI / Kimi (OpenAI-compatible)
+  alibaba                Alibaba / DashScope-compatible endpoints
+  bedrock                Bedrock-compatible gateway endpoints
+  zai                    Z.AI / GLM (OpenAI-compatible)
+  moonshot               Moonshot AI / Kimi (OpenAI-compatible)
+  minimax                MiniMax (OpenAI-compatible)
   ollama                 Local Ollama (no key needed)
 
 Authentication (priority order):
-  1. CLI tools (preferred):    claude, gh, gcloud, codex
-  2. Environment variables:    ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.
-  3. Ollama local server:      localhost:11434 (auto-detected)
+  1. Direct credentials:       provider API keys from env/config or pinned TAKUMI_API_KEY
+  2. Local auth files:         Claude config API key, Codex API-key auth, Gemini CLI .env
+  3. GitHub CLI / Copilot:     gh auth token or Copilot OAuth for GitHub Models
+  4. Ollama local server:      localhost:11434 (auto-detected)
 
 Examples:
-  pnpm takumi                                    # Uses Claude CLI if installed
-  claude login                                   # Authenticate with Claude CLI
   gh auth login                                  # Authenticate with GitHub CLI
-  ANTHROPIC_API_KEY=... pnpm takumi              # Fallback: use API key
+  ANTHROPIC_API_KEY=... pnpm takumi              # Direct Anthropic API
   OPENAI_API_KEY=... pnpm takumi --provider openai --model gpt-4.1
+  ZAI_API_KEY=... pnpm takumi --provider zai --model glm-4.7-flash
+  MOONSHOT_API_KEY=... pnpm takumi --provider moonshot --model kimi-k2.5
+  MINIMAX_API_KEY=... pnpm takumi --provider minimax --model MiniMax-M2.5
   pnpm takumi exec --headless --stream=ndjson "Fix auth router"
                                               # emits takumi.exec.v1 envelopes + bootstrap status
   pnpm takumi "Fix tests" -d                    # Run in background

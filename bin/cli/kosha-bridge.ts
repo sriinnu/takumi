@@ -126,28 +126,27 @@ export async function koshaAutoDetect(): Promise<KoshaDetectedAuth | null> {
 	if (authenticated.length === 0) return null;
 
 	// For ollama, only consider it if it actually has models (i.e. running)
-	const best = authenticated.find((p) => {
-		if (p.id === "ollama") return p.models.length > 0;
-		return p.authenticated;
-	});
+	for (const candidate of authenticated) {
+		if (candidate.id === "ollama" && candidate.models.length === 0) continue;
+		if (candidate.id !== "ollama" && !candidate.authenticated) continue;
 
-	if (!best) return null;
+		// Kosha tells us which providers look ready; Takumi still verifies that
+		// it can resolve a concrete direct credential before selecting one.
+		const apiKey = await resolveApiKey(candidate);
+		if (!apiKey && candidate.id !== "ollama") continue;
 
-	// Extract the API key from the first model's metadata or from the provider
-	// Kosha doesn't expose the raw key on ProviderInfo, but we can still use
-	// Takumi's own tryResolveCliToken or env-var lookups for the actual key.
-	// The bridge merely tells us *which* provider is ready and *how*.
-	const apiKey = await resolveApiKey(best);
-	const model = pickDefaultModel(best);
-	const source = `Kosha: ${best.name} (${describeSource(best)})`;
+		const model = pickDefaultModel(candidate);
+		const source = `Kosha: ${candidate.name} (${describeSource(candidate)})`;
+		return {
+			provider: mapKoshaProvider(candidate.id),
+			apiKey,
+			model,
+			source,
+			baseUrl: candidate.baseUrl,
+		};
+	}
 
-	return {
-		provider: mapKoshaProvider(best.id),
-		apiKey,
-		model,
-		source,
-		baseUrl: best.baseUrl,
-	};
+	return null;
 }
 
 /** Map Kosha provider IDs to Takumi's internal provider names. */
@@ -174,7 +173,7 @@ async function resolveApiKey(info: ProviderInfo): Promise<string> {
 
 	// 1. Check environment variables keyed by provider
 	const envMap: Record<string, string[]> = {
-		anthropic: ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"],
+		anthropic: ["ANTHROPIC_API_KEY"],
 		openai: ["OPENAI_API_KEY"],
 		google: ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
 		ollama: [],
@@ -187,8 +186,11 @@ async function resolveApiKey(info: ProviderInfo): Promise<string> {
 		if (env[envVar]) return env[envVar]!;
 	}
 
-	// 2. Fallback: TAKUMI_API_KEY
-	if (env.TAKUMI_API_KEY) return env.TAKUMI_API_KEY;
+	// 2. Respect a generic TAKUMI_API_KEY only when the provider is pinned.
+	const configuredProvider = mapKoshaProvider(env.TAKUMI_PROVIDER ?? "");
+	if (env.TAKUMI_API_KEY && configuredProvider === mapKoshaProvider(info.id)) {
+		return env.TAKUMI_API_KEY;
+	}
 
 	// 3. For CLI-sourced creds, use Takumi's existing tryResolveCliToken
 	if (info.credentialSource === "cli" || info.credentialSource === "oauth") {
@@ -252,12 +254,16 @@ export async function koshaProviderModels(): Promise<Record<string, string[]>> {
  */
 export async function koshaEndpoint(providerId: string): Promise<string> {
 	const kosha = await getKosha();
-	const info = kosha.provider(providerId);
+	const koshaProviderId = providerId === "gemini" ? "google" : providerId;
+	const info = kosha.provider(koshaProviderId);
 
 	if (info?.baseUrl) {
 		// Kosha returns bare base URLs (e.g. "https://api.anthropic.com").
-		// Takumi's OpenAI-compatible providers need the full chat completions path.
+		// Takumi expands them into the provider-specific runtime base URL.
 		const base = info.baseUrl.replace(/\/$/, "");
+		if (providerId === "gemini") {
+			return base.endsWith("/v1beta/models") ? base : `${base}/v1beta/models`;
+		}
 		if (providerId === "ollama") return `${base}/v1/chat/completions`;
 		if (providerId === "openrouter") return `${base}/api/v1/chat/completions`;
 		if (providerId !== "anthropic") return `${base}/v1/chat/completions`;

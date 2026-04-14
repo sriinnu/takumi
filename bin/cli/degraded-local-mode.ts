@@ -21,7 +21,9 @@ const PROVIDER_LABELS: Record<string, string> = {
 	ollama: "Ollama",
 	alibaba: "Alibaba",
 	bedrock: "Bedrock",
-	zai: "ZAI",
+	zai: "Z.AI / GLM",
+	moonshot: "Moonshot / Kimi",
+	minimax: "MiniMax",
 };
 
 export interface DegradedLocalModeStatus extends ExecLocalFallbackSnapshot {

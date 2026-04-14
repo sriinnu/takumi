@@ -13,6 +13,8 @@ import {
 } from "../dialogs/command-palette-groups.js";
 
 const MAX_VISIBLE_ROWS = 10;
+/** Height threshold below which the detail pane is collapsed. */
+const COMPACT_HEIGHT_THRESHOLD = 28;
 
 interface CommandPaletteDialogModel {
 	maxWidth: number;
@@ -29,29 +31,37 @@ interface PaletteRow {
 
 /**
  * I assemble the palette dialog content with grouped rows and a small detail
- * pane for the selected action.
+ * pane for the selected action. The detail pane collapses on short terminals.
  */
-export function buildCommandPaletteDialogModel(palette: CommandPalette): CommandPaletteDialogModel {
+export function buildCommandPaletteDialogModel(
+	palette: CommandPalette,
+	terminalHeight = 40,
+): CommandPaletteDialogModel {
 	const items = palette.getItems();
 	const groups = palette.getGroups();
+	const compact = terminalHeight < COMPACT_HEIGHT_THRESHOLD;
+	const maxRows = compact ? Math.max(4, Math.min(MAX_VISIBLE_ROWS, terminalHeight - 10)) : MAX_VISIBLE_ROWS;
 	const rows = flattenPaletteRows(items, groups);
-	const visibleRows = sliceRowsAroundSelection(rows, palette.selectedIndex, MAX_VISIBLE_ROWS);
+	const visibleRows = sliceRowsAroundSelection(rows, palette.selectedIndex, maxRows);
 	const selected = palette.getSelectedItem();
 
-	return {
-		title: "Command Palette",
-		maxWidth: 96,
-		lines: [
-			`Filter: ${palette.filterText || "(type to search)"}`,
-			"",
-			...(visibleRows.length > 0
-				? visibleRows.map((row) => formatPaletteRow(row, palette.selectedIndex))
-				: ["No matching commands or shortcuts."]),
-			"",
-			"Details",
-			...buildSelectedItemLines(selected),
-		],
-	};
+	const commandLines =
+		visibleRows.length > 0
+			? visibleRows.map((row) => formatPaletteRow(row, palette.selectedIndex))
+			: ["No matching commands or shortcuts."];
+
+	const lines: string[] = [`Filter: ${palette.filterText || "(type to search)"}`, "", ...commandLines];
+
+	if (!compact) {
+		lines.push("", "Details", ...buildSelectedItemLines(selected));
+	} else {
+		// Single-line compact hint
+		const name = selected?.name ?? "";
+		const desc = selected?.description ?? "";
+		lines.push("", name ? `${name} — ${desc}` : "↑/↓ move • Enter selects • Esc closes");
+	}
+
+	return { title: "Command Palette", maxWidth: 96, lines };
 }
 
 function flattenPaletteRows(

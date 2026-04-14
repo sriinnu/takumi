@@ -10,7 +10,7 @@
  * so that "ripple from B" yields all files that depend on B.
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { createLogger } from "@takumi/core";
@@ -95,14 +95,19 @@ export class RippleDag {
 	/**
 	 * Index from git: discover all tracked TS/JS files automatically.
 	 * Much faster than walking the filesystem for large monorepos.
+	 *
+	 * Uses execFileSync with a hard timeout — git can hang on locked
+	 * index files, NFS mounts, or corrupted repos. Without the timeout,
+	 * the entire TUI event loop blocks and the terminal freezes.
 	 */
 	indexFromGit(): void {
 		try {
-			const output = execSync("git ls-files '*.ts' '*.tsx' '*.js' '*.jsx'", {
+			const output = execFileSync("git", ["ls-files", "*.ts", "*.tsx", "*.js", "*.jsx"], {
 				cwd: this.root,
 				encoding: "utf-8",
+				timeout: 10_000,
 				maxBuffer: 10 * 1024 * 1024,
-			});
+			}) as string;
 
 			const files = output
 				.split("\n")

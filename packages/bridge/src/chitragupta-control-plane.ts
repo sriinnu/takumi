@@ -7,11 +7,18 @@
  */
 
 import {
+	BRIDGE_BOOTSTRAP_POLICY_BUDGETS,
+	BRIDGE_BOOTSTRAP_PROVIDER_LANES,
+	BRIDGE_BOOTSTRAP_PROVIDER_TRANSPORTS,
 	BRIDGE_BOOTSTRAP_VERTICAL_RESOLUTION_SOURCES,
 	type BridgeBootstrapRequest,
 	type DaemonBridgeBootstrapAuth,
 	type DaemonBridgeBootstrapBinding,
 	type DaemonBridgeBootstrapContinuity,
+	type DaemonBridgeBootstrapInventory,
+	type DaemonBridgeBootstrapInventoryModel,
+	type DaemonBridgeBootstrapInventoryProvider,
+	type DaemonBridgeBootstrapInventoryRuntime,
 	type DaemonBridgeBootstrapLane,
 	type DaemonBridgeBootstrapLanePolicy,
 	type DaemonBridgeBootstrapResult,
@@ -45,6 +52,24 @@ function readStringArray(value: unknown): string[] {
 
 function readNullableBoolean(value: unknown): boolean | null {
 	return typeof value === "boolean" ? value : null;
+}
+
+function readProviderLane(value: unknown): DaemonBridgeBootstrapInventoryProvider["lane"] {
+	return BRIDGE_BOOTSTRAP_PROVIDER_LANES.includes(value as DaemonBridgeBootstrapInventoryProvider["lane"])
+		? (value as DaemonBridgeBootstrapInventoryProvider["lane"])
+		: "cloud";
+}
+
+function readProviderTransport(value: unknown): DaemonBridgeBootstrapInventoryProvider["transport"] {
+	return BRIDGE_BOOTSTRAP_PROVIDER_TRANSPORTS.includes(value as DaemonBridgeBootstrapInventoryProvider["transport"])
+		? (value as DaemonBridgeBootstrapInventoryProvider["transport"])
+		: "remote-api";
+}
+
+function readBudgetClass(value: unknown): DaemonBridgeBootstrapInventoryModel["costClass"] {
+	return BRIDGE_BOOTSTRAP_POLICY_BUDGETS.includes(value as DaemonBridgeBootstrapInventoryModel["costClass"])
+		? (value as DaemonBridgeBootstrapInventoryModel["costClass"])
+		: "medium";
 }
 
 function readPreferredTransport(value: unknown): DaemonBridgeBootstrapVertical["preferredTransport"] {
@@ -86,6 +111,9 @@ function readBootstrapVertical(value: unknown): DaemonBridgeBootstrapVertical {
 			authMode: null,
 			allowedTransports: [],
 			bundleIds: [],
+			availableBundleIds: [],
+			requestedBundleIds: [],
+			deniedBundleIds: [],
 			consumer: null,
 			surface: null,
 			canonical: false,
@@ -102,6 +130,9 @@ function readBootstrapVertical(value: unknown): DaemonBridgeBootstrapVertical {
 		authMode: readAuthMode(value.authMode),
 		allowedTransports: readAllowedTransports(value.allowedTransports),
 		bundleIds: readStringArray(value.bundleIds),
+		availableBundleIds: readStringArray(value.availableBundleIds),
+		requestedBundleIds: readStringArray(value.requestedBundleIds),
+		deniedBundleIds: readStringArray(value.deniedBundleIds),
 		consumer: readNullableString(value.consumer),
 		surface: readNullableString(value.surface),
 		canonical: value.canonical === true,
@@ -204,6 +235,90 @@ function readBootstrapBinding(value: unknown): DaemonBridgeBootstrapBinding {
 		project: readNullableString(value.project),
 		consumer: readNullableString(value.consumer),
 		clientId: readNullableString(value.clientId),
+	};
+}
+
+function readBootstrapInventoryModel(value: unknown): DaemonBridgeBootstrapInventoryModel {
+	if (!isRecord(value)) {
+		throw new Error("bridge.bootstrap inventory model metadata is invalid");
+	}
+	const id = readNullableString(value.id) ?? "";
+	return {
+		id,
+		name: readNullableString(value.name) ?? id,
+		available: value.available === true,
+		health: readNullableString(value.health) ?? "unknown",
+		capabilities: readStringArray(value.capabilities),
+		contextWindow: Number(value.contextWindow ?? 0),
+		maxOutputTokens: Number(value.maxOutputTokens ?? 0),
+		costClass: readBudgetClass(value.costClass),
+		source: readNullableString(value.source) ?? "unknown",
+	};
+}
+
+function readBootstrapInventoryRuntime(value: unknown): DaemonBridgeBootstrapInventoryRuntime | null {
+	if (value == null) return null;
+	if (!isRecord(value)) {
+		throw new Error("bridge.bootstrap inventory runtime metadata is invalid");
+	}
+	return {
+		transport: readProviderTransport(value.transport),
+		endpoint: readNullableString(value.endpoint),
+		command: readNullableString(value.command),
+		commandPath: readNullableString(value.commandPath),
+		configured: value.configured === true,
+		reachable: value.reachable === true,
+		preferred: value.preferred === true,
+		lastError: readNullableString(value.lastError),
+	};
+}
+
+function readBootstrapInventoryProvider(value: unknown): DaemonBridgeBootstrapInventoryProvider {
+	if (!isRecord(value)) {
+		throw new Error("bridge.bootstrap inventory provider metadata is invalid");
+	}
+	const id = readNullableString(value.id) ?? "";
+	const models = Array.isArray(value.models) ? value.models.map((model) => readBootstrapInventoryModel(model)) : [];
+	return {
+		id,
+		name: readNullableString(value.name) ?? id,
+		lane: readProviderLane(value.lane),
+		transport: readProviderTransport(value.transport),
+		available: value.available === true,
+		authenticated: value.authenticated === true,
+		credentialAvailable: value.credentialAvailable === true,
+		credentialSource: readNullableString(value.credentialSource),
+		modelCount: Number(value.modelCount ?? models.length),
+		models,
+		issues: readStringArray(value.issues),
+		runtime: readBootstrapInventoryRuntime(value.runtime),
+	};
+}
+
+function readBootstrapInventory(value: unknown): DaemonBridgeBootstrapInventory {
+	if (!isRecord(value)) {
+		throw new Error("bridge.bootstrap inventory metadata is invalid");
+	}
+	const providers = Array.isArray(value.providers)
+		? value.providers
+				.map((provider) => readBootstrapInventoryProvider(provider))
+				.filter((provider) => provider.id.length > 0)
+		: [];
+	return {
+		contractVersion: 1,
+		snapshotAt: Number(value.snapshotAt ?? 0),
+		discoverySnapshotAt: typeof value.discoverySnapshotAt === "number" ? value.discoverySnapshotAt : null,
+		localRuntimeSnapshotAt: typeof value.localRuntimeSnapshotAt === "number" ? value.localRuntimeSnapshotAt : null,
+		providerPriority: readStringArray(value.providerPriority),
+		lanePriority: Array.isArray(value.lanePriority)
+			? value.lanePriority.filter((entry): entry is DaemonBridgeBootstrapInventory["lanePriority"][number] =>
+					BRIDGE_BOOTSTRAP_PROVIDER_LANES.includes(entry as DaemonBridgeBootstrapInventory["lanePriority"][number]),
+				)
+			: [],
+		providers,
+		stale: value.stale === true,
+		staleReason: readNullableString(value.staleReason),
+		warnings: readStringArray(value.warnings),
 	};
 }
 
@@ -359,6 +474,7 @@ export async function daemonBootstrap(
 		session: readBootstrapSession(raw.session),
 		vertical: readBootstrapVertical(raw.vertical),
 		continuity: readBootstrapContinuity(raw.continuity),
+		inventory: readBootstrapInventory(raw.inventory),
 		route: isRecord(raw.route) ? raw.route : null,
 		routingDecision: readBootstrapRoutingDecision(raw.routingDecision),
 		lanes: readBootstrapLanes(raw.lanes),

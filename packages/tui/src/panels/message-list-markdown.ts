@@ -7,14 +7,22 @@ import { getTheme, hexToRgb, isDiffContent, LANGUAGE_MAP, parseDiff, tokenizeLin
 import type { LineSegment, RenderedLine } from "./message-list-types.js";
 import { rgbTo256 } from "./message-list-types.js";
 
+/** Max chars to display for thinking blocks even when expanded. */
+const THINKING_CHAR_CAP = 500;
+
 /**
  * Render a non-tool content block into message-list lines.
+ *
+ * @param showThinking When false, thinking blocks render as a single collapsed
+ *   summary line. When true, the text is still capped at {@link THINKING_CHAR_CAP}
+ *   characters to prevent full-screen flooding.
  */
 export function renderContentBlock(
 	block: ContentBlock,
 	width: number,
 	role: "user" | "assistant",
 	renderedLines: RenderedLine[],
+	showThinking = false,
 ): void {
 	switch (block.type) {
 		case "text": {
@@ -28,9 +36,17 @@ export function renderContentBlock(
 			break;
 		}
 		case "thinking": {
-			renderedLines.push({ text: "[thinking]", fg: 8, bold: false, dim: true });
-			for (const line of wrapText(block.thinking, width)) {
-				renderedLines.push({ text: line, fg: 8, bold: false, dim: true });
+			const charCount = block.thinking.length;
+			if (!showThinking) {
+				// Collapsed — single summary line
+				renderedLines.push({ text: `[thinking] (${charCount} chars, collapsed)`, fg: 8, bold: false, dim: true });
+			} else {
+				// Expanded but capped to prevent screen flooding
+				renderedLines.push({ text: "[thinking]", fg: 8, bold: false, dim: true });
+				const trimmed = charCount > THINKING_CHAR_CAP ? `${block.thinking.slice(-THINKING_CHAR_CAP)}…` : block.thinking;
+				for (const line of wrapText(trimmed, width)) {
+					renderedLines.push({ text: line, fg: 8, bold: false, dim: true });
+				}
 			}
 			break;
 		}

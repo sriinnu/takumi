@@ -12,6 +12,7 @@ import { chooseProviderAndModel, type ChooseProviderAndModelResult } from "./pro
 export interface InteractiveProviderResolutionOptions extends CreateResolvedProviderOptions {
 	providerModels: Record<string, string[]>;
 	providerStatuses: FastProviderStatus[];
+	providerCatalogAuthority?: "merge" | "strict";
 	allowOnboarding: boolean;
 	maxPickerRetries?: number;
 }
@@ -73,6 +74,8 @@ export async function resolveInteractiveProviderWithOnboarding(
 			const selection = await pickProvider(config, options.providerModels, {
 				preferredProvider: options.preferredProvider ?? config.provider,
 				preferredModel: options.preferredModel ?? config.model,
+				providerStatuses: options.providerStatuses,
+				catalogAuthority: options.providerCatalogAuthority ?? "merge",
 				showIntro: false,
 			});
 			if (!selection) {

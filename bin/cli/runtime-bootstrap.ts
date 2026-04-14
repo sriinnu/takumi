@@ -2,6 +2,7 @@ import { bootstrapChitraguptaForExec, type ExecBootstrapResult, type ToolRegistr
 import type { ExecBootstrapSnapshot, TakumiConfig } from "@takumi/core";
 import { collectFastProviderStatus, type FastProviderStatus } from "./cli-auth.js";
 import { buildDegradedLocalModeStatus, type DegradedLocalModeStatus } from "./degraded-local-mode.js";
+import { deriveStartupProviderTruth } from "./startup-provider-truth.js";
 import {
 	probeSideAgentBootstrap,
 	registerOptionalSideAgentTools,
@@ -141,11 +142,16 @@ export async function collectRuntimeBootstrap(
 		chitraguptaPromise,
 		providerStatusPromise,
 	]);
+	const authoritativeProviderStatuses = deriveStartupProviderTruth(
+		{},
+		providerStatuses,
+		chitragupta.bootstrapResult,
+	).providerStatuses;
 	const degradedLocalMode = buildDegradedLocalModeStatus({
 		chitraguptaDegraded: Boolean(options.enableChitraguptaBootstrap && chitragupta.degraded),
 		currentProvider: config.provider,
 		currentModel: config.model,
-		providerStatuses,
+		providerStatuses: authoritativeProviderStatuses,
 	});
 	const dedupedWarningLines = Array.from(
 		new Set(
@@ -162,7 +168,7 @@ export async function collectRuntimeBootstrap(
 		cwd,
 		sideAgents,
 		chitragupta: options.enableChitraguptaBootstrap ? chitragupta : null,
-		providerStatuses,
+		providerStatuses: authoritativeProviderStatuses,
 		degradedLocalMode,
 		bootstrap: buildBootstrapSnapshot(chitragupta, sideAgents, degradedLocalMode, dedupedWarningLines),
 		warningLines: dedupedWarningLines,

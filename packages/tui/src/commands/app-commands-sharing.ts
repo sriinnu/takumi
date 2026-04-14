@@ -106,12 +106,13 @@ export function registerSharingCommands(ctx: AppCommandContext): void {
 		if (mode === "clipboard") {
 			const md = conversationToMarkdown(ctx);
 			try {
-				const { execSync } = await import("node:child_process");
+				const { execFileSync } = await import("node:child_process");
 				const platform = process.platform;
+				const opts = { input: md, encoding: "utf-8" as const, timeout: 10_000, maxBuffer: 4 * 1024 * 1024 };
 				if (platform === "darwin") {
-					execSync("pbcopy", { input: md, encoding: "utf-8" });
+					execFileSync("pbcopy", [], opts);
 				} else if (platform === "linux") {
-					execSync("xclip -selection clipboard", { input: md, encoding: "utf-8" });
+					execFileSync("xclip", ["-selection", "clipboard"], opts);
 				} else {
 					return ctx.addInfoMessage("Clipboard not supported on this platform — use /share file");
 				}

@@ -112,7 +112,7 @@ export class AppState {
 	readonly focusedPanel: Signal<string> = signal("input");
 	readonly sidebarVisible: Signal<boolean> = signal(false);
 	readonly terminalSize: Signal<Size> = signal({ width: 80, height: 24 });
-	readonly showThinking: Signal<boolean> = signal(true);
+	readonly showThinking: Signal<boolean> = signal(false);
 	/** Dialog stack — each push opens a new modal on top of the previous; Esc pops the top. */
 	readonly dialogStack: Signal<string[]> = signal<string[]>([]);
 	/** Legacy computed accessor — returns the top dialog name or null; prefer `topDialog`. */
@@ -462,11 +462,14 @@ export class AppState {
 		this.totalCost.value = snapshot.totalUsd;
 	}
 
-	setAvailableProviderModels(catalog: Record<string, string[]>): void {
-		this.availableProviderModels.value = {
-			...cloneProviderModelCatalog(PROVIDER_MODELS),
-			...cloneProviderModelCatalog(catalog),
-		};
+	setAvailableProviderModels(catalog: Record<string, string[]>, authority: "merge" | "strict" = "merge"): void {
+		this.availableProviderModels.value =
+			authority === "strict"
+				? cloneProviderModelCatalog(catalog)
+				: {
+						...cloneProviderModelCatalog(PROVIDER_MODELS),
+						...cloneProviderModelCatalog(catalog),
+					};
 	}
 
 	/** Reset all state for a new session. */

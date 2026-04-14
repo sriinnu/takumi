@@ -1,7 +1,4 @@
-/**
- * Multi-line text editor widget for the TUI.
- */
-
+/** Multi-line text editor widget — selection-aware, bracket-matched. */
 import type { KeyEvent } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import { getBracketTarget, isWordChar, scanForBracket } from "./editor-helpers.js";
@@ -10,7 +7,6 @@ export interface EditorPosition {
 	row: number;
 	col: number;
 }
-
 export interface EditorSelection {
 	start: EditorPosition;
 	end: EditorPosition;
@@ -255,7 +251,6 @@ export class Editor {
 	moveHome(): void {
 		this._cursorCol = 0;
 	}
-
 	moveEnd(): void {
 		this._cursorCol = this.lines[this._cursorRow].length;
 	}
@@ -294,6 +289,20 @@ export class Editor {
 
 	getSelection(): EditorSelection | null {
 		return this.getOrderedSelection();
+	}
+
+	/** Return the text covered by the current selection, or null if nothing is selected. */
+	getSelectedText(): string | null {
+		const sel = this.getOrderedSelection();
+		if (!sel) return null;
+		const { start, end } = sel;
+		if (start.row === end.row) return this.lines[start.row].slice(start.col, end.col);
+		const parts = [this.lines[start.row].slice(start.col)];
+		for (let row = start.row + 1; row < end.row; row++) {
+			parts.push(this.lines[row]);
+		}
+		parts.push(this.lines[end.row].slice(0, end.col));
+		return parts.join("\n");
 	}
 
 	deleteSelection(): void {

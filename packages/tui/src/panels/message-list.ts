@@ -47,6 +47,8 @@ export class MessageListPanel extends Component {
 
 	/** Per-message render cache — avoids re-wrapping unchanged messages. */
 	private messageCache = new WeakMap<Message, MessageRenderCache>();
+	/** Tracks showThinking value at last render — cache invalidation trigger. */
+	private cachedShowThinking = false;
 
 	/** Last rendered rect for hit-testing. */
 	private lastRect: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -58,12 +60,17 @@ export class MessageListPanel extends Component {
 		this.disposeEffect = effect(() => {
 			void this.state.messages.value;
 			void this.state.streamingText.value;
+			void this.state.thinkingText.value;
+			void this.state.isStreaming.value;
+			void this.state.activeTool.value;
+			void this.state.agentPhase.value;
 			void this.state.collapsedTools.value;
 			void this.state.routingDecisions.value;
 			void this.state.chitraguptaSync.value;
 			void this.state.canonicalSessionId.value;
 			void this.state.provider.value;
 			void this.state.model.value;
+			void this.state.showThinking.value;
 			this.markDirty();
 			return undefined;
 		});
@@ -162,6 +169,13 @@ export class MessageListPanel extends Component {
 		this.renderedLines = [];
 		this.toolBlockLineMap = new Map();
 
+		// Invalidate message cache when showThinking toggles
+		const showThinking = this.state.showThinking.value;
+		if (showThinking !== this.cachedShowThinking) {
+			this.cachedShowThinking = showThinking;
+			this.messageCache = new WeakMap();
+		}
+
 		const messages = this.state.messages.value;
 		const resultMap = buildToolResultMap(messages);
 		const pairedResultIds = buildPairedResultIds(messages, resultMap);
@@ -199,6 +213,24 @@ export class MessageListPanel extends Component {
 			this.renderedLines.push({ text: "", fg: -1, bold: false, dim: false });
 			for (const line of wrapText(this.state.streamingText.value, width)) {
 				this.renderedLines.push({ text: line, fg: 12, bold: false, dim: false });
+			}
+		} else if (this.state.isStreaming.value) {
+			// No response text yet — show thinking text or a phase indicator so
+			// the message area doesn't appear blank during tool execution.
+			const thinking = this.state.thinkingText.value;
+			if (thinking) {
+				this.renderedLines.push({ text: "", fg: -1, bold: false, dim: false });
+				this.renderedLines.push({ text: "[thinking]", fg: 8, bold: false, dim: true });
+				const trimmed = thinking.length > 500 ? `${thinking.slice(-500)}…` : thinking;
+				for (const line of wrapText(trimmed, width)) {
+					this.renderedLines.push({ text: line, fg: 8, bold: false, dim: true });
+				}
+			} else {
+				const phase = this.state.agentPhase.value;
+				const tool = this.state.activeTool.value;
+				const label = tool ? `⏳ Running ${tool}…` : phase && phase !== "idle" ? `⏳ ${phase}` : "⏳ Waiting…";
+				this.renderedLines.push({ text: "", fg: -1, bold: false, dim: false });
+				this.renderedLines.push({ text: label, fg: 8, bold: false, dim: true });
 			}
 		}
 
@@ -275,7 +307,7 @@ export class MessageListPanel extends Component {
 			if (block.type === "tool_result" && pairedResultIds.has(block.toolUseId)) {
 				continue;
 			}
-			renderContentBlock(block, width, message.role, this.renderedLines);
+			renderContentBlock(block, width, message.role, this.renderedLines, this.state.showThinking.value);
 		}
 
 		this.renderedLines.push({ text: "", fg: -1, bold: false, dim: false });
