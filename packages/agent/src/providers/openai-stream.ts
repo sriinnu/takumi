@@ -1,5 +1,5 @@
 import type { AgentEvent } from "@takumi/core";
-import { createLogger, JSON_MAX_SSE_CHUNK, safeJsonParse } from "@takumi/core";
+import { createLogger, JSON_MAX_FILE, JSON_MAX_SSE_CHUNK, safeJsonParse } from "@takumi/core";
 import { SseFrameParser } from "./sse-frame-parser.js";
 
 const log = createLogger("openai-provider");
@@ -142,7 +142,7 @@ function* emitPendingToolCalls(pendingToolCalls: Map<number, PendingToolCall>): 
 	for (const [, tc] of sorted) {
 		let input: Record<string, unknown> = {};
 		try {
-			if (tc.arguments) input = JSON.parse(tc.arguments);
+			if (tc.arguments) input = safeJsonParse<Record<string, unknown>>(tc.arguments, JSON_MAX_FILE);
 		} catch (err) {
 			log.error("Failed to parse tool call arguments", {
 				name: tc.name,

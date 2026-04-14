@@ -6,6 +6,7 @@
  */
 
 import type { SideAgentDispatchKind, SideAgentInfo, SideAgentState } from "@takumi/core";
+import { safeJsonParse } from "@takumi/core";
 import type { AuthorityLeaseManager } from "../cluster/authority-lease.js";
 import type { DispatchLog } from "../cluster/dispatch-log.js";
 import type { MuxAdapter } from "../cluster/mux-adapter.js";
@@ -138,13 +139,34 @@ export async function dispatchSideAgentWork(input: {
 		prompt: input.prompt,
 	};
 
-	// Acquire or renew lease via state-machine manager when available
-	const lease = input.leaseManager?.acquire(input.id, SIDE_AGENT_LEASE_OWNER, SIDE_AGENT_LEASE_TTL_MS);
+	// Acquire or renew lease via state-machine manager when available.
+	// If the lease is already held by another owner, acquire() throws — let it
+	// propagate so concurrent dispatches don't clobber each other.
+	let lease: ReturnType<AuthorityLeaseManager["acquire"]> | undefined;
+	try {
+		lease = input.leaseManager?.acquire(input.id, SIDE_AGENT_LEASE_OWNER, SIDE_AGENT_LEASE_TTL_MS);
+	} catch (err) {
+		throw new Error(`Lease contention for agent "${input.id}": ${err instanceof Error ? err.message : String(err)}`, {
+			cause: err,
+		});
+	}
 
 	// Queue dispatch record for formal lifecycle tracking
 	const dispatchRecord = input.dispatchLog?.queue(SIDE_AGENT_LEASE_OWNER, input.id, envelope);
 
-	await input.mux.sendKeys(input.id, buildSideAgentDispatchEnvelope(envelope));
+	try {
+		await input.mux.sendKeys(input.id, buildSideAgentDispatchEnvelope(envelope));
+	} catch (err) {
+		// Release orphaned lease and mark dispatch as failed so resources don't leak
+		input.leaseManager?.forceRelease(input.id);
+		try {
+			if (dispatchRecord)
+				input.dispatchLog?.markFailed(dispatchRecord.id, err instanceof Error ? err.message : String(err));
+		} catch {
+			/* markFailed must not mask the original sendKeys error */
+		}
+		throw err;
+	}
 
 	// Mark dispatch as notified now that sendKeys succeeded
 	if (dispatchRecord) {
@@ -238,7 +260,7 @@ export function extractStructuredQueryResponse(output: string, requestId: string
 		return null;
 	}
 
-	const parsed = JSON.parse(payload) as { requestId?: unknown };
+	const parsed = safeJsonParse<{ requestId?: unknown }>(payload);
 	if (parsed.requestId !== requestId) {
 		return null;
 	}

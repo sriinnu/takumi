@@ -184,8 +184,6 @@ export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 						worktree: slot.path,
 						branch: slot.branch,
 						tmuxWindow: win.name,
-						tmuxSessionName: null,
-						tmuxPaneId: null,
 						dispatchSequence: dispatched.sequence,
 					},
 					null,

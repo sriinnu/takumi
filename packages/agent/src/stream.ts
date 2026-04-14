@@ -8,7 +8,7 @@
  */
 
 import type { AgentEvent } from "@takumi/core";
-import { AgentErrorClass, createLogger, JSON_MAX_SSE_CHUNK, safeJsonParse } from "@takumi/core";
+import { AgentErrorClass, createLogger, JSON_MAX_FILE, JSON_MAX_SSE_CHUNK, safeJsonParse } from "@takumi/core";
 import { SseFrameParser } from "./providers/sse-frame-parser.js";
 
 const log = createLogger("sse-parser");
@@ -144,7 +144,7 @@ function processSSEEvent(eventType: string, data: string, pendingTools: Map<numb
 					let input: Record<string, unknown> = {};
 					try {
 						if (pending.inputJson) {
-							input = JSON.parse(pending.inputJson);
+							input = safeJsonParse<Record<string, unknown>>(pending.inputJson, JSON_MAX_FILE);
 						}
 					} catch (err) {
 						log.error("Failed to parse tool input JSON", {
