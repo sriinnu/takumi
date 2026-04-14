@@ -10,6 +10,26 @@ interface PendingToolCall {
 	arguments: string;
 }
 
+/** Shape of a single OpenAI streaming chunk after JSON parsing. */
+interface OpenAIStreamChunk {
+	usage?: {
+		prompt_tokens?: number;
+		completion_tokens?: number;
+		prompt_tokens_details?: { cached_tokens?: number };
+	};
+	choices?: Array<{
+		finish_reason?: string | null;
+		delta?: {
+			content?: string | null;
+			tool_calls?: Array<{
+				index?: number;
+				id?: string;
+				function?: { name?: string; arguments?: string };
+			}>;
+		};
+	}>;
+}
+
 /** Parse an OpenAI SSE stream into AgentEvent objects. */
 export async function* parseOpenAIStream(stream: ReadableStream<Uint8Array>): AsyncGenerator<AgentEvent> {
 	const decoder = new TextDecoder();
@@ -47,9 +67,9 @@ export async function* parseOpenAIStream(stream: ReadableStream<Uint8Array>): As
 					continue;
 				}
 
-				let chunk: any;
+				let chunk: OpenAIStreamChunk;
 				try {
-					chunk = safeJsonParse(data, JSON_MAX_SSE_CHUNK);
+					chunk = safeJsonParse<OpenAIStreamChunk>(data, JSON_MAX_SSE_CHUNK);
 				} catch {
 					log.debug("Failed to parse OpenAI SSE chunk", { data });
 					continue;

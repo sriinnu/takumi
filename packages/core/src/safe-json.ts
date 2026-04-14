@@ -13,18 +13,25 @@ export const JSON_MAX_CHECKPOINT = 100 * 1024 * 1024;
 
 const DEFAULT_MAX = JSON_MAX_FILE;
 
+/** Keys that can trigger prototype pollution if spread or assigned into an object. */
+const POISON_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+/** JSON reviver that strips prototype-polluting keys. */
+const safeReviver = (key: string, value: unknown): unknown => (POISON_KEYS.has(key) ? undefined : value);
+
 /**
- * I parse JSON after checking that `raw` doesn't exceed `maxBytes` characters.
+ * I parse JSON after checking that `raw` doesn't exceed `maxLength` characters.
+ * Prototype-polluting keys (__proto__, constructor, prototype) are stripped.
  * Throws a `RangeError` if the payload is too large, or a `SyntaxError` if the JSON is invalid.
  *
  * @param raw - The JSON string to parse.
- * @param maxBytes - Character-length ceiling (defaults to 10 MB).
+ * @param maxLength - Character-length ceiling (defaults to 10 MB worth of chars).
  */
-export function safeJsonParse<T>(raw: string, maxBytes: number = DEFAULT_MAX): T {
-	if (raw.length > maxBytes) {
-		throw new RangeError(`JSON payload too large: ${raw.length} chars exceeds limit of ${maxBytes}`);
+export function safeJsonParse<T>(raw: string, maxLength: number = DEFAULT_MAX): T {
+	if (raw.length > maxLength) {
+		throw new RangeError(`JSON payload too large: ${raw.length} chars exceeds limit of ${maxLength}`);
 	}
-	return JSON.parse(raw) as T;
+	return JSON.parse(raw, safeReviver) as T;
 }
 
 /**
@@ -32,11 +39,11 @@ export function safeJsonParse<T>(raw: string, maxBytes: number = DEFAULT_MAX): T
  * `null` instead of throwing on any failure (size exceeded or invalid JSON).
  *
  * @param raw - The JSON string to parse.
- * @param maxBytes - Character-length ceiling (defaults to 10 MB).
+ * @param maxLength - Character-length ceiling (defaults to 10 MB worth of chars).
  */
-export function safeJsonParseOrNull<T>(raw: string, maxBytes: number = DEFAULT_MAX): T | null {
+export function safeJsonParseOrNull<T>(raw: string, maxLength: number = DEFAULT_MAX): T | null {
 	try {
-		return safeJsonParse<T>(raw, maxBytes);
+		return safeJsonParse<T>(raw, maxLength);
 	} catch {
 		return null;
 	}

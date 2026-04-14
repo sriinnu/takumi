@@ -30,6 +30,7 @@ export class DispatchError extends Error {
 	readonly code: DispatchErrorCode;
 	constructor(code: DispatchErrorCode, message: string) {
 		super(message);
+		Object.setPrototypeOf(this, new.target.prototype);
 		this.name = "DispatchError";
 		this.code = code;
 	}
@@ -58,7 +59,7 @@ export class DispatchLog {
 			updatedAt: now,
 		};
 		this.records.set(record.id, record);
-		return record;
+		return { ...record };
 	}
 
 	/** I mark a pending record as notified via a specific channel. Throws on invalid transition. */
@@ -70,7 +71,7 @@ export class DispatchLog {
 		record.status = DispatchStatus.NOTIFIED;
 		record.channel = channel;
 		record.updatedAt = Date.now();
-		return record;
+		return { ...record };
 	}
 
 	/** I mark a notified record as delivered. Throws on invalid transition. */
@@ -83,7 +84,7 @@ export class DispatchLog {
 		record.status = DispatchStatus.DELIVERED;
 		record.deliveredAt = now;
 		record.updatedAt = now;
-		return record;
+		return { ...record };
 	}
 
 	/** I mark a record as failed. Can transition from pending or notified. Throws if already terminal. */
@@ -97,12 +98,13 @@ export class DispatchLog {
 		record.failReason = reason;
 		record.failedAt = now;
 		record.updatedAt = now;
-		return record;
+		return { ...record };
 	}
 
-	/** I retrieve a record by ID. Returns null if not found. */
+	/** I retrieve a snapshot of a record by ID. Returns null if not found. */
 	get(id: string): DispatchRecord | null {
-		return this.records.get(id) ?? null;
+		const record = this.records.get(id);
+		return record ? { ...record } : null;
 	}
 
 	/** I return all records matching an optional filter on from, to, or status. */
@@ -113,7 +115,7 @@ export class DispatchLog {
 			if (filter.from && r.from !== filter.from) continue;
 			if (filter.to && r.to !== filter.to) continue;
 			if (filter.status && r.status !== filter.status) continue;
-			out.push(r);
+			out.push({ ...r });
 		}
 		return out;
 	}

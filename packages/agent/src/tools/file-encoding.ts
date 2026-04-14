@@ -76,6 +76,17 @@ export function restoreLineEndings(content: string, lineEnding: LineEnding): str
 	return content;
 }
 
+// ── Binary detection ─────────────────────────────────────────────────
+
+/** I check the first 8 KB of a buffer for null bytes — a reliable binary indicator. */
+export function isBinaryFile(buffer: Buffer): boolean {
+	const check = Math.min(buffer.length, 8192);
+	for (let i = 0; i < check; i++) {
+		if (buffer[i] === 0x00) return true;
+	}
+	return false;
+}
+
 // ── High-level read / write ──────────────────────────────────────────
 
 /**
@@ -85,6 +96,9 @@ export function restoreLineEndings(content: string, lineEnding: LineEnding): str
  */
 export async function readFileWithEncoding(filePath: string): Promise<EncodedFileResult> {
 	const buffer = await readFile(filePath);
+	if (isBinaryFile(buffer)) {
+		throw new Error(`Binary file detected: ${filePath} — cannot safely edit binary files`);
+	}
 	const bom = detectBom(buffer);
 	const raw = buffer.toString("utf-8");
 	const lineEnding = detectLineEnding(raw);

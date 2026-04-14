@@ -56,14 +56,10 @@ export class FileMutationQueue {
 	}
 }
 
-/** I serialize `fn` through the given queue for `filePath`. Convenience wrapper. */
-export function withFileMutationQueue<T>(queue: FileMutationQueue, filePath: string, fn: () => Promise<T>): Promise<T> {
-	return queue.enqueue(filePath, fn);
-}
-
 /** Default singleton — import this when a shared queue across tools is needed. */
 export const defaultFileMutationQueue = new FileMutationQueue();
 
+/** I resolve and normalize a file path for use as a consistent map key. */
 function normalizePath(raw: string): string {
 	const trimmed = raw.trim();
 	return isAbsolute(trimmed) ? trimmed : resolve(trimmed);

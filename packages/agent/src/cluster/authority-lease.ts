@@ -29,6 +29,7 @@ export class LeaseError extends Error {
 
 	constructor(code: LeaseErrorCode, message: string, holder?: string) {
 		super(message);
+		Object.setPrototypeOf(this, new.target.prototype);
 		this.name = "LeaseError";
 		this.code = code;
 		this.holder = holder;

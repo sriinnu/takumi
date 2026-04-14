@@ -4,7 +4,7 @@
 
 import { access } from "node:fs/promises";
 import type { ToolDefinition } from "@takumi/core";
-import { readFileWithEncoding, writeFileWithEncoding } from "./file-encoding.js";
+import { normalizeLineEndings, readFileWithEncoding, writeFileWithEncoding } from "./file-encoding.js";
 import { defaultFileMutationQueue } from "./file-mutation-queue.js";
 import type { ToolHandler } from "./registry.js";
 
@@ -56,14 +56,19 @@ export const editHandler: ToolHandler = async (input) => {
 		return await defaultFileMutationQueue.enqueue(filePath, async () => {
 			const { content, lineEnding, bom } = await readFileWithEncoding(filePath);
 
+			// Normalize line endings on the search/replace strings to match the
+			// LF-normalized file content — LLMs often send CRLF on Windows.
+			const normalizedOld = normalizeLineEndings(oldString);
+			const normalizedNew = normalizeLineEndings(newString);
+
 			// Count occurrences
 			let count = 0;
 			let searchPos = 0;
 			while (true) {
-				const idx = content.indexOf(oldString, searchPos);
+				const idx = content.indexOf(normalizedOld, searchPos);
 				if (idx === -1) break;
 				count++;
-				searchPos = idx + oldString.length;
+				searchPos = idx + normalizedOld.length;
 			}
 
 			if (count === 0) {
@@ -83,10 +88,10 @@ export const editHandler: ToolHandler = async (input) => {
 
 			let newContent: string;
 			if (replaceAll) {
-				newContent = content.split(oldString).join(newString);
+				newContent = content.split(normalizedOld).join(normalizedNew);
 			} else {
-				const idx = content.indexOf(oldString);
-				newContent = content.slice(0, idx) + newString + content.slice(idx + oldString.length);
+				const idx = content.indexOf(normalizedOld);
+				newContent = content.slice(0, idx) + normalizedNew + content.slice(idx + normalizedOld.length);
 			}
 
 			await writeFileWithEncoding(filePath, newContent, { lineEnding, bom });

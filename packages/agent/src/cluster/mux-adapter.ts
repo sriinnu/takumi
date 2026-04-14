@@ -52,12 +52,16 @@ export type MuxOutcome =
 
 // ── Error ─────────────────────────────────────────────────────────────────────
 
+/** Error code for mux adapter failures. */
+export type MuxErrorCode = "unsupported" | "invalid_target" | "adapter_failed";
+
 /** Structured error for mux adapter failures. */
 export class MuxError extends Error {
-	readonly code: "unsupported" | "invalid_target" | "adapter_failed";
+	readonly code: MuxErrorCode;
 
-	constructor(code: MuxError["code"], message: string) {
+	constructor(code: MuxErrorCode, message: string) {
 		super(message);
+		Object.setPrototypeOf(this, new.target.prototype);
 		this.name = "MuxError";
 		this.code = code;
 	}
@@ -90,6 +94,10 @@ export async function executeMuxOperation(adapter: MuxAdapter, op: MuxOperation)
 		case "cleanup": {
 			await adapter.cleanup();
 			return { type: "cleaned-up" };
+		}
+		default: {
+			const _exhaustive: never = op;
+			throw new MuxError("unsupported", `Unknown mux operation: ${(_exhaustive as MuxOperation).type}`);
 		}
 	}
 }

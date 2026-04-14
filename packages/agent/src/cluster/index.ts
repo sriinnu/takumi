@@ -43,7 +43,7 @@ export {
 	shouldEscalateWeakConsensus,
 } from "./mesh-policy.js";
 // ── MuxAdapter ────────────────────────────────────────────────────────────────
-export type { MuxAdapter, MuxOperation, MuxOutcome, MuxWindow } from "./mux-adapter.js";
+export type { MuxAdapter, MuxErrorCode, MuxOperation, MuxOutcome, MuxWindow } from "./mux-adapter.js";
 export { createMuxAdapter, executeMuxOperation, MuxError } from "./mux-adapter.js";
 export type { OrchestratorOptions } from "./orchestrator.js";
 // ── Orchestrator ──────────────────────────────────────────────────────────────
