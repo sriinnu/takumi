@@ -1217,10 +1217,10 @@ describe("parseSSEStream", () => {
 			expect(events[0]).toEqual({ type: "text_delta", text: "trailing" });
 		});
 
-		it("drops incomplete data when stream ends without newline after data line", async () => {
-			// If the stream ends mid-line (no trailing \n), the data remains
-			// in `buffer` and never gets extracted to `currentData`, so nothing
-			// is emitted. This is correct: incomplete SSE frames are discarded.
+		it("flushes buffered frame when stream ends without trailing blank line", async () => {
+			// With SseFrameParser, a complete frame (event + data lines) that lacks
+			// the trailing \n\n delimiter is flushed at stream end. This is correct
+			// per the SSE spec: any remaining buffer is processed when the connection closes.
 			const encoder = new TextEncoder();
 			const stream = new ReadableStream<Uint8Array>({
 				start(controller) {
@@ -1235,7 +1235,8 @@ describe("parseSSEStream", () => {
 
 			const events = await collectEvents(stream);
 
-			expect(events).toHaveLength(0);
+			expect(events).toHaveLength(1);
+			expect(events[0]).toMatchObject({ type: "text_delta", text: "lost" });
 		});
 
 		it("handles index defaulting to 0 when not specified", async () => {

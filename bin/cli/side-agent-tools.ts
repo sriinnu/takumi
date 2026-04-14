@@ -12,6 +12,8 @@ import {
 	createAgentStartHandler,
 	createAgentStopHandler,
 	createAgentWaitAnyHandler,
+	type MuxAdapter,
+	type MuxWindow,
 	reconcilePersistedSideAgents,
 	SideAgentRegistry,
 	type SideAgentToolDeps,
@@ -131,6 +133,27 @@ export function formatSideAgentStartupLine(status: SideAgentBootstrapStatus): st
  */
 function createSideAgentRuntimeHandle(config: TakumiConfig, cwd: string): SideAgentRuntimeHandle {
 	const tmux = new TmuxOrchestrator("takumi-side-agents");
+
+	/** I wrap TmuxOrchestrator as MuxAdapter so tool deps use the abstract contract. */
+	const mux: MuxAdapter = {
+		adapterName: "tmux",
+		createWindow: async (id, cwdPath, cmd) => {
+			const w = await tmux.createWindow(id, cwdPath, cmd);
+			return { id: w.windowId, name: w.windowName };
+		},
+		sendKeys: (id, text) => tmux.sendKeys(id, text),
+		captureOutput: (id, lines) => tmux.captureOutput(id, lines),
+		killWindow: (id) => tmux.killWindow(id),
+		isWindowAlive: (id) => tmux.isWindowAlive(id),
+		cleanup: () => tmux.cleanup(),
+		getWindows: () => {
+			const out = new Map<string, MuxWindow>();
+			for (const [k, v] of tmux.getWindows()) out.set(k, { id: v.windowId, name: v.windowName });
+			return out;
+		},
+		waitForChannel: (ch, ms, sig) => tmux.waitForChannel(ch, ms, sig),
+	};
+
 	const pool = new WorktreePoolManager(cwd, {
 		baseDir: config.sideAgent?.worktreeDir,
 		maxSlots: config.sideAgent?.maxConcurrent ?? 2,
@@ -141,7 +164,7 @@ function createSideAgentRuntimeHandle(config: TakumiConfig, cwd: string): SideAg
 	});
 	const runtime: SideAgentToolDeps = {
 		pool,
-		tmux,
+		mux,
 		agents,
 		repoRoot: cwd,
 		defaultModel: config.sideAgent?.defaultModel ?? config.model,

@@ -57,9 +57,9 @@ export function createAgentQueryHandler(deps: SideAgentToolDeps): ToolHandler {
 				isError: true,
 			};
 		}
-		if (!(await deps.tmux.isWindowAlive(id))) {
+		if (!(await deps.mux.isWindowAlive(id))) {
 			reconcileMissingWindow({ id, agents: deps.agents });
-			return { output: `Error: agent "${id}" tmux window is missing`, isError: true };
+			return { output: `Error: agent "${id}" mux window is missing`, isError: true };
 		}
 
 		const requestId = `${id}-${Date.now().toString(36)}`;
@@ -72,7 +72,7 @@ export function createAgentQueryHandler(deps: SideAgentToolDeps): ToolHandler {
 			requestId,
 			format,
 			agents: deps.agents,
-			tmux: deps.tmux,
+			mux: deps.mux,
 		});
 
 		/**
@@ -80,8 +80,8 @@ export function createAgentQueryHandler(deps: SideAgentToolDeps): ToolHandler {
 		 * signal rather than polling capture-pane every 500 ms. One blocking fork
 		 * replaces ~120 capture-pane forks over the 60 s timeout window.
 		 */
-		if (deps.tmux.waitForChannel) {
-			const _signaled = await deps.tmux.waitForChannel(
+		if (deps.mux.waitForChannel) {
+			const _signaled = await deps.mux.waitForChannel(
 				`takumi-query-${requestId}`,
 				QUERY_TIMEOUT_MS,
 				signal ?? undefined,
@@ -93,7 +93,7 @@ export function createAgentQueryHandler(deps: SideAgentToolDeps): ToolHandler {
 			// Closes the race where signal fires just before we start waiting.
 			let output = "";
 			try {
-				output = await deps.tmux.captureOutput(id, 100);
+				output = await deps.mux.captureOutput(id, 100);
 			} catch {
 				/* fall through to raw timeout path */
 			}
@@ -124,7 +124,7 @@ export function createAgentQueryHandler(deps: SideAgentToolDeps): ToolHandler {
 
 				let output = "";
 				try {
-					output = await deps.tmux.captureOutput(id, 100);
+					output = await deps.mux.captureOutput(id, 100);
 				} catch {
 					continue;
 				}
@@ -150,7 +150,7 @@ export function createAgentQueryHandler(deps: SideAgentToolDeps): ToolHandler {
 
 		let rawOutput = "";
 		try {
-			rawOutput = await deps.tmux.captureOutput(id, DEFAULT_CAPTURE_LINES);
+			rawOutput = await deps.mux.captureOutput(id, DEFAULT_CAPTURE_LINES);
 			syncSideAgentRuntimeFromOutput({ current: deps.agents.get(id) ?? agent, agents: deps.agents, output: rawOutput });
 		} catch {
 			rawOutput = "<no output available>";

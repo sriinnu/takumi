@@ -1,6 +1,7 @@
 import type { AgentEvent } from "@takumi/core";
 import { AgentErrorClass, createLogger, JSON_MAX_SSE_CHUNK, safeJsonParse } from "@takumi/core";
 import { generateToolCallId } from "./gemini-conversion.js";
+import { SseFrameParser } from "./sse-frame-parser.js";
 
 const log = createLogger("gemini-provider");
 
@@ -105,31 +106,22 @@ function parseGeminiChunk(data: GeminiSSEData): AgentEvent[] {
 export async function* parseGeminiSSEStream(stream: ReadableStream<Uint8Array>): AsyncGenerator<AgentEvent> {
 	const decoder = new TextDecoder();
 	const reader = stream.getReader();
-	let buffer = "";
+	const parser = new SseFrameParser();
 
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
 
-			buffer += decoder.decode(value, { stream: true });
-			const lines = buffer.split("\n");
-			buffer = lines.pop() ?? "";
-
-			for (const line of lines) {
-				const trimmed = line.trim();
-				if (!trimmed || trimmed.startsWith(":")) continue;
-				if (!trimmed.startsWith("data: ")) continue;
-
-				const jsonStr = trimmed.slice(6);
-				if (jsonStr.trim() === "[DONE]") continue;
+			for (const frame of parser.push(decoder.decode(value, { stream: true }))) {
+				if (frame.data.trim() === "[DONE]") continue;
 
 				try {
-					const data: GeminiSSEData = safeJsonParse<GeminiSSEData>(jsonStr, JSON_MAX_SSE_CHUNK);
+					const data: GeminiSSEData = safeJsonParse<GeminiSSEData>(frame.data, JSON_MAX_SSE_CHUNK);
 					for (const event of parseGeminiChunk(data)) yield event;
 				} catch (err) {
 					log.error("Failed to parse Gemini SSE data", {
-						data: jsonStr,
+						data: frame.data,
 						error: (err as Error).message,
 					});
 					yield {
@@ -140,18 +132,17 @@ export async function* parseGeminiSSEStream(stream: ReadableStream<Uint8Array>):
 			}
 		}
 
-		if (buffer.trim().startsWith("data: ")) {
-			const jsonStr = buffer.trim().slice(6);
-			if (jsonStr.trim() !== "[DONE]") {
-				try {
-					const data: GeminiSSEData = safeJsonParse<GeminiSSEData>(jsonStr, JSON_MAX_SSE_CHUNK);
-					for (const event of parseGeminiChunk(data)) yield event;
-				} catch (err) {
-					log.error("Failed to parse remaining Gemini SSE data", {
-						data: jsonStr,
-						error: (err as Error).message,
-					});
-				}
+		// Flush any remaining partial frame at stream end
+		for (const frame of parser.flush()) {
+			if (frame.data.trim() === "[DONE]") continue;
+			try {
+				const data: GeminiSSEData = safeJsonParse<GeminiSSEData>(frame.data, JSON_MAX_SSE_CHUNK);
+				for (const event of parseGeminiChunk(data)) yield event;
+			} catch (err) {
+				log.error("Failed to parse remaining Gemini SSE data", {
+					data: frame.data,
+					error: (err as Error).message,
+				});
 			}
 		}
 	} finally {

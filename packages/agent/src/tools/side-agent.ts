@@ -5,7 +5,7 @@
  */
 
 import type { SideAgentInfo, SideAgentState, ToolDefinition } from "@takumi/core";
-import type { Orchestrator } from "../cluster/orchestrator-factory.js";
+import type { MuxAdapter } from "../cluster/mux-adapter.js";
 import type { SideAgentRegistry } from "../cluster/side-agent-registry.js";
 import type { WorktreePoolManager } from "../cluster/worktree-pool.js";
 import type { ToolHandler, ToolRegistry } from "./registry.js";
@@ -28,7 +28,7 @@ export { agentStopDefinition, createAgentStopHandler } from "./side-agent-stop.j
 
 export interface SideAgentToolDeps {
 	pool: WorktreePoolManager;
-	tmux: Orchestrator;
+	mux: MuxAdapter;
 	agents: SideAgentRegistry;
 	repoRoot: string;
 	defaultModel?: string;
@@ -147,20 +147,13 @@ export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 			deps.agents.register(agent);
 			deps.agents.transition(id, "spawning_tmux");
 
-			const win = await deps.tmux.createWindow(id, slot.path);
-			const tmuxWindow =
-				typeof win === "object" && win && "windowName" in win && typeof win.windowName === "string"
-					? win.windowName
-					: id;
-			const tmuxSessionName =
-				typeof win === "object" && win && "sessionName" in win && typeof win.sessionName === "string"
-					? win.sessionName
-					: null;
-			const tmuxWindowId =
-				typeof win === "object" && win && "windowId" in win && typeof win.windowId === "string" ? win.windowId : null;
-			const tmuxPaneId =
-				typeof win === "object" && win && "paneId" in win && typeof win.paneId === "string" ? win.paneId : null;
-			deps.agents.update(id, { tmuxWindow, tmuxSessionName, tmuxWindowId, tmuxPaneId });
+			const win = await deps.mux.createWindow(id, slot.path);
+			deps.agents.update(id, {
+				tmuxWindow: win.name,
+				tmuxWindowId: win.id,
+				tmuxSessionName: null,
+				tmuxPaneId: null,
+			});
 			deps.agents.transition(id, "starting");
 
 			const workerLaunch = buildSideAgentWorkerLaunchCommand({
@@ -169,8 +162,8 @@ export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 				repoRoot: deps.repoRoot,
 				worktreePath: slot.path,
 			});
-			await deps.tmux.sendKeys(id, workerLaunch);
-			await waitForSideAgentReady({ id, tmux: deps.tmux });
+			await deps.mux.sendKeys(id, workerLaunch);
+			await waitForSideAgentReady({ id, mux: deps.mux });
 
 			const initialTask = buildInitialSideAgentPrompt(description, initialPrompt);
 			const dispatched = await dispatchSideAgentWork({
@@ -178,7 +171,7 @@ export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 				kind: "start",
 				prompt: initialTask,
 				agents: deps.agents,
-				tmux: deps.tmux,
+				mux: deps.mux,
 			});
 			return {
 				output: JSON.stringify(
@@ -190,9 +183,9 @@ export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 						routingSource: routing.source,
 						worktree: slot.path,
 						branch: slot.branch,
-						tmuxWindow,
-						tmuxSessionName,
-						tmuxPaneId,
+						tmuxWindow: win.name,
+						tmuxSessionName: null,
+						tmuxPaneId: null,
 						dispatchSequence: dispatched.sequence,
 					},
 					null,
@@ -202,7 +195,7 @@ export function createAgentStartHandler(deps: SideAgentToolDeps): ToolHandler {
 			};
 		} catch (error) {
 			const startupDetail = error instanceof Error ? error.message : String(error);
-			const cleanup = await rollbackFailedStart({ id, slotId, agents: deps.agents, pool: deps.pool, tmux: deps.tmux });
+			const cleanup = await rollbackFailedStart({ id, slotId, agents: deps.agents, pool: deps.pool, mux: deps.mux });
 			const cleanupDetail =
 				cleanup.cleanupErrors.length > 0 ? ` Cleanup also failed: ${cleanup.cleanupErrors.join(" ")}` : "";
 			if (cleanup.cleanupErrors.length > 0 && deps.agents.get(id)) {
@@ -253,9 +246,9 @@ export function createAgentCheckHandler(deps: SideAgentToolDeps): ToolHandler {
 
 		let current = agent;
 		let recentOutput = "";
-		if (await deps.tmux.isWindowAlive(id)) {
+		if (await deps.mux.isWindowAlive(id)) {
 			try {
-				recentOutput = await deps.tmux.captureOutput(id, DEFAULT_CAPTURE_LINES);
+				recentOutput = await deps.mux.captureOutput(id, DEFAULT_CAPTURE_LINES);
 				current = syncSideAgentRuntimeFromOutput({ current, agents: deps.agents, output: recentOutput });
 			} catch {
 				recentOutput = "<no output available>";
@@ -424,7 +417,7 @@ export function createAgentSendHandler(deps: SideAgentToolDeps): ToolHandler {
 				isError: true,
 			};
 		}
-		if (!(await deps.tmux.isWindowAlive(id))) {
+		if (!(await deps.mux.isWindowAlive(id))) {
 			reconcileMissingWindow({ id, agents: deps.agents });
 			return { output: `Error: agent "${id}" tmux window is missing`, isError: true };
 		}
@@ -434,7 +427,7 @@ export function createAgentSendHandler(deps: SideAgentToolDeps): ToolHandler {
 			kind: "send",
 			prompt,
 			agents: deps.agents,
-			tmux: deps.tmux,
+			mux: deps.mux,
 		});
 
 		return {

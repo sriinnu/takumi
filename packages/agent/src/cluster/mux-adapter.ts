@@ -30,6 +30,8 @@ export interface MuxAdapter {
 	cleanup(): Promise<void>;
 	/** Snapshot of all tracked windows. */
 	getWindows(): Map<string, MuxWindow>;
+	/** Wait for a named channel signal (tmux-specific, optional). Returns false on timeout/abort/unsupported. */
+	waitForChannel?(channel: string, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
 }
 
 /** Discriminated union describing a mux operation to dispatch. */
@@ -122,6 +124,7 @@ export async function createMuxAdapter(sessionName?: string): Promise<MuxAdapter
 				for (const [k, v] of orch.getWindows()) out.set(k, { id: v.windowId, name: v.windowName });
 				return out;
 			},
+			waitForChannel: (channel, timeoutMs, signal) => orch.waitForChannel(channel, timeoutMs, signal),
 		};
 	}
 
