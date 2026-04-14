@@ -2,9 +2,11 @@
  * Write file tool — creates or overwrites a file with given content.
  */
 
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { ToolDefinition } from "@takumi/core";
+import { writeFileWithEncoding } from "./file-encoding.js";
+import { defaultFileMutationQueue } from "./file-mutation-queue.js";
 import type { ToolHandler } from "./registry.js";
 
 export const writeDefinition: ToolDefinition = {
@@ -37,30 +39,32 @@ export const writeHandler: ToolHandler = async (input) => {
 	}
 
 	try {
-		// Ensure parent directory exists
-		const dir = dirname(filePath);
-		try {
-			await access(dir);
-		} catch {
-			await mkdir(dir, { recursive: true });
-		}
+		return await defaultFileMutationQueue.enqueue(filePath, async () => {
+			// Ensure parent directory exists
+			const dir = dirname(filePath);
+			try {
+				await access(dir);
+			} catch {
+				await mkdir(dir, { recursive: true });
+			}
 
-		let existed = false;
-		try {
-			await access(filePath);
-			existed = true;
-		} catch {
-			// File doesn't exist — will be created
-		}
+			let existed = false;
+			try {
+				await access(filePath);
+				existed = true;
+			} catch {
+				// File doesn't exist — will be created
+			}
 
-		await writeFile(filePath, content, "utf-8");
+			await writeFileWithEncoding(filePath, content, { lineEnding: "lf", bom: "none" });
 
-		const lineCount = content.split("\n").length;
-		const action = existed ? "Updated" : "Created";
-		return {
-			output: `${action} file: ${filePath} (${lineCount} lines)`,
-			isError: false,
-		};
+			const lineCount = content.split("\n").length;
+			const action = existed ? "Updated" : "Created";
+			return {
+				output: `${action} file: ${filePath} (${lineCount} lines)`,
+				isError: false,
+			};
+		});
 	} catch (err) {
 		return { output: `Error writing file: ${(err as Error).message}`, isError: true };
 	}

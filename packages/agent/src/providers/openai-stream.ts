@@ -1,5 +1,5 @@
 import type { AgentEvent } from "@takumi/core";
-import { createLogger } from "@takumi/core";
+import { createLogger, JSON_MAX_SSE_CHUNK, safeJsonParse } from "@takumi/core";
 
 const log = createLogger("openai-provider");
 
@@ -49,7 +49,7 @@ export async function* parseOpenAIStream(stream: ReadableStream<Uint8Array>): As
 
 				let chunk: any;
 				try {
-					chunk = JSON.parse(data);
+					chunk = safeJsonParse(data, JSON_MAX_SSE_CHUNK);
 				} catch {
 					log.debug("Failed to parse OpenAI SSE chunk", { data });
 					continue;

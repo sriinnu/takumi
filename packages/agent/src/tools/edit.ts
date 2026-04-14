@@ -2,8 +2,10 @@
  * Edit file tool — performs exact string replacement in a file.
  */
 
-import { access, readFile, writeFile } from "node:fs/promises";
+import { access } from "node:fs/promises";
 import type { ToolDefinition } from "@takumi/core";
+import { readFileWithEncoding, writeFileWithEncoding } from "./file-encoding.js";
+import { defaultFileMutationQueue } from "./file-mutation-queue.js";
 import type { ToolHandler } from "./registry.js";
 
 export const editDefinition: ToolDefinition = {
@@ -51,48 +53,50 @@ export const editHandler: ToolHandler = async (input) => {
 	}
 
 	try {
-		const content = await readFile(filePath, "utf-8");
+		return await defaultFileMutationQueue.enqueue(filePath, async () => {
+			const { content, lineEnding, bom } = await readFileWithEncoding(filePath);
 
-		// Count occurrences
-		let count = 0;
-		let searchPos = 0;
-		while (true) {
-			const idx = content.indexOf(oldString, searchPos);
-			if (idx === -1) break;
-			count++;
-			searchPos = idx + oldString.length;
-		}
+			// Count occurrences
+			let count = 0;
+			let searchPos = 0;
+			while (true) {
+				const idx = content.indexOf(oldString, searchPos);
+				if (idx === -1) break;
+				count++;
+				searchPos = idx + oldString.length;
+			}
 
-		if (count === 0) {
+			if (count === 0) {
+				return {
+					output:
+						"Error: old_string not found in file. Make sure it matches exactly (including whitespace and indentation).",
+					isError: true,
+				};
+			}
+
+			if (count > 1 && !replaceAll) {
+				return {
+					output: `Error: old_string found ${count} times. Provide more context to make it unique, or set replace_all to true.`,
+					isError: true,
+				};
+			}
+
+			let newContent: string;
+			if (replaceAll) {
+				newContent = content.split(oldString).join(newString);
+			} else {
+				const idx = content.indexOf(oldString);
+				newContent = content.slice(0, idx) + newString + content.slice(idx + oldString.length);
+			}
+
+			await writeFileWithEncoding(filePath, newContent, { lineEnding, bom });
+
+			const replacements = replaceAll ? count : 1;
 			return {
-				output:
-					"Error: old_string not found in file. Make sure it matches exactly (including whitespace and indentation).",
-				isError: true,
+				output: `Edited ${filePath}: ${replacements} replacement(s) made`,
+				isError: false,
 			};
-		}
-
-		if (count > 1 && !replaceAll) {
-			return {
-				output: `Error: old_string found ${count} times. Provide more context to make it unique, or set replace_all to true.`,
-				isError: true,
-			};
-		}
-
-		let newContent: string;
-		if (replaceAll) {
-			newContent = content.split(oldString).join(newString);
-		} else {
-			const idx = content.indexOf(oldString);
-			newContent = content.slice(0, idx) + newString + content.slice(idx + oldString.length);
-		}
-
-		await writeFile(filePath, newContent, "utf-8");
-
-		const replacements = replaceAll ? count : 1;
-		return {
-			output: `Edited ${filePath}: ${replacements} replacement(s) made`,
-			isError: false,
-		};
+		});
 	} catch (err) {
 		return { output: `Error editing file: ${(err as Error).message}`, isError: true };
 	}

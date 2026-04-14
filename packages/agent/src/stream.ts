@@ -8,7 +8,7 @@
  */
 
 import type { AgentEvent } from "@takumi/core";
-import { AgentErrorClass, createLogger } from "@takumi/core";
+import { AgentErrorClass, createLogger, JSON_MAX_SSE_CHUNK, safeJsonParse } from "@takumi/core";
 
 const log = createLogger("sse-parser");
 
@@ -124,7 +124,7 @@ function processSSEEvent(eventType: string, data: string, pendingTools: Map<numb
 	const events: AgentEvent[] = [];
 
 	try {
-		const parsed: SSEData = JSON.parse(data);
+		const parsed: SSEData = safeJsonParse<SSEData>(data, JSON_MAX_SSE_CHUNK);
 
 		switch (eventType) {
 			case "content_block_start": {

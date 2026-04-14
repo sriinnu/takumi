@@ -20,12 +20,18 @@ export { AgentBus, buildCapabilityQuery, buildTaskRequest, buildTaskResult, crea
 // ── Agent Identity ────────────────────────────────────────────────────────────
 export type { AgentProfile, CapabilityScore, TaskOutcome, TopologyWinRate } from "./agent-identity.js";
 export { AgentProfileStore } from "./agent-identity.js";
+// ── Authority Leasing ─────────────────────────────────────────────────────────
+export type { AuthorityLease, LeaseErrorCode } from "./authority-lease.js";
+export { AuthorityLeaseManager, LeaseError } from "./authority-lease.js";
 export type { CheckpointSummary, ClusterCheckpoint } from "./checkpoint.js";
 // ── Checkpoint ────────────────────────────────────────────────────────────────
 export { CheckpointManager } from "./checkpoint.js";
 // ── Chitragupta Bus Bridge ────────────────────────────────────────────────────
 export type { BusBridgeStats, ChitraguptaBusBridgeOptions } from "./chitragupta-bus-bridge.js";
 export { ChitraguptaBusBridge } from "./chitragupta-bus-bridge.js";
+// ── Dispatch Log ──────────────────────────────────────────────────────────────
+export type { DispatchErrorCode, DispatchRecord } from "./dispatch-log.js";
+export { DispatchError, DispatchLog, DispatchStatus } from "./dispatch-log.js";
 export type { IsolationContext, IsolationMode } from "./isolation.js";
 // ── Isolation ─────────────────────────────────────────────────────────────────
 export { createIsolationContext } from "./isolation.js";
@@ -36,6 +42,9 @@ export {
 	getTopologyGuidance,
 	shouldEscalateWeakConsensus,
 } from "./mesh-policy.js";
+// ── MuxAdapter ────────────────────────────────────────────────────────────────
+export type { MuxAdapter, MuxOperation, MuxOutcome, MuxWindow } from "./mux-adapter.js";
+export { createMuxAdapter, executeMuxOperation, MuxError } from "./mux-adapter.js";
 export type { OrchestratorOptions } from "./orchestrator.js";
 // ── Orchestrator ──────────────────────────────────────────────────────────────
 export { ClusterOrchestrator } from "./orchestrator.js";
@@ -104,7 +113,6 @@ export {
 	ClusterPhase,
 	ValidationDecision,
 } from "./types.js";
-
 // ── Worktree Pool ─────────────────────────────────────────────────────────────
 export type { WorktreePoolOptions, WorktreeSlot } from "./worktree-pool.js";
 export { WorktreePoolManager } from "./worktree-pool.js";

@@ -1,5 +1,5 @@
 import type { AgentEvent } from "@takumi/core";
-import { AgentErrorClass, createLogger } from "@takumi/core";
+import { AgentErrorClass, createLogger, JSON_MAX_SSE_CHUNK, safeJsonParse } from "@takumi/core";
 import { generateToolCallId } from "./gemini-conversion.js";
 
 const log = createLogger("gemini-provider");
@@ -125,7 +125,7 @@ export async function* parseGeminiSSEStream(stream: ReadableStream<Uint8Array>):
 				if (jsonStr.trim() === "[DONE]") continue;
 
 				try {
-					const data: GeminiSSEData = JSON.parse(jsonStr);
+					const data: GeminiSSEData = safeJsonParse<GeminiSSEData>(jsonStr, JSON_MAX_SSE_CHUNK);
 					for (const event of parseGeminiChunk(data)) yield event;
 				} catch (err) {
 					log.error("Failed to parse Gemini SSE data", {
@@ -144,7 +144,7 @@ export async function* parseGeminiSSEStream(stream: ReadableStream<Uint8Array>):
 			const jsonStr = buffer.trim().slice(6);
 			if (jsonStr.trim() !== "[DONE]") {
 				try {
-					const data: GeminiSSEData = JSON.parse(jsonStr);
+					const data: GeminiSSEData = safeJsonParse<GeminiSSEData>(jsonStr, JSON_MAX_SSE_CHUNK);
 					for (const event of parseGeminiChunk(data)) yield event;
 				} catch (err) {
 					log.error("Failed to parse remaining Gemini SSE data", {
