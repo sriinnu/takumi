@@ -171,7 +171,7 @@ These came up repeatedly as the most likely first failures if hidden tests get m
 	- config entry normalization now lives in `@takumi/core`, and startup/package consumers reuse that shared rule
 	- `loadConfig()` + normalization helpers now treat legacy `name` as an input-only alias and return path-canonical entries instead of preserving both fields at runtime
 	- deeper identity / options / distribution semantics are still pending
-- [ ] define the shared slash-command contribution shape for built-in and discovered command packs
+- [x] define the shared slash-command contribution shape for built-in and discovered command packs
 	- shared TUI-owned slash-command pack/contribution contract is now landed
 	- built-in `/ide` is migrated into `packages/tui/src/slash-commands/builtin/ide.ts`
 	- built-in `/template` is migrated into `packages/tui/src/slash-commands/builtin/template.ts`
@@ -184,7 +184,7 @@ These came up repeatedly as the most likely first failures if hidden tests get m
 
 ### After that
 
-- [ ] move built-in command families toward `packages/tui/src/slash-commands/builtin/**`
+- [x] move built-in command families toward `packages/tui/src/slash-commands/builtin/**`
 	- `/ide`, `/template`, `/packages`, `/skills` + `/conventions`, `/tools`, and `/extensions` are now migrated behind thin compatibility wrappers in `packages/tui/src/commands/`
 	- `packages/tui/src/commands/app-commands-extensions.ts` now exists only as a thin aggregator over those wrapper registrations
 - [x] add source metadata + collision reporting to command inspection/operator surfaces
@@ -192,7 +192,7 @@ These came up repeatedly as the most likely first failures if hidden tests get m
 	- `/help`, the command palette, and `/extensions` now surface package-backed provenance more honestly without changing discovery/load precedence
 	- package-backed discovered commands now derive rename suffixes and pack labels from package identity instead of raw basename fallbacks
 	- `/extensions show` now distinguishes requested command names from the actual registered slash commands when collision renames changed the live command surface
-- [ ] decide whether discovered slash-command packs should live under project/global/package roots once the contribution model is stable
+- [x] decide whether discovered slash-command packs should live under project/global/package roots once the contribution model is stable
 	- current decision: keep residency metadata-only for now; do not rewrite trust/load paths or discovery precedence yet
 
 ## Status label

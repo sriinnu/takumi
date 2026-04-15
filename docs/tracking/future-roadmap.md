@@ -137,7 +137,7 @@ Extensions should become the main home for optional operator workflow and advanc
 	- upgrade `config.packages[]` from a path-like list into an explicit package contract and clean up `config.plugins[]` semantics alongside it
 		- canonical `path` fields now work for both arrays; legacy `name` remains as a compatibility alias
 		- config entry normalization is now centralized in `@takumi/core` instead of duplicated in runtime consumers
-- [ ] Create first-class slash-command contribution architecture
+- [x] Create first-class slash-command contribution architecture
 	- introduce `packages/tui/src/slash-commands/builtin/**` for built-in packs
 	- treat everything discovered as `external` / `contrib`, not `core` / `community`
 	- unify built-in packs and extension-contributed commands behind one contribution model
@@ -374,17 +374,17 @@ Takumi Build Window and related surfaces should attach to the runtime and make i
 
 ### Backlog
 
-- [ ] Define stable attach model for Build Window
+- [x] Define stable attach model for Build Window
 - [ ] Expand operator shell views
 	- routes
 	- approvals
 	- artifacts
 	- degraded run review
 	- fleet/session summaries
-- [ ] Improve transport choices
+- [x] Improve transport choices
 	- efficient watch/stream path
 	- better desktop session attach semantics
-- [ ] Keep runtime sovereignty explicit
+- [x] Keep runtime sovereignty explicit
 	- desktop observes and steers
 	- terminal/runtime remains execution authority
 
