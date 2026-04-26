@@ -16,7 +16,7 @@
  * notice when reading through a pull request diff.
  */
 
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import type { ToolDefinition } from "@takumi/core";
 import { createLogger } from "@takumi/core";
 import type { ToolHandler } from "./registry.js";
@@ -244,7 +244,11 @@ export function reviewDiff(config: DiffReviewConfig): DiffReviewResult {
 		if (file.includes("/test/") || file.includes(".test.")) continue;
 
 		try {
-			const loc = execSync(`wc -l < "${file}"`, { cwd: config.cwd, encoding: "utf-8" }).trim();
+			const loc = execFileSync("wc", ["-l", file], {
+				cwd: config.cwd,
+				encoding: "utf-8",
+				timeout: 5_000,
+			}).trim();
 			const lineCount = Number.parseInt(loc, 10);
 			if (lineCount > maxLoc) {
 				findings.push({

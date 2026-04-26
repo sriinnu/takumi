@@ -4,6 +4,9 @@ import { formatSideLaneDigest } from "../side-lane-store.js";
 import type { AppCommandContext } from "./app-command-context.js";
 import { ensureExclusiveCommandLease } from "./app-command-lease.js";
 
+/** Timeout for shell commands that run in the TUI event loop (blocks the thread). */
+const SHELL_TIMEOUT_MS = 10_000;
+
 function canRunAgentMacro(ctx: AppCommandContext, commandName: string): boolean {
 	if (!ctx.agentRunner) {
 		ctx.addInfoMessage(`${commandName} requires an active agent runner.`);
@@ -80,11 +83,16 @@ export function parseJsonToolOutput<T>(result: ToolResult | null): T | null {
 	}
 }
 
+/**
+ * Run a shell command synchronously. Returns trimmed stdout or null on failure.
+ * Has a hard timeout so a hung process can never freeze the TUI indefinitely.
+ */
 export function runShellCommand(command: string): string | null {
 	try {
 		return execSync(command, {
 			cwd: process.cwd(),
 			encoding: "utf-8",
+			timeout: SHELL_TIMEOUT_MS,
 			maxBuffer: 512 * 1024,
 			stdio: ["pipe", "pipe", "pipe"],
 		}).trim();

@@ -6,12 +6,6 @@
 		"ratchetEveryDays": 30
 	},
 	"entries": {
-		"packages/tui/src/app.ts": {
-			"baselineLines": 742
-		},
-		"packages/tui/src/commands/app-commands-core.ts": {
-			"baselineLines": 669
-		},
 		"apps/desktop/src/hooks/useAgentStream.ts": {
 			"baselineLines": 608
 		},

@@ -177,35 +177,243 @@ export interface DaemonBridgeBootstrapLane {
 	routingDecision: DaemonBridgeBootstrapRoutingDecision | null;
 }
 
-export type {
-	BridgeBootstrapVerticalResolutionSource,
-	DaemonBridgeBootstrapContinuity,
-	DaemonBridgeBootstrapVertical,
-	VerticalProfileAuthMode,
-	VerticalProfilePreferredTransport,
-	VerticalRuntimeContinuityRecord,
-	VerticalRuntimeContinuityRequiredAction,
-	VerticalRuntimeContinuitySource,
-	VerticalRuntimeContinuityState,
-	VerticalRuntimeContinuityStatus,
-	VerticalRuntimeRecoveryAction,
-	VerticalRuntimeRecoveryPlan,
-} from "./chitragupta-bootstrap-vertical-runtime-types.js";
-export {
-	BRIDGE_BOOTSTRAP_VERTICAL_RESOLUTION_SOURCES,
-	VERTICAL_PROFILE_AUTH_MODES,
-	VERTICAL_PROFILE_PREFERRED_TRANSPORTS,
-	VERTICAL_RUNTIME_CONTINUITY_REQUIRED_ACTIONS,
-	VERTICAL_RUNTIME_CONTINUITY_SOURCES,
-	VERTICAL_RUNTIME_CONTINUITY_STATES,
-	VERTICAL_RUNTIME_CONTINUITY_STATUSES,
-	VERTICAL_RUNTIME_RECOVERY_ACTIONS,
-} from "./chitragupta-bootstrap-vertical-runtime-types.js";
+/** I enumerate how bootstrap resolved the bound vertical identity. */
+export const BRIDGE_BOOTSTRAP_VERTICAL_RESOLUTION_SOURCES = [
+	"catalog",
+	"auth-token-family",
+	"explicit-vertical-id",
+	"derived-consumer-prefix",
+	"unbound",
+] as const;
+export type BridgeBootstrapVerticalResolutionSource = (typeof BRIDGE_BOOTSTRAP_VERTICAL_RESOLUTION_SOURCES)[number];
 
-import type {
-	DaemonBridgeBootstrapContinuity,
-	DaemonBridgeBootstrapVertical,
-} from "./chitragupta-bootstrap-vertical-runtime-types.js";
+/** I capture the resolved vertical attachment identity returned by daemon bootstrap. */
+export interface DaemonBridgeBootstrapVertical {
+	/** I version the bootstrap vertical-attachment block. */
+	contractVersion: 1;
+	/** I record the resolved vertical id when one exists. */
+	id: string | null;
+	/** I record the resolved vertical label when one exists. */
+	label: string | null;
+	/** I record the resolved vertical description when one exists. */
+	description: string | null;
+	/** I record the preferred transport for the resolved vertical when one exists. */
+	preferredTransport: VerticalProfilePreferredTransport | null;
+	/** I record the auth mode for the resolved vertical when one exists. */
+	authMode: VerticalProfileAuthMode | null;
+	/** I record the transports the resolved vertical may legitimately use. */
+	allowedTransports: VerticalProfilePreferredTransport[];
+	/** I record the bundle ids granted to the resolved vertical for this attachment. */
+	bundleIds: string[];
+	/** I record the full bundle ids the resolved vertical profile may request. */
+	availableBundleIds: string[];
+	/** I record the bundle ids the consumer explicitly requested at bootstrap time. */
+	requestedBundleIds: string[];
+	/** I record requested bundle ids the daemon denied for this attachment. */
+	deniedBundleIds: string[];
+	/** I record the bound consumer id when one exists. */
+	consumer: string | null;
+	/** I record the bound surface when one exists. */
+	surface: string | null;
+	/** I record whether bootstrap resolved a canonical profile. */
+	canonical: boolean;
+	/** I record whether the vertical attachment identity is degraded. */
+	degraded: boolean;
+	/** I record how bootstrap resolved the vertical attachment identity. */
+	resolutionSource: BridgeBootstrapVerticalResolutionSource;
+}
+
+/** I enumerate the daemon-owned provider lanes exposed at bootstrap time. */
+export const BRIDGE_BOOTSTRAP_PROVIDER_LANES = ["local", "cli", "cloud"] as const;
+export type BridgeBootstrapProviderLane = (typeof BRIDGE_BOOTSTRAP_PROVIDER_LANES)[number];
+
+/** I enumerate the daemon-owned provider transports exposed at bootstrap time. */
+export const BRIDGE_BOOTSTRAP_PROVIDER_TRANSPORTS = ["local-runtime", "local-cli", "remote-api"] as const;
+export type BridgeBootstrapProviderTransport = (typeof BRIDGE_BOOTSTRAP_PROVIDER_TRANSPORTS)[number];
+
+/** I capture one bootstrap-time model card grouped under its provider. */
+export interface DaemonBridgeBootstrapInventoryModel {
+	/** I record the canonical model id. */
+	id: string;
+	/** I record the human-readable model label. */
+	name: string;
+	/** I record whether the model is currently usable. */
+	available: boolean;
+	/** I record the daemon-observed model health. */
+	health: string;
+	/** I record the canonical model capability set. */
+	capabilities: string[];
+	/** I record the model context window. */
+	contextWindow: number;
+	/** I record the maximum output tokens. */
+	maxOutputTokens: number;
+	/** I record the daemon-owned budget class for the model. */
+	costClass: BootstrapPolicyBudgetClass;
+	/** I record the model inventory source. */
+	source: string;
+}
+
+/** I capture one provider runtime snapshot exposed during bootstrap. */
+export interface DaemonBridgeBootstrapInventoryRuntime {
+	/** I record the runtime transport class. */
+	transport: BridgeBootstrapProviderTransport;
+	/** I record the configured endpoint when one exists. */
+	endpoint: string | null;
+	/** I record the CLI command when one exists. */
+	command: string | null;
+	/** I record the resolved CLI path when one exists. */
+	commandPath: string | null;
+	/** I record whether the runtime is configured. */
+	configured: boolean;
+	/** I record whether the runtime is reachable now. */
+	reachable: boolean;
+	/** I record whether the runtime is preferred inside its lane. */
+	preferred: boolean;
+	/** I record the latest runtime probe error when one exists. */
+	lastError: string | null;
+}
+
+/** I capture one provider summary exposed during bootstrap inventory. */
+export interface DaemonBridgeBootstrapInventoryProvider {
+	/** I record the canonical provider id. */
+	id: string;
+	/** I record the human-readable provider label. */
+	name: string;
+	/** I record the provider lane. */
+	lane: BridgeBootstrapProviderLane;
+	/** I record the provider transport class. */
+	transport: BridgeBootstrapProviderTransport;
+	/** I record whether the provider is currently usable. */
+	available: boolean;
+	/** I record whether the provider already satisfies auth requirements. */
+	authenticated: boolean;
+	/** I record whether a daemon-visible credential exists. */
+	credentialAvailable: boolean;
+	/** I record where provider auth came from when known. */
+	credentialSource: string | null;
+	/** I record the number of grouped model cards. */
+	modelCount: number;
+	/** I carry the grouped model cards for this provider. */
+	models: DaemonBridgeBootstrapInventoryModel[];
+	/** I record machine-readable provider issues surfaced at bootstrap. */
+	issues: string[];
+	/** I carry runtime details for local or CLI-backed providers when one exists. */
+	runtime: DaemonBridgeBootstrapInventoryRuntime | null;
+}
+
+/** I capture the bootstrap-time provider and model inventory for first-attach consumers. */
+export interface DaemonBridgeBootstrapInventory {
+	/** I version the bootstrap inventory block. */
+	contractVersion: 1;
+	/** I record when the inventory snapshot was assembled. */
+	snapshotAt: number;
+	/** I record the latest kosha-discovery snapshot time when one exists. */
+	discoverySnapshotAt: number | null;
+	/** I record the latest local-runtime snapshot time when one exists. */
+	localRuntimeSnapshotAt: number | null;
+	/** I record the effective provider priority order. */
+	providerPriority: string[];
+	/** I record the effective provider lane priority order. */
+	lanePriority: BridgeBootstrapProviderLane[];
+	/** I carry the grouped provider inventory. */
+	providers: DaemonBridgeBootstrapInventoryProvider[];
+	/** I record whether any inventory source is stale or degraded. */
+	stale: boolean;
+	/** I record the aggregate staleness reason when one exists. */
+	staleReason: string | null;
+	/** I record bootstrap inventory warnings. */
+	warnings: string[];
+}
+
+/** I enumerate the daemon-owned durable continuity row statuses. */
+export const VERTICAL_RUNTIME_CONTINUITY_STATUSES = ["active", "detached"] as const;
+export type VerticalRuntimeContinuityStatus = (typeof VERTICAL_RUNTIME_CONTINUITY_STATUSES)[number];
+
+/** I enumerate the daemon-owned continuity states surfaced to operators and verticals. */
+export const VERTICAL_RUNTIME_CONTINUITY_STATES = ["tracked", "reattachable"] as const;
+export type VerticalRuntimeContinuityState = (typeof VERTICAL_RUNTIME_CONTINUITY_STATES)[number];
+
+/** I enumerate the next correct action for one vertical continuity record. */
+export const VERTICAL_RUNTIME_CONTINUITY_REQUIRED_ACTIONS = [
+	"none",
+	"reattach-via-bridge.bootstrap",
+	"handover-required",
+] as const;
+export type VerticalRuntimeContinuityRequiredAction = (typeof VERTICAL_RUNTIME_CONTINUITY_REQUIRED_ACTIONS)[number];
+
+/** I enumerate the daemon-owned source behind one continuity record. */
+export const VERTICAL_RUNTIME_CONTINUITY_SOURCES = ["durable-record"] as const;
+export type VerticalRuntimeContinuitySource = (typeof VERTICAL_RUNTIME_CONTINUITY_SOURCES)[number];
+
+/** I enumerate the daemon-issued next steps for a reconnecting vertical runtime. */
+export const VERTICAL_RUNTIME_RECOVERY_ACTIONS = [
+	"continue-live",
+	"resubscribe-live",
+	"reattach-via-bridge.bootstrap",
+	"bootstrap-new-runtime",
+	"handover-required",
+] as const;
+export type VerticalRuntimeRecoveryAction = (typeof VERTICAL_RUNTIME_RECOVERY_ACTIONS)[number];
+
+/** I capture one durable daemon-owned continuity row for a vertical attachment. */
+export interface VerticalRuntimeContinuityRecord {
+	/** I version the continuity record block. */
+	contractVersion: 1;
+	/** I record the durable daemon identity key when one is visible. */
+	identityKey: string | null;
+	/** I record the canonical vertical id. */
+	verticalId: string;
+	/** I record the bound consumer when one exists. */
+	consumer: string | null;
+	/** I record the bound surface. */
+	surface: string;
+	/** I record the bound channel when one exists. */
+	channel: string | null;
+	/** I record the bound project path when one is visible. */
+	project: string | null;
+	/** I record the canonical session id when one is visible. */
+	sessionId: string | null;
+	/** I record the daemon-owned session reuse policy when one exists. */
+	sessionReusePolicy: string | null;
+	/** I record the bound client key when one is visible. */
+	clientKey: string | null;
+	/** I record the bound session lineage key when one is visible. */
+	sessionLineageKey: string | null;
+	/** I record the currently attached daemon client id when one is visible. */
+	attachedClientId: string | null;
+	/** I record the auth family attached to the continuity row when one exists. */
+	authFamily: string | null;
+	/** I record the durable row status. */
+	status: VerticalRuntimeContinuityStatus;
+	/** I record the daemon-owned continuity state for the row. */
+	state: VerticalRuntimeContinuityState;
+	/** I record the next correct action for the row. */
+	requiredAction: VerticalRuntimeContinuityRequiredAction;
+	/** I record the daemon-owned source behind the row. */
+	source: VerticalRuntimeContinuitySource;
+	/** I record when the daemon last saw the row alive. */
+	lastSeenAt: number | null;
+	/** I record when the daemon last detached the row. */
+	lastDetachedAt: number | null;
+	/** I record when the daemon last updated the row. */
+	updatedAt: number;
+}
+
+/** I capture the daemon-owned continuity snapshot returned to a bootstrapping vertical. */
+export interface DaemonBridgeBootstrapContinuity {
+	/** I version the bootstrap continuity block. */
+	contractVersion: 1;
+	/** I record whether the current daemon client is now tracked. */
+	tracked: boolean;
+	/** I record whether bootstrap reattached to a prior durable continuity record. */
+	reattached: boolean;
+	/** I record whether the durable record was still marked active on another daemon client. */
+	activeElsewhere: boolean;
+	/** I carry the daemon-owned durable continuity row when one exists. */
+	record: VerticalRuntimeContinuityRecord | null;
+	/** I carry the daemon-issued reconnect and replay plan for the current bootstrap state. */
+	plan: VerticalRuntimeRecoveryPlan;
+}
 
 /** I capture the route request a vertical sends into daemon bootstrap. */
 export interface BridgeBootstrapRouteRequest {
@@ -353,6 +561,8 @@ export interface DaemonBridgeBootstrapResult {
 	routingDecision: DaemonBridgeBootstrapRoutingDecision | null;
 	/** I carry the daemon-owned startup lanes. */
 	lanes: DaemonBridgeBootstrapLane[];
+	/** I carry the daemon-owned first-attach provider and model inventory. */
+	inventory: DaemonBridgeBootstrapInventory;
 	/** I carry capability metadata when the caller requested it. */
 	capabilities?: unknown;
 }
@@ -413,4 +623,34 @@ export interface ProviderCredentialResolution {
 	value: string | null;
 	/** I record whether the credential value should be re-keyed. */
 	needsRekey: boolean;
+}
+
+/** I enumerate the preferred runtime transports one vertical profile may advertise. */
+export const VERTICAL_PROFILE_PREFERRED_TRANSPORTS = ["daemon-rpc", "http-attachment", "mcp"] as const;
+export type VerticalProfilePreferredTransport = (typeof VERTICAL_PROFILE_PREFERRED_TRANSPORTS)[number];
+
+/** I enumerate the daemon-owned auth modes one vertical profile may advertise. */
+export const VERTICAL_PROFILE_AUTH_MODES = [
+	"daemon-bridge-token",
+	"serve-pairing-jwt",
+	"daemon-bridge-token-or-serve-pairing-jwt",
+] as const;
+export type VerticalProfileAuthMode = (typeof VERTICAL_PROFILE_AUTH_MODES)[number];
+
+/** I capture the daemon-issued reconnect and replay plan for one vertical runtime identity. */
+export interface VerticalRuntimeRecoveryPlan {
+	/** I version the recovery-plan block. */
+	contractVersion: 1;
+	/** I record the next correct action the reconnecting runtime should take. */
+	action: VerticalRuntimeRecoveryAction;
+	/** I record whether another daemon client is still attached to the same durable continuity row. */
+	activeElsewhere: boolean;
+	/** I record whether the caller must execute bridge.bootstrap before it can continue. */
+	shouldBootstrap: boolean;
+	/** I record whether the caller should reopen live subscriptions after recovery. */
+	shouldResubscribe: boolean;
+	/** I record whether the caller should backfill missed turns or timeline events. */
+	shouldReplay: boolean;
+	/** I record the ordered recovery steps the caller should follow. */
+	steps: string[];
 }

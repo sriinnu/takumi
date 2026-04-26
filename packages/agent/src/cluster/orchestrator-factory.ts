@@ -14,6 +14,7 @@ import { TmuxOrchestrator } from "./tmux-orchestrator.js";
 /**
  * Thin common interface consumed by side-agent tooling.
  * Both TmuxOrchestrator and ProcessOrchestrator satisfy this shape.
+ * @deprecated Use {@link MuxAdapter} from `./mux-adapter.js` instead.
  */
 export interface Orchestrator {
 	createWindow(name: string, ...rest: unknown[]): Promise<unknown>;

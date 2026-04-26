@@ -6,7 +6,10 @@
  */
 
 import type { SideAgentDispatchKind, SideAgentInfo, SideAgentState } from "@takumi/core";
-import type { Orchestrator } from "../cluster/orchestrator-factory.js";
+import { safeJsonParse } from "@takumi/core";
+import type { AuthorityLeaseManager } from "../cluster/authority-lease.js";
+import type { DispatchLog } from "../cluster/dispatch-log.js";
+import type { MuxAdapter } from "../cluster/mux-adapter.js";
 import type { SideAgentRegistry } from "../cluster/side-agent-registry.js";
 import type { WorktreePoolManager } from "../cluster/worktree-pool.js";
 import {
@@ -78,20 +81,16 @@ export function buildSideAgentWorkerLaunchCommand(input: {
  * tmux channels (`waitForChannel`), I use an event-driven wait instead of the
  * hot polling loop — one fork instead of ~100 capture-pane forks over 10 s.
  */
-export async function waitForSideAgentReady(input: {
-	id: string;
-	tmux: Orchestrator;
-	timeoutMs?: number;
-}): Promise<void> {
+export async function waitForSideAgentReady(input: { id: string; mux: MuxAdapter; timeoutMs?: number }): Promise<void> {
 	const timeoutMs = input.timeoutMs ?? READY_TIMEOUT_MS;
 
-	if (input.tmux.waitForChannel) {
-		const signaled = await input.tmux.waitForChannel(`takumi-ready-${input.id}`, timeoutMs);
+	if (input.mux.waitForChannel) {
+		const signaled = await input.mux.waitForChannel(`takumi-ready-${input.id}`, timeoutMs);
 		if (signaled) return;
 		// Paranoid fallback: signal may have fired just before we started waiting.
 		// One capture-pane check closes the race window completely.
 		try {
-			const output = await input.tmux.captureOutput(input.id, 80);
+			const output = await input.mux.captureOutput(input.id, 80);
 			if (findSideAgentReadyMarker(output, input.id)) return;
 		} catch {
 			/* Worker may have died — fall through to throw. */
@@ -102,7 +101,7 @@ export async function waitForSideAgentReady(input: {
 	const startedAt = Date.now();
 	while (Date.now() - startedAt < timeoutMs) {
 		try {
-			const output = await input.tmux.captureOutput(input.id, 80);
+			const output = await input.mux.captureOutput(input.id, 80);
 			if (findSideAgentReadyMarker(output, input.id)) {
 				return;
 			}
@@ -119,9 +118,11 @@ export async function dispatchSideAgentWork(input: {
 	kind: SideAgentDispatchKind;
 	prompt: string;
 	agents: SideAgentRegistry;
-	tmux: Orchestrator;
+	mux: MuxAdapter;
 	requestId?: string | null;
 	format?: string | null;
+	leaseManager?: AuthorityLeaseManager;
+	dispatchLog?: DispatchLog;
 }): Promise<{ sequence: number; dispatchedAt: number }> {
 	const agent = input.agents.get(input.id);
 	if (!agent) {
@@ -137,12 +138,46 @@ export async function dispatchSideAgentWork(input: {
 		format: input.format ?? null,
 		prompt: input.prompt,
 	};
-	await input.tmux.sendKeys(input.id, buildSideAgentDispatchEnvelope(envelope));
+
+	// Acquire or renew lease via state-machine manager when available.
+	// If the lease is already held by another owner, acquire() throws — let it
+	// propagate so concurrent dispatches don't clobber each other.
+	let lease: ReturnType<AuthorityLeaseManager["acquire"]> | undefined;
+	try {
+		lease = input.leaseManager?.acquire(input.id, SIDE_AGENT_LEASE_OWNER, SIDE_AGENT_LEASE_TTL_MS);
+	} catch (err) {
+		throw new Error(`Lease contention for agent "${input.id}": ${err instanceof Error ? err.message : String(err)}`, {
+			cause: err,
+		});
+	}
+
+	// Queue dispatch record for formal lifecycle tracking
+	const dispatchRecord = input.dispatchLog?.queue(SIDE_AGENT_LEASE_OWNER, input.id, envelope);
+
+	try {
+		await input.mux.sendKeys(input.id, buildSideAgentDispatchEnvelope(envelope));
+	} catch (err) {
+		// Release orphaned lease and mark dispatch as failed so resources don't leak
+		input.leaseManager?.forceRelease(input.id);
+		try {
+			if (dispatchRecord)
+				input.dispatchLog?.markFailed(dispatchRecord.id, err instanceof Error ? err.message : String(err));
+		} catch {
+			/* markFailed must not mask the original sendKeys error */
+		}
+		throw err;
+	}
+
+	// Mark dispatch as notified now that sendKeys succeeded
+	if (dispatchRecord) {
+		input.dispatchLog?.markNotified(dispatchRecord.id, `mux:${input.id}`);
+	}
+
 	input.agents.update(input.id, {
 		dispatchSequence: sequence,
 		reuseCount: Math.max(agent.reuseCount ?? 0, sequence - 1),
-		leaseOwner: SIDE_AGENT_LEASE_OWNER,
-		leaseExpiresAt: dispatchedAt + SIDE_AGENT_LEASE_TTL_MS,
+		leaseOwner: lease?.owner ?? SIDE_AGENT_LEASE_OWNER,
+		leaseExpiresAt: lease?.expiresAt ?? dispatchedAt + SIDE_AGENT_LEASE_TTL_MS,
 		lastHeartbeatAt: dispatchedAt,
 		lastDispatchAt: dispatchedAt,
 		lastDispatchKind: input.kind,
@@ -162,13 +197,30 @@ export function syncSideAgentRuntimeFromOutput(input: {
 	current: SideAgentInfo;
 	agents: SideAgentRegistry;
 	output: string;
+	leaseManager?: AuthorityLeaseManager;
 }): SideAgentInfo {
 	const summary = summarizeSideAgentRuns(input.output, input.current.id);
 	const now = Date.now();
+
+	// Renew lease via state-machine manager; fall back to raw fields if unavailable or expired
+	let leaseExpiresAt = now + SIDE_AGENT_LEASE_TTL_MS;
+	try {
+		const renewed = input.leaseManager?.renew(input.current.id, SIDE_AGENT_LEASE_OWNER, SIDE_AGENT_LEASE_TTL_MS);
+		if (renewed) leaseExpiresAt = renewed.expiresAt;
+	} catch {
+		// Lease expired or not held — re-acquire silently for continuity
+		try {
+			const fresh = input.leaseManager?.acquire(input.current.id, SIDE_AGENT_LEASE_OWNER, SIDE_AGENT_LEASE_TTL_MS);
+			if (fresh) leaseExpiresAt = fresh.expiresAt;
+		} catch {
+			/* Fall through to raw field write */
+		}
+	}
+
 	if (summary.latestSequence === 0) {
 		return input.agents.update(input.current.id, {
 			leaseOwner: SIDE_AGENT_LEASE_OWNER,
-			leaseExpiresAt: now + SIDE_AGENT_LEASE_TTL_MS,
+			leaseExpiresAt,
 			lastHeartbeatAt: now,
 		});
 	}
@@ -185,7 +237,7 @@ export function syncSideAgentRuntimeFromOutput(input: {
 
 	return input.agents.update(input.current.id, {
 		leaseOwner: SIDE_AGENT_LEASE_OWNER,
-		leaseExpiresAt: now + SIDE_AGENT_LEASE_TTL_MS,
+		leaseExpiresAt,
 		lastHeartbeatAt: now,
 		lastRunStartedAt: summary.latestBegin?.ts ?? input.current.lastRunStartedAt ?? null,
 		lastRunFinishedAt: summary.lastCompleted?.ts ?? input.current.lastRunFinishedAt ?? null,
@@ -208,7 +260,7 @@ export function extractStructuredQueryResponse(output: string, requestId: string
 		return null;
 	}
 
-	const parsed = JSON.parse(payload) as { requestId?: unknown };
+	const parsed = safeJsonParse<{ requestId?: unknown }>(payload);
 	if (parsed.requestId !== requestId) {
 		return null;
 	}
@@ -224,14 +276,18 @@ export async function rollbackFailedStart(options: {
 	slotId: string | null;
 	agents: SideAgentRegistry;
 	pool: WorktreePoolManager;
-	tmux: Orchestrator;
+	mux: MuxAdapter;
+	leaseManager?: AuthorityLeaseManager;
 }): Promise<FailedStartCleanupResult> {
 	const cleanupErrors: string[] = [];
 	let tmuxCleared = true;
 
+	// Release any lease held for this agent so the resource is available for reuse
+	options.leaseManager?.forceRelease(options.id);
+
 	try {
-		if (await options.tmux.isWindowAlive(options.id)) {
-			await options.tmux.killWindow(options.id);
+		if (await options.mux.isWindowAlive(options.id)) {
+			await options.mux.killWindow(options.id);
 		}
 	} catch (error) {
 		tmuxCleared = false;

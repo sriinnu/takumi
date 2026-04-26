@@ -130,7 +130,7 @@ describe("koshaAutoDetect", () => {
 		expect(result).toBeNull();
 	});
 
-	it("returns CLI-sourced provider over env-sourced", async () => {
+	it("ignores CLI-only providers when Takumi cannot resolve a direct credential", async () => {
 		process.env.OPENAI_API_KEY = "sk-test";
 		mockProvidersList.mockReturnValue([
 			makeProvider("openai", true, "env", [makeModel("gpt-4o", "openai")]),
@@ -138,7 +138,7 @@ describe("koshaAutoDetect", () => {
 		]);
 		const result = await koshaAutoDetect();
 		expect(result).not.toBeNull();
-		expect(result!.provider).toBe("anthropic");
+		expect(result!.provider).toBe("openai");
 		expect(result!.source).toContain("Kosha");
 	});
 

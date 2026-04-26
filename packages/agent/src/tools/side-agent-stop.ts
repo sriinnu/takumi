@@ -71,9 +71,9 @@ export function createAgentStopHandler(deps: SideAgentToolDeps): ToolHandler {
 		let clearedWorktree = false;
 		let hadLiveWindow = false;
 		try {
-			hadLiveWindow = await deps.tmux.isWindowAlive(id);
+			hadLiveWindow = await deps.mux.isWindowAlive(id);
 			if (hadLiveWindow) {
-				await deps.tmux.killWindow(id);
+				await deps.mux.killWindow(id);
 			}
 			clearedTmux = true;
 		} catch (error) {

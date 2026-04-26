@@ -105,9 +105,9 @@ describe("AppState", () => {
 			expect(state.terminalSize.value).toEqual({ width: 80, height: 24 });
 		});
 
-		it("has showThinking true", () => {
+		it("has showThinking false", () => {
 			const state = new AppState();
-			expect(state.showThinking.value).toBe(true);
+			expect(state.showThinking.value).toBe(false);
 		});
 
 		it("has null activeDialog", () => {
@@ -195,6 +195,17 @@ describe("AppState", () => {
 
 			state.reset();
 			expect(state.messageCount.value).toBe(0);
+		});
+	});
+
+	describe("provider catalog authority", () => {
+		it("replaces the static provider catalog when startup truth is strict", () => {
+			const state = new AppState();
+
+			state.setAvailableProviderModels({ zai: ["glm-4.7-flash"] }, "strict");
+
+			expect(state.availableProviderModels.value).toEqual({ zai: ["glm-4.7-flash"] });
+			expect(state.availableProviders.value).toEqual(["zai"]);
 		});
 	});
 

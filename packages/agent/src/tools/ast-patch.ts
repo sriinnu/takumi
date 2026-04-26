@@ -11,8 +11,10 @@
  * so it stays zero-dependency within the project.
  */
 
-import { access, readFile, writeFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import type { ToolDefinition } from "@takumi/core";
+import { readFileWithEncoding, writeFileWithEncoding } from "./file-encoding.js";
+import { defaultFileMutationQueue } from "./file-mutation-queue.js";
 import type { ToolHandler } from "./registry.js";
 
 // ── Tool: ast_grep ───────────────────────────────────────────────────────────
@@ -111,35 +113,37 @@ export const astPatchHandler: ToolHandler = async (input) => {
 	}
 
 	try {
-		const content = await readFile(filePath, "utf-8");
-		const declarations = extractDeclarations(content);
-		const target = declarations.find((d) => d.name === declName);
+		return await defaultFileMutationQueue.enqueue(filePath, async () => {
+			const { content, lineEnding, bom } = await readFileWithEncoding(filePath);
+			const declarations = extractDeclarations(content);
+			const target = declarations.find((d) => d.name === declName);
 
-		if (!target) {
-			const available = declarations.map((d) => d.name).join(", ");
+			if (!target) {
+				const available = declarations.map((d) => d.name).join(", ");
+				return {
+					output: `Declaration "${declName}" not found. Available: ${available || "(none)"}`,
+					isError: true,
+				};
+			}
+
+			const lines = content.split("\n");
+			const before = lines.slice(0, target.startLine - 1).join("\n");
+			const after = lines.slice(target.endLine).join("\n");
+
+			const patched = [before, newBody, after].filter((s) => s.length > 0).join("\n");
+
+			await writeFileWithEncoding(filePath, patched, { lineEnding, bom });
+
 			return {
-				output: `Declaration "${declName}" not found. Available: ${available || "(none)"}`,
-				isError: true,
+				output: `Patched ${target.kind} "${declName}" at lines ${target.startLine}-${target.endLine}`,
+				isError: false,
+				metadata: {
+					kind: target.kind,
+					originalLines: target.endLine - target.startLine + 1,
+					newLines: newBody.split("\n").length,
+				},
 			};
-		}
-
-		const lines = content.split("\n");
-		const before = lines.slice(0, target.startLine - 1).join("\n");
-		const after = lines.slice(target.endLine).join("\n");
-
-		const patched = [before, newBody, after].filter((s) => s.length > 0).join("\n");
-
-		await writeFile(filePath, patched, "utf-8");
-
-		return {
-			output: `Patched ${target.kind} "${declName}" at lines ${target.startLine}-${target.endLine}`,
-			isError: false,
-			metadata: {
-				kind: target.kind,
-				originalLines: target.endLine - target.startLine + 1,
-				newLines: newBody.split("\n").length,
-			},
-		};
+		});
 	} catch (err: any) {
 		return { output: `AST patch error: ${err.message}`, isError: true };
 	}

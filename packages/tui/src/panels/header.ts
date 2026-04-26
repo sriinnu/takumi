@@ -45,12 +45,12 @@ export class HeaderPanel extends Component {
 			});
 		}
 
-		// Left: 匠 Takumi branded logo
-		const logo = " 匠 Takumi ";
+		// Left: wordmark — halfwidth ASCII only, brand colour does the work
+		const logo = " Takumi ";
 		screen.writeText(rect.y, rect.x, logo, { fg: primary, bg: bgBrand, bold: true });
 
 		// Separator
-		screen.writeText(rect.y, rect.x + logo.length, "│", { fg: theme.ansi.separator, bg: bgBrand });
+		screen.writeText(rect.y, rect.x + logo.length, "|", { fg: theme.ansi.separator, bg: bgBrand });
 
 		// Center: working directory
 		const cwd = process.cwd();

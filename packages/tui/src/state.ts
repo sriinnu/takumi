@@ -36,6 +36,7 @@ import {
 } from "@takumi/core";
 import type { ReadonlySignal, Signal } from "@takumi/render";
 import { computed, signal } from "@takumi/render";
+import type { PendingPermissionRequest } from "./agent/permission-request.js";
 import { resetRecentDirectiveHistory } from "./chitragupta/chitragupta-runtime-helpers.js";
 import { cloneProviderModelCatalog, PROVIDER_MODELS } from "./completion.js";
 import type {
@@ -112,7 +113,7 @@ export class AppState {
 	readonly focusedPanel: Signal<string> = signal("input");
 	readonly sidebarVisible: Signal<boolean> = signal(false);
 	readonly terminalSize: Signal<Size> = signal({ width: 80, height: 24 });
-	readonly showThinking: Signal<boolean> = signal(true);
+	readonly showThinking: Signal<boolean> = signal(false);
 	/** Dialog stack — each push opens a new modal on top of the previous; Esc pops the top. */
 	readonly dialogStack: Signal<string[]> = signal<string[]>([]);
 	/** Legacy computed accessor — returns the top dialog name or null; prefer `topDialog`. */
@@ -130,12 +131,10 @@ export class AppState {
 	readonly agentPhase: Signal<string> = signal("idle");
 
 	// ── Permissions ───────────────────────────────────────────────────────────
-	readonly pendingPermission: Signal<{
-		approvalId?: string;
-		tool: string;
-		args: Record<string, unknown>;
-		resolve: (decision: PermissionDecision) => void;
-	} | null> = signal(null);
+	/** Visible permission card (null = none). Concurrent requests queue below. */
+	readonly pendingPermission: Signal<PendingPermissionRequest | null> = signal(null);
+	/** FIFO of requests waiting for the visible card to resolve — input handler promotes head. */
+	readonly pendingPermissionQueue: Signal<PendingPermissionRequest[]> = signal<PendingPermissionRequest[]>([]);
 
 	// ── Tool call collapse tracking ───────────────────────────────────────────
 	/** Track collapsed state of tool call blocks by tool_use ID */
@@ -462,11 +461,14 @@ export class AppState {
 		this.totalCost.value = snapshot.totalUsd;
 	}
 
-	setAvailableProviderModels(catalog: Record<string, string[]>): void {
-		this.availableProviderModels.value = {
-			...cloneProviderModelCatalog(PROVIDER_MODELS),
-			...cloneProviderModelCatalog(catalog),
-		};
+	setAvailableProviderModels(catalog: Record<string, string[]>, authority: "merge" | "strict" = "merge"): void {
+		this.availableProviderModels.value =
+			authority === "strict"
+				? cloneProviderModelCatalog(catalog)
+				: {
+						...cloneProviderModelCatalog(PROVIDER_MODELS),
+						...cloneProviderModelCatalog(catalog),
+					};
 	}
 
 	/** Reset all state for a new session. */
@@ -495,6 +497,7 @@ export class AppState {
 		this.toolSpinner.reset();
 		this.agentPhase.value = "idle";
 		this.pendingPermission.value = null;
+		this.pendingPermissionQueue.value = [];
 		this.collapsedTools.value = new Set<string>();
 		this.clearFileTracking();
 		this.previewFile.value = "";

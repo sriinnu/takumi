@@ -5,18 +5,21 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import type { Orchestrator } from "../src/cluster/orchestrator-factory.js";
+import type { MuxAdapter } from "../src/cluster/mux-adapter.js";
 import { buildSideAgentWorkerLaunchCommand, waitForSideAgentReady } from "../src/tools/side-agent-runtime.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeOrchestrator(overrides: Partial<Orchestrator> = {}): Orchestrator {
+function makeMuxAdapter(overrides: Partial<MuxAdapter> = {}): MuxAdapter {
 	return {
-		createWindow: vi.fn(),
+		adapterName: "test",
+		createWindow: vi.fn(async () => ({ id: "win-1", name: "win-1" })),
 		sendKeys: vi.fn(),
 		captureOutput: vi.fn(async () => ""),
 		isWindowAlive: vi.fn(async () => true),
 		killWindow: vi.fn(),
+		cleanup: vi.fn(),
+		getWindows: vi.fn(() => new Map()),
 		...overrides,
 	};
 }
@@ -71,37 +74,37 @@ describe("buildSideAgentWorkerLaunchCommand", () => {
 describe("waitForSideAgentReady", () => {
 	describe("channel path (waitForChannel available)", () => {
 		it("resolves immediately when channel is signaled", async () => {
-			const tmux = makeOrchestrator({
+			const mux = makeMuxAdapter({
 				waitForChannel: vi.fn(async () => true),
 			});
 
-			await expect(waitForSideAgentReady({ id: "lane-1", tmux, timeoutMs: 5_000 })).resolves.toBeUndefined();
+			await expect(waitForSideAgentReady({ id: "lane-1", mux, timeoutMs: 5_000 })).resolves.toBeUndefined();
 
-			expect(tmux.waitForChannel).toHaveBeenCalledWith("takumi-ready-lane-1", 5_000);
+			expect(mux.waitForChannel).toHaveBeenCalledWith("takumi-ready-lane-1", 5_000);
 			// Should NOT have called captureOutput when channel succeeds.
-			expect(tmux.captureOutput).not.toHaveBeenCalled();
+			expect(mux.captureOutput).not.toHaveBeenCalled();
 		});
 
 		it("falls back to capture-pane when channel times out (race closure)", async () => {
-			const tmux = makeOrchestrator({
+			const mux = makeMuxAdapter({
 				waitForChannel: vi.fn(async () => false),
 				captureOutput: vi.fn(async () => "[TAKUMI_SIDE_AGENT_READY id=lane-1 ts=1]"),
 			});
 
 			// Should NOT throw — the capture-pane fallback finds the marker.
-			await expect(waitForSideAgentReady({ id: "lane-1", tmux, timeoutMs: 100 })).resolves.toBeUndefined();
+			await expect(waitForSideAgentReady({ id: "lane-1", mux, timeoutMs: 100 })).resolves.toBeUndefined();
 
-			expect(tmux.waitForChannel).toHaveBeenCalled();
-			expect(tmux.captureOutput).toHaveBeenCalledWith("lane-1", 80);
+			expect(mux.waitForChannel).toHaveBeenCalled();
+			expect(mux.captureOutput).toHaveBeenCalledWith("lane-1", 80);
 		});
 
 		it("throws when both channel and capture-pane fallback miss", async () => {
-			const tmux = makeOrchestrator({
+			const mux = makeMuxAdapter({
 				waitForChannel: vi.fn(async () => false),
 				captureOutput: vi.fn(async () => "some unrelated output"),
 			});
 
-			await expect(waitForSideAgentReady({ id: "lane-1", tmux, timeoutMs: 100 })).rejects.toThrow(
+			await expect(waitForSideAgentReady({ id: "lane-1", mux, timeoutMs: 100 })).rejects.toThrow(
 				"did not report ready state",
 			);
 		});
@@ -110,7 +113,7 @@ describe("waitForSideAgentReady", () => {
 	describe("polling path (no waitForChannel)", () => {
 		it("resolves when ready marker appears in captured output", async () => {
 			let callCount = 0;
-			const tmux = makeOrchestrator({
+			const mux = makeMuxAdapter({
 				captureOutput: vi.fn(async () => {
 					callCount += 1;
 					// Marker appears on 3rd poll.
@@ -118,17 +121,17 @@ describe("waitForSideAgentReady", () => {
 				}),
 			});
 
-			await expect(waitForSideAgentReady({ id: "poll-1", tmux, timeoutMs: 5_000 })).resolves.toBeUndefined();
+			await expect(waitForSideAgentReady({ id: "poll-1", mux, timeoutMs: 5_000 })).resolves.toBeUndefined();
 
 			expect(callCount).toBeGreaterThanOrEqual(3);
 		});
 
 		it("throws after timeout when marker never appears", async () => {
-			const tmux = makeOrchestrator({
+			const mux = makeMuxAdapter({
 				captureOutput: vi.fn(async () => "no marker here"),
 			});
 
-			await expect(waitForSideAgentReady({ id: "poll-2", tmux, timeoutMs: 250 })).rejects.toThrow(
+			await expect(waitForSideAgentReady({ id: "poll-2", mux, timeoutMs: 250 })).rejects.toThrow(
 				"did not report ready state within 250ms",
 			);
 		});

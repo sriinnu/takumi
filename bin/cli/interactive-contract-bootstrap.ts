@@ -17,6 +17,8 @@ const OPENAI_COMPAT_PROVIDERS = new Set([
 	"alibaba",
 	"bedrock",
 	"zai",
+	"moonshot",
+	"minimax",
 ]);
 
 const DEFAULT_STARTUP_CAPABILITY = "coding.patch-cheap";

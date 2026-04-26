@@ -66,12 +66,12 @@ describe("transcript hierarchy refresh", () => {
 
 		panel.buildLines(200);
 		const lines = getLines(panel);
-		const header = lines.find((line) => line.includes("◆ Takumi"));
+		const header = lines.find((line) => line.includes("* Takumi"));
 
 		expect(header).toContain("[anthropic]");
 		expect(header).toContain("[claude-sonnet-4-20250514]");
 		expect(header).toContain("[✦ engine]");
-		expect(header).toContain("[120 in • 48 out]");
+		expect(header).toContain("[120 in · 48 out]");
 	});
 
 	it("summarizes diff-heavy tool results in collapsed tool rows", () => {

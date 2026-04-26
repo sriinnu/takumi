@@ -33,9 +33,9 @@ describe("DialogOverlay", () => {
 
 	it("renders dynamic provider models in the model picker", () => {
 		const state = new AppState();
-		state.setAvailableProviderModels({ zai: ["kimi-latest", "moonshot-v1-8k"] });
-		state.provider.value = "zai";
-		state.model.value = "kimi-latest";
+		state.setAvailableProviderModels({ moonshot: ["kimi-k2.5", "kimi-k2"] });
+		state.provider.value = "moonshot";
+		state.model.value = "kimi-k2.5";
 		state.pushDialog("model-picker");
 
 		const overlay = new DialogOverlay({ state });
@@ -43,17 +43,27 @@ describe("DialogOverlay", () => {
 		overlay.render(screen, { x: 0, y: 0, width: 80, height: 24 });
 
 		const rows = Array.from({ length: 24 }, (_, row) => readRow(screen, row)).join("\n");
-		expect(rows).toContain("kimi-latest");
-		expect(rows).toContain("moonshot-v1-8k");
+		expect(rows).toContain("kimi-k2.5");
+		expect(rows).toContain("kimi-k2");
 	});
 
-	it("resolves permission prompts and closes the permission dialog", () => {
+	it("does not activate or consume keys for permission prompts (handled inline now)", () => {
+		// Permission rendering moved out of the modal layer into the message
+		// list (panels/permission-card.ts) and key handling moved into the
+		// input handler. The overlay must stay inert for permission state so
+		// the chat keeps drawing and decision keys reach the input pipeline.
 		const state = new AppState();
 		const resolve = vi.fn();
-		state.pendingPermission.value = { tool: "read_file", args: { filePath: "README.md" }, resolve };
-		state.pushDialog("permission");
+		state.pendingPermission.value = {
+			approvalId: "ap-test",
+			tool: "read_file",
+			args: { filePath: "README.md" },
+			resolve,
+		};
 
 		const overlay = new DialogOverlay({ state });
+		expect(overlay.active).toBe(false);
+
 		const consumed = overlay.handleKey({
 			key: "enter",
 			ctrl: false,
@@ -62,11 +72,9 @@ describe("DialogOverlay", () => {
 			meta: false,
 			raw: KEY_CODES.ENTER,
 		});
-
-		expect(consumed).toBe(true);
-		expect(resolve).toHaveBeenCalledWith({ allowed: true });
-		expect(state.pendingPermission.value).toBeNull();
-		expect(state.topDialog).toBeNull();
+		expect(consumed).toBe(false);
+		expect(resolve).not.toHaveBeenCalled();
+		expect(state.pendingPermission.value).not.toBeNull();
 	});
 
 	it("executes command palette keybind items and closes the dialog", () => {
@@ -92,7 +100,7 @@ describe("DialogOverlay", () => {
 		expect(state.topDialog).toBeNull();
 	});
 
-	it("renders grouped command-palette sections with a detail block", () => {
+	it("renders grouped command-palette sections with a detail block on tall terminals", () => {
 		const state = new AppState();
 		const commands = new SlashCommandRegistry();
 		const keybinds = new KeyBindingRegistry();
@@ -102,10 +110,10 @@ describe("DialogOverlay", () => {
 		state.pushDialog("command-palette");
 
 		const overlay = new DialogOverlay({ state, commands, keybinds });
-		const screen = new Screen(100, 24);
-		overlay.render(screen, { x: 0, y: 0, width: 100, height: 24 });
+		const screen = new Screen(100, 40);
+		overlay.render(screen, { x: 0, y: 0, width: 100, height: 40 });
 
-		const rows = Array.from({ length: 24 }, (_, row) => readRow(screen, row)).join("\n");
+		const rows = Array.from({ length: 40 }, (_, row) => readRow(screen, row)).join("\n");
 		expect(rows).toContain("Command Palette");
 		expect(rows).toContain("Runtime");
 		expect(rows).toContain("Review");

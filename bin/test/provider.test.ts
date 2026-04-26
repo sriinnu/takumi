@@ -136,9 +136,11 @@ describe("buildSingleProvider", () => {
 		delete process.env.ZAI_API_KEY;
 		delete process.env.KIMI_API_KEY;
 		delete process.env.MOONSHOT_API_KEY;
+		delete process.env.MINIMAX_API_KEY;
 		delete process.env.GEMINI_API_KEY;
 		delete process.env.GOOGLE_API_KEY;
 		delete process.env.TAKUMI_API_KEY;
+		delete process.env.TAKUMI_PROVIDER;
 	});
 
 	it("uses config.apiKey for the configured provider", async () => {
@@ -153,9 +155,53 @@ describe("buildSingleProvider", () => {
 		expect(provider.config.apiKey).toBe("claude-config-key");
 	});
 
-	it("prefers Codex CLI credentials over a different provider's sticky apiKey when switching to openai", async () => {
+	it("keeps the configured provider apiKey even when the bootstrap bridge is present", async () => {
 		const agent = createAgentDouble();
-		mockTryResolveCliToken.mockImplementation((provider) => (provider === "codex" ? "codex-cli-key" : undefined));
+		const bridge: BootstrapCredentialBridge = {
+			requestProviderCredential: vi.fn(async () => ({
+				found: false,
+				providerId: "anthropic",
+				boundProviderId: "anthropic",
+				modelId: null,
+				routeClass: null,
+				selectedCapabilityId: null,
+				consumer: "takumi",
+				value: null,
+				needsRekey: false,
+			})),
+		};
+
+		const provider = await buildSingleProvider(
+			"anthropic",
+			{ ...baseConfig, provider: "anthropic", apiKey: "claude-config-key" },
+			agent,
+			bridge,
+		);
+
+		expect(provider).toBeInstanceOf(agent.DirectProvider);
+		expect(provider.config.apiKey).toBe("claude-config-key");
+		expect(bridge.requestProviderCredential).not.toHaveBeenCalled();
+	});
+
+	it("respects a pinned TAKUMI_API_KEY for the pinned provider even with bridge bootstrap", async () => {
+		const agent = createAgentDouble();
+		process.env.TAKUMI_PROVIDER = "openai";
+		process.env.TAKUMI_API_KEY = "takumi-openai-key";
+
+		const provider = await buildSingleProvider(
+			"openai",
+			{ ...baseConfig, provider: "openai", apiKey: "" },
+			agent,
+			{ requestProviderCredential: vi.fn(async () => ({ found: false, value: null })) } as never,
+		);
+
+		expect(provider).toBeInstanceOf(agent.OpenAIProvider);
+		expect(provider.config.apiKey).toBe("takumi-openai-key");
+	});
+
+	it("prefers OPENAI_API_KEY over a different provider's sticky apiKey when switching to openai", async () => {
+		const agent = createAgentDouble();
+		process.env.OPENAI_API_KEY = "openai-env-key";
 
 		const provider = await buildSingleProvider(
 			"openai",
@@ -164,7 +210,7 @@ describe("buildSingleProvider", () => {
 		);
 
 		expect(provider).toBeInstanceOf(agent.OpenAIProvider);
-		expect(provider.config.apiKey).toBe("codex-cli-key");
+		expect(provider.config.apiKey).toBe("openai-env-key");
 	});
 
 	it("prefers ZAI env credentials over a different provider's sticky apiKey when switching to zai", async () => {
@@ -179,6 +225,37 @@ describe("buildSingleProvider", () => {
 
 		expect(provider).toBeInstanceOf(agent.OpenAIProvider);
 		expect(provider.config.apiKey).toBe("zai-env-key");
+		expect(provider.config.providerName).toBe("zai");
+	});
+
+	it("keeps Moonshot credentials on the Moonshot provider instead of leaking them into Z.AI", async () => {
+		const agent = createAgentDouble();
+		process.env.KIMI_API_KEY = "kimi-env-key";
+
+		const provider = await buildSingleProvider(
+			"moonshot",
+			{ ...baseConfig, provider: "anthropic", apiKey: "claude-config-key" },
+			agent,
+		);
+
+		expect(provider).toBeInstanceOf(agent.OpenAIProvider);
+		expect(provider.config.apiKey).toBe("kimi-env-key");
+		expect(provider.config.providerName).toBe("moonshot");
+	});
+
+	it("supports MiniMax as a first-class OpenAI-compatible provider", async () => {
+		const agent = createAgentDouble();
+		process.env.MINIMAX_API_KEY = "minimax-env-key";
+
+		const provider = await buildSingleProvider(
+			"minimax",
+			{ ...baseConfig, provider: "anthropic", apiKey: "claude-config-key" },
+			agent,
+		);
+
+		expect(provider).toBeInstanceOf(agent.OpenAIProvider);
+		expect(provider.config.apiKey).toBe("minimax-env-key");
+		expect(provider.config.providerName).toBe("minimax");
 	});
 
 	it("allows local OpenAI-compatible endpoints without an API key", async () => {
@@ -215,6 +292,20 @@ describe("buildSingleProvider", () => {
 		expect(provider).toBeInstanceOf(agent.GeminiProvider);
 		expect(bridge.requestProviderCredential).toHaveBeenCalledWith("google");
 		expect(provider.config.apiKey).toBe("daemon-gemini-key");
+	});
+
+	it("falls back to the native Gemini endpoint when no override is configured", async () => {
+		const agent = createAgentDouble();
+		process.env.GEMINI_API_KEY = "gemini-env-key";
+
+		const provider = await buildSingleProvider(
+			"gemini",
+			{ ...baseConfig, provider: "gemini", apiKey: "", endpoint: "" },
+			agent,
+		);
+
+		expect(provider).toBeInstanceOf(agent.GeminiProvider);
+		expect(provider.config.endpoint).toBe("https://generativelanguage.googleapis.com/v1beta/models");
 	});
 });
 
@@ -360,9 +451,9 @@ describe("createResolvedProvider", () => {
 	it("falls back to any detected standalone provider when the configured provider is unavailable", async () => {
 		mockAutoDetectAuth.mockResolvedValue({
 			provider: "openai",
-			apiKey: "openai-cli-key",
+			apiKey: "openai-env-key",
 			model: "gpt-4.1",
-			source: "Codex CLI credentials",
+			source: "OPENAI_API_KEY",
 		});
 
 		const resolution = await createResolvedProvider({
@@ -375,8 +466,27 @@ describe("createResolvedProvider", () => {
 		expect(resolution.resolvedConfig.provider).toBe("openai");
 		expect(resolution.resolvedConfig.model).toBe("gpt-4.1");
 		expect(resolution.usedStandaloneFallback).toBe(true);
-		expect(resolution.source).toBe("Codex CLI credentials");
-		expect(resolution.provider.config.apiKey).toBe("openai-cli-key");
+		expect(resolution.source).toBe("OPENAI_API_KEY");
+		expect(resolution.provider.config.apiKey).toBe("openai-env-key");
+	});
+
+	it("uses a provider default when standalone fallback detects a provider without a model", async () => {
+		mockAutoDetectAuth.mockResolvedValue({
+			provider: "openai",
+			apiKey: "openai-env-key",
+			source: "OPENAI_API_KEY",
+		});
+
+		const resolution = await createResolvedProvider({
+			...baseConfig,
+			provider: "anthropic",
+			apiKey: "",
+			endpoint: "",
+		});
+
+		expect(resolution.resolvedConfig.provider).toBe("openai");
+		expect(resolution.resolvedConfig.model).toBe("gpt-4.1");
+		expect(resolution.usedStandaloneFallback).toBe(true);
 	});
 
 	it("uses the detected model when standalone fallback switches providers", async () => {
@@ -418,22 +528,24 @@ describe("createResolvedProvider", () => {
 		).rejects.toSatisfy((error: unknown) => isRouteIncompatibleError(error));
 	});
 
-	it("fails closed when daemon credential resolution errors even if ambient env auth exists", async () => {
+	it("keeps a locally configured direct key even when bridge bootstrap is present", async () => {
 		process.env.OPENAI_API_KEY = "ambient-openai-key";
 
-		await expect(
-			createResolvedProvider(
-				{ ...baseConfig, provider: "openai", model: "gpt-4.1", apiKey: "ambient-openai-key" },
-				{
-					preferredProvider: "openai",
-					preferredModel: "gpt-4.1",
-					bootstrapBridge: {
-						requestProviderCredential: vi.fn(async () => {
-							throw new Error("bridge failed");
-						}),
-					},
+		const resolution = await createResolvedProvider(
+			{ ...baseConfig, provider: "openai", model: "gpt-4.1", apiKey: "ambient-openai-key" },
+			{
+				preferredProvider: "openai",
+				preferredModel: "gpt-4.1",
+				bootstrapBridge: {
+					requestProviderCredential: vi.fn(async () => {
+						throw new Error("bridge failed");
+					}),
 				},
-			),
-		).rejects.toThrow("Chitragupta credential resolution failed for openai");
+			},
+		);
+
+		expect(resolution.resolvedConfig.provider).toBe("openai");
+		expect(resolution.provider.config.apiKey).toBe("ambient-openai-key");
+		expect(resolution.source).toContain("Chitragupta route");
 	});
 });

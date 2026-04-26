@@ -230,6 +230,15 @@ export {
 	resolveProviderCredential,
 	resolveProviderEndpoint,
 } from "./provider-env.js";
+// ── Safe JSON ─────────────────────────────────────────────────────────────────
+export {
+	JSON_MAX_CHECKPOINT,
+	JSON_MAX_DAEMON,
+	JSON_MAX_FILE,
+	JSON_MAX_SSE_CHUNK,
+	safeJsonParse,
+	safeJsonParseOrNull,
+} from "./safe-json.js";
 export type {
 	ContinuityAttachedPeer,
 	ContinuityAttachGrant,

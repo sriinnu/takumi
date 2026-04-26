@@ -15,6 +15,10 @@ export type {
 	BridgeBootstrapSessionRequest,
 	DaemonBridgeBootstrapAuth,
 	DaemonBridgeBootstrapBinding,
+	DaemonBridgeBootstrapInventory,
+	DaemonBridgeBootstrapInventoryModel,
+	DaemonBridgeBootstrapInventoryProvider,
+	DaemonBridgeBootstrapInventoryRuntime,
 	DaemonBridgeBootstrapLane,
 	DaemonBridgeBootstrapLaneConstraints,
 	DaemonBridgeBootstrapLanePolicy,
@@ -26,6 +30,11 @@ export type {
 	DaemonBridgeLaneSnapshotResult,
 	DaemonBridgeProtocolDescriptor,
 	ProviderCredentialResolution,
+} from "./chitragupta-bootstrap-types.js";
+export {
+	BRIDGE_BOOTSTRAP_POLICY_BUDGETS,
+	BRIDGE_BOOTSTRAP_PROVIDER_LANES,
+	BRIDGE_BOOTSTRAP_PROVIDER_TRANSPORTS,
 } from "./chitragupta-bootstrap-types.js";
 export {
 	daemonBootstrap,

@@ -1,6 +1,7 @@
 import type { SessionData } from "@takumi/core";
 import { describe, expect, it, vi } from "vitest";
 import { registerCoreCommands } from "../src/commands/app-commands-core.js";
+import { registerSessionCommands } from "../src/commands/app-commands-session.js";
 import { SlashCommandRegistry } from "../src/commands/commands.js";
 import { AppState } from "../src/state.js";
 
@@ -10,7 +11,7 @@ describe("core session switching commands", () => {
 		const state = new AppState();
 		const resumeSession = vi.fn(async () => undefined);
 
-		registerCoreCommands({
+		const ctx = {
 			commands,
 			state,
 			agentRunner: null,
@@ -26,7 +27,10 @@ describe("core session switching commands", () => {
 			setActiveCoder: vi.fn(),
 			getActiveAutocycle: vi.fn().mockReturnValue(null),
 			setActiveAutocycle: vi.fn(),
-		} as never);
+		} as never;
+
+		registerCoreCommands(ctx);
+		registerSessionCommands(ctx);
 
 		await commands.execute("/session resume session-123");
 
@@ -40,7 +44,7 @@ describe("core session switching commands", () => {
 		const resumeSession = vi.fn(async () => undefined);
 		const addInfoMessage = vi.fn();
 
-		registerCoreCommands({
+		const ctx = {
 			commands,
 			state,
 			agentRunner: null,
@@ -56,7 +60,10 @@ describe("core session switching commands", () => {
 			setActiveCoder: vi.fn(),
 			getActiveAutocycle: vi.fn().mockReturnValue(null),
 			setActiveAutocycle: vi.fn(),
-		} as never);
+		} as never;
+
+		registerCoreCommands(ctx);
+		registerSessionCommands(ctx);
 
 		await commands.execute("/session attach daemon-123");
 
@@ -91,7 +98,7 @@ describe("core session switching commands", () => {
 			};
 		});
 
-		registerCoreCommands({
+		const ctx = {
 			commands,
 			state,
 			agentRunner: null,
@@ -115,7 +122,10 @@ describe("core session switching commands", () => {
 			setActiveCoder: vi.fn(),
 			getActiveAutocycle: vi.fn().mockReturnValue(null),
 			setActiveAutocycle: vi.fn(),
-		} as never);
+		} as never;
+
+		registerCoreCommands(ctx);
+		registerSessionCommands(ctx);
 
 		await commands.execute("/fork");
 
@@ -130,7 +140,7 @@ describe("core session switching commands", () => {
 		const commands = new SlashCommandRegistry();
 		const state = new AppState();
 		const addInfoMessage = vi.fn();
-		state.setAvailableProviderModels({ zai: ["kimi-k2-0711-preview", "kimi-latest"] });
+		state.setAvailableProviderModels({ moonshot: ["kimi-k2.5", "kimi-k2"] });
 		state.provider.value = "anthropic";
 		state.model.value = "claude-sonnet-4-20250514";
 
@@ -156,11 +166,11 @@ describe("core session switching commands", () => {
 			setActiveAutocycle: vi.fn(),
 		} as never);
 
-		await commands.execute("/provider zai");
+		await commands.execute("/provider moonshot");
 
-		expect(state.provider.value).toBe("zai");
-		expect(state.model.value).toBe("kimi-latest");
-		expect(addInfoMessage).toHaveBeenCalledWith(expect.stringContaining("Switched to provider: zai"));
+		expect(state.provider.value).toBe("moonshot");
+		expect(state.model.value).toBe("kimi-k2.5");
+		expect(addInfoMessage).toHaveBeenCalledWith(expect.stringContaining("Switched to provider: moonshot"));
 	});
 
 	it("cycles provider-scoped models via /model next and prev", async () => {
@@ -230,7 +240,7 @@ describe("core session switching commands", () => {
 		const state = new AppState();
 		const addInfoMessage = vi.fn();
 
-		registerCoreCommands({
+		const ctx = {
 			commands,
 			state,
 			agentRunner: null,
@@ -245,7 +255,10 @@ describe("core session switching commands", () => {
 			setActiveCoder: vi.fn(),
 			getActiveAutocycle: vi.fn().mockReturnValue(null),
 			setActiveAutocycle: vi.fn(),
-		} as never);
+		} as never;
+
+		registerCoreCommands(ctx);
+		registerSessionCommands(ctx);
 
 		await commands.execute("/help");
 

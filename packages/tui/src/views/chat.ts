@@ -6,7 +6,7 @@
 
 import { SteeringPriority } from "@takumi/agent";
 import type { KeyEvent, Message, Rect, TakumiConfig } from "@takumi/core";
-import { createLogger } from "@takumi/core";
+import { createLogger, KEY_CODES } from "@takumi/core";
 import type { Screen } from "@takumi/render";
 import { Component } from "@takumi/render";
 import type { AgentRunner } from "../agent/agent-runner.js";
@@ -140,9 +140,31 @@ export class ChatView extends Component {
 		return this.editor.getValue();
 	}
 
+	/** Return the selected editor text, or null when nothing is selected. */
+	getSelectedText(): string | null {
+		return this.editor.getSelectedText();
+	}
+
+	/** Whether the editor currently has an active selection. */
+	hasSelection(): boolean {
+		return this.editor.hasSelection();
+	}
+
+	/** Insert text at the editor cursor (pastes). */
+	insertText(text: string): void {
+		this.editor.insertText(text);
+	}
+
 	/** Handle key events for the chat view. */
 	handleKey(event: KeyEvent): boolean {
-		// Delegate to the focused component
+		if (event.raw === KEY_CODES.PAGE_UP) {
+			this.scrollMessages(-10);
+			return true;
+		}
+		if (event.raw === KEY_CODES.PAGE_DOWN) {
+			this.scrollMessages(10);
+			return true;
+		}
 		return this.editor.handleKey(event);
 	}
 

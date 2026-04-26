@@ -1,7 +1,7 @@
 /**
  * splash.ts — TAKUMI startup banner.
- * Full RGB rainbow gradient — one colour per banner row, character-level
- * shimmer on the kanji accent, and a version/tagline footer.
+ * Full RGB rainbow gradient — one colour per banner row, ASCII block letters
+ * only (no kanji or presentation glyphs that drift width on some terminals).
  */
 
 const R = "\x1b[0m";   // reset
@@ -34,12 +34,6 @@ const LOGO = [
 	"   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝",
 ];
 
-/** Render one kanji character with a cycling hue across the whole palette. */
-function rainbowKanji(char: string, idx: number): string {
-	const c = ROW_COLOURS[idx % ROW_COLOURS.length];
-	return `${B}${c}${char}${R}`;
-}
-
 export function printSplash(version = "0.1.0"): void {
 	const PAD = "  ";
 	const lines: string[] = [""];
@@ -48,15 +42,6 @@ export function printSplash(version = "0.1.0"): void {
 	for (let i = 0; i < LOGO.length; i++) {
 		lines.push(`${B}${ROW_COLOURS[i]}${PAD}${LOGO[i]}${R}`);
 	}
-
-	// Kanji 匠 — each stroke segment in a different hue
-	const kanji = "匠";
-	const kanjiLabel = kanji
-		.split("")
-		.map((ch, i) => rainbowKanji(ch, i + 2))
-		.join("");
-	const kanjiPad = " ".repeat(PAD.length + Math.floor((LOGO[0].length - 1) / 2));
-	lines.push(`${kanjiPad}${kanjiLabel}`);
 	lines.push("");
 
 	// Tagline
@@ -65,8 +50,8 @@ export function printSplash(version = "0.1.0"): void {
 	lines.push(`${D}${rgb(160, 160, 200)}${tagPad}${tagline}${R}`);
 	lines.push("");
 
-	// Colour legend strip — decorative rainbow bar
-	const barChars = ROW_COLOURS.map(c => `${c}▬▬▬${R}`).join("");
+	// Colour legend strip — decorative rainbow bar (box-drawing, halfwidth-safe)
+	const barChars = ROW_COLOURS.map(c => `${c}===${R}`).join("");
 	lines.push(`${" ".repeat(PAD.length + 6)}${barChars}`);
 	lines.push("");
 

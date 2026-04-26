@@ -22,6 +22,7 @@ export interface StartupSummary {
 	provider: string;
 	model: string;
 	source: string;
+	providerCatalogAuthority?: "merge" | "strict";
 	requestedModel?: {
 		provider?: string;
 		model: string;

@@ -1,9 +1,12 @@
 import type { TakumiConfig } from "@takumi/core";
+import type { FastProviderStatus } from "./cli-auth.js";
 import { koshaProviderModels, koshaProviders } from "./kosha-bridge.js";
 
 export interface ChooseProviderAndModelOptions {
 	preferredProvider?: string;
 	preferredModel?: string;
+	providerStatuses?: FastProviderStatus[];
+	catalogAuthority?: "merge" | "strict";
 	showIntro?: boolean;
 }
 
@@ -34,23 +37,25 @@ export async function chooseProviderAndModel(
 		// I stay on the static catalog when Kosha discovery is unavailable.
 	}
 
-	const allProviders = { ...providerModels, ...dynamicProviders };
-
-	let koshaProviderStatus: Array<{ id: string; name: string; authenticated: boolean }> = [];
-	try {
-		const discoveredProviders = await koshaProviders();
-		koshaProviderStatus = discoveredProviders.map((provider) => ({
-			id: mapKoshaToTakumi(provider.id),
-			name: provider.name,
-			authenticated: provider.authenticated || provider.id === "ollama",
-		}));
-	} catch {
-		// I keep the picker usable even when provider status discovery fails.
+	const strictLiveTruth = options.providerStatuses !== undefined;
+	const liveProviderStatus = strictLiveTruth
+		? options.providerStatuses ?? []
+		: await collectKoshaProviderStatus();
+	const allProviders = buildProviderCatalog(
+		providerModels,
+		dynamicProviders,
+		liveProviderStatus,
+		strictLiveTruth,
+		options.catalogAuthority ?? "merge",
+	);
+	if (Object.keys(allProviders).length === 0) {
+		p.outro("No live providers are currently reachable. Fix provider auth/config and retry.");
+		return null;
 	}
 
 	const providerChoice = await p.select({
 		message: "Select AI Provider",
-		options: buildProviderOptions(allProviders, koshaProviderStatus),
+		options: buildProviderOptions(allProviders, liveProviderStatus),
 		initialValue: options.preferredProvider || config.provider || "anthropic",
 	});
 
@@ -92,6 +97,51 @@ export async function chooseProviderAndModel(
 	return { provider: selectedProvider, model: selectedModel };
 }
 
+async function collectKoshaProviderStatus(): Promise<FastProviderStatus[]> {
+	try {
+		const discoveredProviders = await koshaProviders();
+		return discoveredProviders.map((provider) => ({
+			id: mapKoshaToTakumi(provider.id),
+			authenticated: provider.authenticated || provider.id === "ollama",
+			credentialSource: "none",
+			models: provider.models.map((model) => model.id),
+		}));
+	} catch {
+		// I keep the picker usable even when provider status discovery fails.
+		return [];
+	}
+}
+
+function buildProviderCatalog(
+	staticProviders: Record<string, string[]>,
+	dynamicProviders: Record<string, string[]>,
+	liveProviderStatus: FastProviderStatus[],
+	strictLiveTruth: boolean,
+	catalogAuthority: "merge" | "strict",
+): Record<string, string[]> {
+	if (!strictLiveTruth) {
+		return { ...staticProviders, ...dynamicProviders };
+	}
+	const catalog: Record<string, string[]> = {};
+	for (const status of liveProviderStatus) {
+		if (!status.authenticated && !(status.id === "ollama" && status.models.length > 0)) continue;
+		if (catalogAuthority === "strict") {
+			catalog[status.id] = dedupeModels(staticProviders[status.id] ?? status.models ?? []);
+			continue;
+		}
+		catalog[status.id] = dedupeModels([
+			...(status.models ?? []),
+			...(dynamicProviders[status.id] ?? []),
+			...(staticProviders[status.id] ?? []),
+		]);
+	}
+	return catalog;
+}
+
+function dedupeModels(models: string[]): string[] {
+	return [...new Set(models.filter((model) => model.trim().length > 0))];
+}
+
 /** I map Kosha provider IDs to Takumi provider names. */
 function mapKoshaToTakumi(koshaId: string): string {
 	const mapping: Record<string, string> = {
@@ -117,6 +167,9 @@ const PROVIDER_LABELS: Record<string, string> = {
 	mistral: "Mistral AI",
 	together: "Together AI",
 	openrouter: "OpenRouter",
+	zai: "Z.AI (GLM)",
+	moonshot: "Moonshot AI (Kimi)",
+	minimax: "MiniMax",
 	ollama: "Ollama (Local)",
 	bedrock: "AWS Bedrock",
 	vertex: "Google Vertex AI",
@@ -128,9 +181,9 @@ const PROVIDER_LABELS: Record<string, string> = {
  */
 function buildProviderOptions(
 	allProviders: Record<string, string[]>,
-	koshaStatus: Array<{ id: string; name: string; authenticated: boolean }>,
+	liveProviderStatus: FastProviderStatus[],
 ): Array<{ value: string; label: string; hint?: string }> {
-	const statusMap = new Map(koshaStatus.map((status) => [status.id, status]));
+	const statusMap = new Map(liveProviderStatus.map((status) => [status.id, status]));
 	const authenticated: Array<{ value: string; label: string; hint?: string }> = [];
 	const unauthenticated: Array<{ value: string; label: string; hint?: string }> = [];
 

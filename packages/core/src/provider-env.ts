@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const PROVIDER_ENV_KEYS: Record<string, string[]> = {
-	anthropic: ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"],
+	anthropic: ["ANTHROPIC_API_KEY"],
 	openai: ["OPENAI_API_KEY"],
 	github: ["GITHUB_TOKEN"],
 	gemini: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
@@ -12,7 +12,9 @@ export const PROVIDER_ENV_KEYS: Record<string, string[]> = {
 	mistral: ["MISTRAL_API_KEY"],
 	together: ["TOGETHER_API_KEY"],
 	openrouter: ["OPENROUTER_API_KEY"],
-	zai: ["ZAI_API_KEY", "KIMI_API_KEY", "MOONSHOT_API_KEY"],
+	zai: ["ZAI_API_KEY", "GLM_API_KEY"],
+	moonshot: ["MOONSHOT_API_KEY", "KIMI_API_KEY"],
+	minimax: ["MINIMAX_API_KEY"],
 	xai: ["XAI_API_KEY", "GROK_API_KEY"],
 	alibaba: ["ALIBABA_API_KEY", "DASHSCOPE_API_KEY"],
 	bedrock: ["BEDROCK_API_KEY", "AWS_BEARER_TOKEN"],
@@ -21,6 +23,8 @@ export const PROVIDER_ENV_KEYS: Record<string, string[]> = {
 
 export const PROVIDER_ENDPOINT_ENV_KEYS: Record<string, string[]> = {
 	zai: ["ZAI_ENDPOINT"],
+	moonshot: ["MOONSHOT_ENDPOINT"],
+	minimax: ["MINIMAX_ENDPOINT"],
 	xai: ["XAI_ENDPOINT", "GROK_ENDPOINT"],
 	alibaba: ["ALIBABA_ENDPOINT", "DASHSCOPE_ENDPOINT"],
 	bedrock: ["BEDROCK_ENDPOINT", "AWS_BEDROCK_ENDPOINT"],
@@ -30,8 +34,8 @@ const PROVIDER_ALIASES: Record<string, string> = {
 	claude: "anthropic",
 	google: "gemini",
 	grok: "xai",
-	kimi: "zai",
-	moonshot: "zai",
+	glm: "zai",
+	kimi: "moonshot",
 	dashscope: "alibaba",
 };
 

@@ -124,6 +124,61 @@ describe("runtime bootstrap", () => {
 		expect(result.warningLines).toEqual([]);
 	});
 
+	it("uses daemon inventory truth for degraded local provider summaries when inventory is present", async () => {
+		collectFastProviderStatus.mockResolvedValueOnce([
+			{ id: "openrouter", authenticated: true, credentialSource: "env", models: ["openrouter/openai/gpt-4.1"] },
+			{ id: "moonshot", authenticated: true, credentialSource: "env", models: ["kimi-k2.5"] },
+		]);
+		registerOptionalSideAgentTools.mockResolvedValueOnce({
+			enabled: false,
+			degraded: false,
+			reason: "disabled",
+			summary: "disabled",
+		});
+		bootstrapChitraguptaForExec.mockResolvedValueOnce({
+			bridge: null,
+			connected: false,
+			degraded: true,
+			transport: "unavailable",
+			memoryEntries: 0,
+			vasanaCount: 0,
+			hasHealth: false,
+			summary: "offline",
+			memoryContext: "",
+			bootstrapResult: {
+				inventory: {
+					providerPriority: ["openrouter"],
+					providers: [
+						{
+							id: "openrouter",
+							authenticated: true,
+							credentialSource: "env",
+							models: [{ id: "openrouter/openai/gpt-4.1", available: true }],
+						},
+						{
+							id: "moonshot",
+							authenticated: false,
+							credentialSource: "none",
+							models: [{ id: "kimi-k2.5", available: true }],
+						},
+					],
+				},
+			},
+		});
+
+		const { collectRuntimeBootstrap } = await import("../cli/runtime-bootstrap.js");
+		const result = await collectRuntimeBootstrap({ provider: "openrouter", model: "openrouter/openai/gpt-4.1" } as never, {
+			cwd: "/repo",
+			tools: {} as never,
+			enableChitraguptaBootstrap: true,
+			includeProviderStatus: true,
+		});
+
+		expect(result.providerStatuses.map((provider) => provider.id)).toEqual(["openrouter"]);
+		expect(result.degradedLocalMode?.providers.map((provider) => provider.id)).toEqual(["openrouter"]);
+		expect(result.degradedLocalMode?.providerCount).toBe(1);
+	});
+
 	it("skips side-agent bootstrap entirely inside worker runtimes", async () => {
 		const { collectRuntimeBootstrap } = await import("../cli/runtime-bootstrap.js");
 		const result = await collectRuntimeBootstrap({} as never, {

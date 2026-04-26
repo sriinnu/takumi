@@ -8,7 +8,8 @@
  */
 
 import type { AgentEvent } from "@takumi/core";
-import { AgentErrorClass, createLogger } from "@takumi/core";
+import { AgentErrorClass, createLogger, JSON_MAX_FILE, JSON_MAX_SSE_CHUNK, safeJsonParse } from "@takumi/core";
+import { SseFrameParser } from "./providers/sse-frame-parser.js";
 
 const log = createLogger("sse-parser");
 
@@ -63,10 +64,7 @@ interface PendingToolUse {
 export async function* parseSSEStream(stream: ReadableStream<Uint8Array>): AsyncGenerator<AgentEvent> {
 	const decoder = new TextDecoder();
 	const reader = stream.getReader();
-
-	let buffer = "";
-	let currentEventType = "";
-	let currentData = "";
+	const parser = new SseFrameParser();
 
 	// Track pending tool_use blocks being built from streaming chunks
 	const pendingTools = new Map<number, PendingToolUse>();
@@ -76,41 +74,17 @@ export async function* parseSSEStream(stream: ReadableStream<Uint8Array>): Async
 			const { done, value } = await reader.read();
 			if (done) break;
 
-			buffer += decoder.decode(value, { stream: true });
-
-			// Process complete lines
-			const lines = buffer.split("\n");
-			// Keep the last incomplete line in the buffer
-			buffer = lines.pop() ?? "";
-
-			for (const line of lines) {
-				// Event type
-				if (line.startsWith("event: ")) {
-					currentEventType = line.slice(7).trim();
-					continue;
-				}
-
-				// Data line
-				if (line.startsWith("data: ")) {
-					currentData += line.slice(6);
-					continue;
-				}
-
-				// Empty line = end of event
-				if (line.trim() === "" && currentData) {
-					const events = processSSEEvent(currentEventType, currentData, pendingTools);
-					for (const event of events) {
-						yield event;
-					}
-					currentEventType = "";
-					currentData = "";
+			for (const frame of parser.push(decoder.decode(value, { stream: true }))) {
+				const events = processSSEEvent(frame.event, frame.data, pendingTools);
+				for (const event of events) {
+					yield event;
 				}
 			}
 		}
 
-		// Process any remaining data
-		if (currentData) {
-			const events = processSSEEvent(currentEventType, currentData, pendingTools);
+		// Flush any remaining partial frame at stream end
+		for (const frame of parser.flush()) {
+			const events = processSSEEvent(frame.event, frame.data, pendingTools);
 			for (const event of events) {
 				yield event;
 			}
@@ -124,7 +98,7 @@ function processSSEEvent(eventType: string, data: string, pendingTools: Map<numb
 	const events: AgentEvent[] = [];
 
 	try {
-		const parsed: SSEData = JSON.parse(data);
+		const parsed: SSEData = safeJsonParse<SSEData>(data, JSON_MAX_SSE_CHUNK);
 
 		switch (eventType) {
 			case "content_block_start": {
@@ -170,7 +144,7 @@ function processSSEEvent(eventType: string, data: string, pendingTools: Map<numb
 					let input: Record<string, unknown> = {};
 					try {
 						if (pending.inputJson) {
-							input = JSON.parse(pending.inputJson);
+							input = safeJsonParse<Record<string, unknown>>(pending.inputJson, JSON_MAX_FILE);
 						}
 					} catch (err) {
 						log.error("Failed to parse tool input JSON", {

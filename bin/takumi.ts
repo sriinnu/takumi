@@ -12,6 +12,7 @@ import { cmdConfig } from "./cli/config.js";
 import { cmdIde } from "./cli/ide.js";
 import { cmdInit } from "./cli/init.js";
 import { cmdKeybindings } from "./cli/keybindings.js";
+import { fetchKoshaProviderCatalogSafe, unionPerProvider } from "./cli/kosha-catalog.js";
 import { fetchIssueContext, readStdin, runOneShot } from "./cli/one-shot.js";
 import { cmdPlatform } from "./cli/platform.js";
 import { confirmDegradedLocalMode } from "./cli/degraded-local-mode.js";
@@ -33,6 +34,7 @@ import { cmdPackage } from "./cli/packages.js";
 import { bootstrapInteractiveContract } from "./cli/interactive-contract-bootstrap.js";
 import { resolveInteractiveProviderWithOnboarding } from "./cli/interactive-provider-onboarding.js";
 import { collectRuntimeBootstrap } from "./cli/runtime-bootstrap.js";
+import { deriveStartupProviderTruth } from "./cli/startup-provider-truth.js";
 import { cmdSideAgents } from "./cli/side-agents.js";
 import { describeStartupAuthSource } from "./cli/startup-auth-source.js";
 
@@ -71,9 +73,15 @@ async function runInteractiveApp(
 	const tools = new ToolRegistry();
 	registerBuiltinTools(tools);
 
-	// Phase 45 — Build one shared package snapshot for startup consumers
+	// Phase 45 — Build one shared package snapshot for startup consumers.
+	// Kosha (~/.kosha) is fetched in parallel — it's independent of the
+	// runtime bootstrap and the package snapshot, so awaiting it sequentially
+	// would needlessly stretch startup latency. Chitragupta still wins
+	// downstream when running with direct-session providers — deriveStartupProviderTruth
+	// flips to strict mode and ignores the kosha layer.
 	const configuredPaths = getConfiguredPluginPaths(config.plugins);
-	const [runtimeBootstrap, packageSnapshot] = await Promise.all([
+	const [koshaCatalog, runtimeBootstrap, packageSnapshot] = await Promise.all([
+		startupTrace.measure("kosha.catalog", () => fetchKoshaProviderCatalogSafe()),
 		startupTrace.measure("runtime.bootstrap", () =>
 			collectRuntimeBootstrap(config, {
 				cwd,
@@ -87,9 +95,18 @@ async function runInteractiveApp(
 		),
 		startupTrace.measure("packages.snapshot", () => buildPackageRuntimeSnapshot(config, cwd)),
 	]);
+	if (koshaCatalog && Object.keys(koshaCatalog).length > 0) {
+		availableProviderModels = unionPerProvider(availableProviderModels, koshaCatalog);
+	}
 	const packageInspection = buildPackageInspection(packageSnapshot.report);
 	const packageDoctorReport = buildPackageDoctorReport(packageInspection);
 	const bootstrapBridge = runtimeBootstrap.chitragupta?.bridge ?? null;
+	const startupProviderTruth = deriveStartupProviderTruth(
+		availableProviderModels,
+		runtimeBootstrap.providerStatuses,
+		runtimeBootstrap.chitragupta?.bootstrapResult,
+	);
+	availableProviderModels = startupProviderTruth.providerModels;
 
 	try {
 		if (runtimeBootstrap.degradedLocalMode?.requiresOperatorConsent && !args.yes) {
@@ -108,19 +125,23 @@ async function runInteractiveApp(
 				strictPreferredRoute: interactiveBootstrap.strictPreferredRoute,
 				bootstrapBridge: bootstrapBridge ?? undefined,
 				providerModels: availableProviderModels,
-				providerStatuses: runtimeBootstrap.providerStatuses,
+				providerStatuses: startupProviderTruth.providerStatuses,
+				providerCatalogAuthority: startupProviderTruth.providerCatalogAuthority,
 				allowOnboarding: process.stdin.isTTY && process.stdout.isTTY && !args.yes,
 			}),
 		);
 		const provider = providerResolution.provider;
 		const resolvedConfig = providerResolution.resolvedConfig;
-		const localModels = runtimeBootstrap.providerStatuses.find((provider) => provider.id === "ollama")?.models.slice(0, 4) ?? [];
+		const localModels = startupProviderTruth.providerStatuses.find((provider) => provider.id === "ollama")?.models.slice(0, 4) ?? [];
 		syncModelTiersFromKosha(availableProviderModels);
 		const startupTraceLines = startupTrace.formatLines("Startup handoff");
+		const koshaWarning =
+			koshaCatalog === null ? "Kosha catalog unavailable — using static fallback for the model picker." : "";
 		const startupNotes = [
 			...runtimeBootstrap.warningLines,
 			...interactiveBootstrap.warnings,
 			...providerResolution.warnings,
+			koshaWarning,
 			...startupTraceLines,
 		]
 			.filter(Boolean)
@@ -138,27 +159,14 @@ async function runInteractiveApp(
 					prefer: providerResolution.startupModelSelection?.prefer,
 				}
 				: undefined;
-		const startupRouteAuthority: "engine" | "takumi-fallback" = interactiveBootstrap.strictPreferredRoute
-			? "engine"
-			: "takumi-fallback";
-		const startupRouteSummary = interactiveBootstrap.primaryLane?.routingDecision
-			? {
-					capability: interactiveBootstrap.primaryLane.routingDecision.capability ?? "coding.patch-cheap",
-					selectedCapabilityId: interactiveBootstrap.primaryLane.routingDecision.selectedCapabilityId ?? undefined,
-					preferredProvider: interactiveBootstrap.preferredProvider,
-					preferredModel: interactiveBootstrap.preferredModel,
-					authority: startupRouteAuthority,
-					degraded: interactiveBootstrap.primaryLane.routingDecision.degraded,
-				}
-			: interactiveBootstrap.routingDecision
-				? {
-						capability: interactiveBootstrap.routingDecision.request.capability,
-						selectedCapabilityId: interactiveBootstrap.routingDecision.selected?.id,
-						preferredProvider: interactiveBootstrap.preferredProvider,
-						preferredModel: interactiveBootstrap.preferredModel,
-						authority: startupRouteAuthority,
-						degraded: interactiveBootstrap.routingDecision.degraded,
-					}
+		const startupRouteAuthority: "engine" | "takumi-fallback" = interactiveBootstrap.strictPreferredRoute ? "engine" : "takumi-fallback";
+		const primaryRoute = interactiveBootstrap.primaryLane?.routingDecision;
+		const fallbackRoute = interactiveBootstrap.routingDecision;
+		const routeBase = { preferredProvider: interactiveBootstrap.preferredProvider, preferredModel: interactiveBootstrap.preferredModel, authority: startupRouteAuthority };
+		const startupRouteSummary = primaryRoute
+			? { ...routeBase, capability: primaryRoute.capability ?? "coding.patch-cheap", selectedCapabilityId: primaryRoute.selectedCapabilityId ?? undefined, degraded: primaryRoute.degraded }
+			: fallbackRoute
+				? { ...routeBase, capability: fallbackRoute.request.capability, selectedCapabilityId: fallbackRoute.selected?.id, degraded: fallbackRoute.degraded }
 				: undefined;
 			const extResult = await startupTrace.measure("extensions.discover", () =>
 				discoverAndLoadExtensionsFromSnapshot(packageSnapshot, configuredPaths, cwd),
@@ -194,6 +202,7 @@ async function runInteractiveApp(
 				provider: resolvedConfig.provider,
 				model: resolvedConfig.model,
 				source: effectiveSource,
+				providerCatalogAuthority: startupProviderTruth.providerCatalogAuthority,
 				requestedModel,
 				resolvedIntent: providerResolution.startupModelSelection?.resolvedIntent,
 				resolvedVersion: providerResolution.startupModelSelection?.resolvedVersion,
@@ -250,18 +259,9 @@ async function main(): Promise<void> {
 		process.exit(EXEC_EXIT_CODES.USAGE);
 	}
 
-	if (args.version) {
-		console.log(`takumi v${VERSION}`);
-		process.exit(0);
-	}
-	if (args.help) {
-		printHelp(VERSION);
-		process.exit(0);
-	}
-
-	if (args.workingDirectory) {
-		process.chdir(args.workingDirectory);
-	}
+	if (args.version) { console.log(`takumi v${VERSION}`); process.exit(0); }
+	if (args.help) { printHelp(VERSION); process.exit(0); }
+	if (args.workingDirectory) process.chdir(args.workingDirectory);
 
 	const overrides: Partial<TakumiConfig> = {};
 	if (args.model) overrides.model = args.model;
@@ -276,6 +276,11 @@ async function main(): Promise<void> {
 	if (args.workingDirectory) overrides.workingDirectory = args.workingDirectory;
 
 	const config = loadConfig(overrides);
+
+	// Discard default model when provider is explicitly changed — the provider
+	// layer will resolve the correct startup model for the target provider.
+	if (args.provider && !args.model) config.model = "";
+
 	config.experimental = {
 		...config.experimental,
 		takumiExplicitApiKey: Boolean(args.apiKey),
@@ -426,8 +431,7 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	// Interactive startup no longer performs a credential preflight here; the
-	// runtime/bootstrap + provider layer is now the single source of startup truth.
+	// Interactive startup — provider layer is the single source of startup truth.
 	await runInteractiveApp(config, args, describeStartupAuthSource(config, args), startupTrace);
 }
 

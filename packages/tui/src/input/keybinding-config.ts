@@ -68,6 +68,13 @@ export const DEFAULT_KEYBINDING_DEFINITIONS: readonly ResolvedKeybindingDefiniti
 		enabled: true,
 	},
 	{ id: "app.thinking.cycle", key: "shift+tab", description: "Toggle thinking", aliases: [], enabled: true },
+	{
+		id: "app.thinking.show-toggle",
+		key: "ctrl+shift+t",
+		description: "Show/hide thinking text",
+		aliases: [],
+		enabled: true,
+	},
 	{ id: "app.model.cycle", key: "ctrl+shift+m", description: "Cycle model", aliases: [], enabled: true },
 	{ id: "app.editor.external", key: "ctrl+g", description: "External editor", aliases: [], enabled: true },
 ];

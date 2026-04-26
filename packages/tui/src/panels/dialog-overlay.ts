@@ -1,8 +1,7 @@
 /**
  * DialogOverlay — modal layer for command palette, model picker, session list,
- * and permission prompts.
- *
- * This bridges existing logic-only dialog classes into actual rendered overlays.
+ * validation results, and permission prompts.
+ * Bridges existing logic-only dialog classes into actual rendered overlays.
  */
 
 import { KEY_CODES, type KeyEvent, listSessions, type Rect } from "@takumi/core";
@@ -135,36 +134,15 @@ export class DialogOverlay extends Component {
 	}
 
 	get active(): boolean {
-		return Boolean(this.state.pendingPermission.value || this.extensionPrompt.isOpen || this.state.topDialog);
+		// Permission prompts no longer trigger the modal — they render as an
+		// inline card inside the message list (panels/permission-card.ts) and
+		// their key handling lives in app-input-handler. Keeping the modal
+		// active for permissions caused freezes (the dim overlay overran the
+		// chat after the operator's "yes" never reached the unblock path).
+		return Boolean(this.extensionPrompt.isOpen || this.state.topDialog);
 	}
 
 	handleKey(event: KeyEvent): boolean {
-		const pending = this.state.pendingPermission.value;
-		if (pending) {
-			if (event.key === "y" || event.raw === KEY_CODES.ENTER) {
-				pending.resolve({ allowed: true });
-				this.state.pendingPermission.value = null;
-				if (this.state.topDialog === "permission") this.state.popDialog();
-				this.markDirty();
-				return true;
-			}
-			if (event.key === "a") {
-				pending.resolve({ allowed: true });
-				this.state.pendingPermission.value = null;
-				if (this.state.topDialog === "permission") this.state.popDialog();
-				this.markDirty();
-				return true;
-			}
-			if (event.key === "n" || event.raw === KEY_CODES.ESCAPE) {
-				pending.resolve({ allowed: false });
-				this.state.pendingPermission.value = null;
-				if (this.state.topDialog === "permission") this.state.popDialog();
-				this.markDirty();
-				return true;
-			}
-			return true;
-		}
-
 		if (this.extensionPrompt.isOpen) {
 			const outcome = this.extensionPrompt.handleKey(event);
 			if (outcome.kind === "resolve") {
@@ -199,6 +177,21 @@ export class DialogOverlay extends Component {
 			this.markDirty();
 			return consumed;
 		}
+		if (topDialog === "validation-results") {
+			const vd = this.state.validationResultsDialog;
+			const consumed = vd.handleKey(event);
+			if (!vd.isOpen && this.state.topDialog === "validation-results") this.state.popDialog();
+			this.markDirty();
+			return consumed;
+		}
+
+		// Unknown dialog on the stack — let Escape dismiss it so the user
+		// is never trapped behind a fullscreen dim overlay with no content.
+		if (topDialog && event.raw === KEY_CODES.ESCAPE) {
+			this.state.popDialog();
+			this.markDirty();
+			return true;
+		}
 		return false;
 	}
 
@@ -219,11 +212,6 @@ export class DialogOverlay extends Component {
 			}
 		}
 
-		const pending = this.state.pendingPermission.value;
-		if (pending) {
-			this.renderPermission(screen, rect, pending.tool, JSON.stringify(pending.args, null, 2));
-			return;
-		}
 		if (this.extensionPrompt.isOpen) {
 			this.renderExtensionPrompt(screen, rect);
 			return;
@@ -238,6 +226,9 @@ export class DialogOverlay extends Component {
 				break;
 			case "session-list":
 				this.renderSessionList(screen, rect);
+				break;
+			case "validation-results":
+				this.renderValidationResults(screen, rect);
 				break;
 		}
 	}
@@ -273,20 +264,10 @@ export class DialogOverlay extends Component {
 		}
 	}
 
-	private renderPermission(screen: Screen, rect: Rect, tool: string, args: string): void {
-		const lines = [
-			`Tool permission: ${tool}`,
-			args.length > 80 ? `${args.slice(0, 80)}…` : args,
-			"",
-			"Enter/y = allow   a = allow   n/Esc = deny",
-		];
-		this.renderBox(screen, rect, "Permission", lines, 72);
-	}
-
 	private renderCommandPalette(screen: Screen, rect: Rect): void {
 		const palette = this.commandPalette;
 		if (!palette) return;
-		const model = buildCommandPaletteDialogModel(palette);
+		const model = buildCommandPaletteDialogModel(palette, rect.height);
 		this.renderBox(screen, rect, model.title, model.lines, model.maxWidth);
 	}
 
@@ -313,6 +294,35 @@ export class DialogOverlay extends Component {
 						return `${marker} ${session.id} — ${session.preview}`;
 					});
 		this.renderBox(screen, rect, "Sessions", lines, 96);
+	}
+
+	private renderValidationResults(screen: Screen, rect: Rect): void {
+		const vd = this.state.validationResultsDialog;
+		const results = vd.getFormattedResults();
+		const summary = vd.summary;
+		if (results.length === 0) {
+			this.renderBox(screen, rect, "Validation", ["No results available.", "", "Esc = close"], 72);
+			return;
+		}
+		const lines: string[] = [`${summary.rejections} rejected / ${summary.total} validators`, ""];
+		for (const [idx, result] of results.entries()) {
+			const icon = result.decision === "REJECT" ? "✗" : result.decision === "APPROVE" ? "✓" : "?";
+			const marker = idx === vd.selectedIndex ? ">" : " ";
+			lines.push(
+				`${marker} ${icon} ${result.validatorId} — ${result.decision} (${Math.round(result.confidence * 100)}%)`,
+			);
+			if (idx === vd.selectedIndex && result.findings.length > 0) {
+				for (const finding of result.findings.slice(0, 3)) {
+					const loc = finding.file ? ` (${finding.file}${finding.line ? `:${finding.line}` : ""})` : "";
+					lines.push(`    ${finding.severity}: ${finding.description}${loc}`);
+				}
+				if (result.findings.length > 3) {
+					lines.push(`    … ${result.findings.length - 3} more findings`);
+				}
+			}
+		}
+		lines.push("", "r=retry  f=revalidate  v=view file  ↑/↓=navigate  Esc=close");
+		this.renderBox(screen, rect, "Validation Results", lines, 96);
 	}
 
 	private renderExtensionPrompt(screen: Screen, rect: Rect): void {
@@ -349,7 +359,8 @@ export class DialogOverlay extends Component {
 
 	private renderBox(screen: Screen, rect: Rect, title: string, lines: string[], maxWidth: number): void {
 		const width = Math.min(maxWidth, Math.max(40, Math.floor(rect.width * 0.7)));
-		const height = Math.min(rect.height - 4, Math.max(6, lines.length + 2));
+		const maxBoxHeight = Math.min(rect.height - 4, Math.floor(rect.height * 0.75));
+		const height = Math.min(maxBoxHeight, Math.max(6, lines.length + 2));
 		const x = rect.x + Math.floor((rect.width - width) / 2);
 		const y = rect.y + Math.floor((rect.height - height) / 2);
 		const innerWidth = width - 2;

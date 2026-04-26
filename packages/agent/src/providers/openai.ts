@@ -41,6 +41,7 @@ export interface OpenAIProviderConfig {
 	thinking: boolean;
 	thinkingBudget: number;
 	endpoint?: string;
+	providerName?: string;
 }
 
 export class OpenAIProvider {
@@ -50,6 +51,7 @@ export class OpenAIProvider {
 	private thinking: boolean;
 	private thinkingBudget: number;
 	private endpoint: string;
+	private providerName: string;
 	private streamingTimeout: number;
 
 	constructor(config: OpenAIProviderConfig) {
@@ -59,6 +61,7 @@ export class OpenAIProvider {
 		this.thinking = config.thinking;
 		this.thinkingBudget = config.thinkingBudget;
 		this.endpoint = config.endpoint ?? DEFAULT_ENDPOINT;
+		this.providerName = config.providerName ?? "openai";
 		this.streamingTimeout = STREAMING_TIMEOUT;
 	}
 
@@ -73,10 +76,7 @@ export class OpenAIProvider {
 		options?: SendMessageOptions,
 	): AsyncGenerator<AgentEvent> {
 		if (!this.apiKey && !allowsKeylessLocalEndpoint(this.endpoint)) {
-			throw new AgentErrorClass(
-				"No API key configured. Set the appropriate API key for your OpenAI-compatible provider.",
-				false,
-			);
+			throw new AgentErrorClass(`No API key configured. Set the appropriate API key for ${this.providerName}.`, false);
 		}
 
 		const openaiMessages: OpenAIMessage[] = [];
@@ -96,6 +96,7 @@ export class OpenAIProvider {
 		}
 
 		log.info("Sending message to OpenAI-compatible API", {
+			provider: this.providerName,
 			model,
 			endpoint: this.endpoint,
 		});
@@ -129,7 +130,18 @@ export class OpenAIProvider {
 					parsed = { error: { message: errorBody } };
 				}
 
-				const message = parsed.error?.message ?? `HTTP ${response.status}`;
+				// Extract error message from various API response shapes:
+				//   { error: { message: "..." } }  — OpenAI standard
+				//   { error: "string" }             — some providers
+				//   { message: "..." }              — Z.AI / Kimi / others
+				//   { detail: "..." }               — FastAPI-style
+				const message =
+					(typeof parsed.error === "object" && parsed.error?.message) ||
+					(typeof parsed.error === "string" && parsed.error) ||
+					parsed.message ||
+					parsed.detail ||
+					errorBody ||
+					`HTTP ${response.status}`;
 				const retryable = response.status >= 500 || response.status === 429;
 				if (response.status === 429) {
 					const retryAfterHeader = response.headers.get("retry-after");
@@ -138,13 +150,13 @@ export class OpenAIProvider {
 							? undefined
 							: Number(retryAfterHeader) * 1000
 						: undefined;
-					throw new RetryableError(`OpenAI API rate limited: ${message}`, 429, retryAfterMs);
+					throw new RetryableError(`${this.providerName} API rate limited: ${message}`, 429, retryAfterMs);
 				}
 				if (retryable) {
-					throw new RetryableError(`OpenAI API error: ${message}`, response.status);
+					throw new RetryableError(`${this.providerName} API error: ${message}`, response.status);
 				}
 
-				throw new AgentErrorClass(`OpenAI API error: ${message}`, false);
+				throw new AgentErrorClass(`${this.providerName} API error: ${message}`, false);
 			}
 
 			if (!response.body) {
@@ -158,10 +170,17 @@ export class OpenAIProvider {
 
 			if (err instanceof Error && err.name === "AbortError") {
 				if (signal?.aborted) throw err;
-				throw new ProviderUnavailableError("openai", `OpenAI API request timed out after ${this.streamingTimeout}ms`);
+				throw new ProviderUnavailableError(
+					this.providerName,
+					`${this.providerName} API request timed out after ${this.streamingTimeout}ms`,
+				);
 			}
 
-			throw new ProviderUnavailableError("openai", `API connection error: ${(err as Error).message}`, err as Error);
+			throw new ProviderUnavailableError(
+				this.providerName,
+				`${this.providerName} API connection error: ${(err as Error).message}`,
+				err as Error,
+			);
 		} finally {
 			clearTimeout(timeoutId);
 		}

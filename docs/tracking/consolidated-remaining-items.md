@@ -53,16 +53,16 @@ scheduled. Cross-reference with Tracks 4, 5, 8 in the roadmap.
 
 Track 9 covers the high-level backlog. These are the concrete UI specs:
 
-- [ ] Session rail: vertical list of active/recent sessions with status chips
+- [x] Session rail: vertical list of active/recent sessions with status chips
 - [ ] Activity pane: live transcript view with role badges and tool grouping
 - [ ] Lane board: visual routing display showing active lanes, fallback state
 - [ ] Approvals panel: pending approval queue with accept/reject/defer actions
 - [ ] Artifact panel: promoted artifacts with diff preview and promotion history
 - [ ] Health strip: provider health, context pressure, cost ticker
-- [ ] Attach semantics: explicit start/attach/detach flows for companion sessions
+- [x] Attach semantics: explicit start/attach/detach flows for companion sessions
 - [ ] Implementation slices:
-	- Slice 1: attachable shell (read-only transcript + session picker)
-	- Slice 2: trust & review (approval inbox + artifact promotion)
+	- [x] Slice 1: attachable shell (read-only transcript + session picker)
+	- [x] Slice 2: trust & review (approval inbox + artifact promotion)
 	- Slice 3: orchestration visibility (lane board + side-agent state)
 	- Slice 4: packaging (extension-owned panels in desktop shell)
 
@@ -158,7 +158,7 @@ Track 8 covers high-level backlog. Additional spec details:
 - [ ] Mesh artifact contracts
 	- explicit artifact exchange format between agents
 	- promotion rules for mesh-produced artifacts
-- [ ] Recovery and replay hardening
+- [x] Recovery and replay hardening
 	- selective artifact import/promotion from degraded runs
 	- richer recovery diagnostics beyond transcript-only replay
 

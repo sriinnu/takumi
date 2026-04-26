@@ -3,6 +3,7 @@ import type { SessionData } from "@takumi/core";
 import { KEY_CODES } from "@takumi/core";
 import { describe, expect, it, vi } from "vitest";
 import { TakumiApp } from "../src/app.js";
+import { createInputHandler } from "../src/app-input-handler.js";
 
 function createApp() {
 	return new TakumiApp({
@@ -119,18 +120,18 @@ describe("TakumiApp lifecycle cleanup", () => {
 			hydrateHistory: vi.fn(),
 		};
 
-		app.activeCoder = coder;
-		app.activeAutocycle = autocycle;
+		app.session.activeCoder = coder;
+		app.session.activeAutocycle = autocycle;
 		app.agentRunner = runner;
 
-		await app.activateSession(buildSession("session-next"), "Switched", "resume");
+		await app.session.activateSession(buildSession("session-next"), "Switched", "resume");
 
 		expect(runner.cancel).toHaveBeenCalledOnce();
 		expect(autocycle.cancel).toHaveBeenCalledOnce();
 		expect(coder.cancel).toHaveBeenCalledWith("Switching to session session-next.");
 		expect(coder.shutdown).toHaveBeenCalledOnce();
-		expect(app.activeCoder).toBeNull();
-		expect(app.activeAutocycle).toBeNull();
+		expect(app.session.activeCoder).toBeNull();
+		expect(app.session.activeAutocycle).toBeNull();
 		expect(app.state.sessionId.value).toBe("session-next");
 	});
 
@@ -149,7 +150,7 @@ describe("TakumiApp lifecycle cleanup", () => {
 
 		app.agentRunner = runner;
 
-		await app.activateSession(session, "Switched", "resume");
+		await app.session.activateSession(session, "Switched", "resume");
 
 		expect(app.state.turnCount.value).toBe(2);
 		expect(runner.hydrateHistory).toHaveBeenCalledWith(session.messages);
@@ -174,7 +175,7 @@ describe("TakumiApp lifecycle cleanup", () => {
 
 		app.agentRunner = runner;
 
-		await app.activateSession(session, "Switched", "resume");
+		await app.session.activateSession(session, "Switched", "resume");
 
 		expect(app.state.canonicalSessionId.value).toBe("canon-42");
 		expect(app.state.chitraguptaSync.value).toMatchObject({
@@ -212,7 +213,7 @@ describe("TakumiApp lifecycle cleanup", () => {
 
 		app.agentRunner = runner;
 
-		await app.activateSession(session, "Switched", "resume");
+		await app.session.activateSession(session, "Switched", "resume");
 
 		expect(app.state.degradedExecutionContext.value).toMatchObject({
 			firstDetectedAt: 1000,
@@ -271,8 +272,8 @@ describe("TakumiApp lifecycle cleanup", () => {
 		};
 
 		app.running = true;
-		app.activeCoder = coder;
-		app.activeAutocycle = autocycle;
+		app.session.activeCoder = coder;
+		app.session.activeAutocycle = autocycle;
 		app.agentRunner = runner;
 
 		const originalExit = process.exit;
@@ -290,8 +291,8 @@ describe("TakumiApp lifecycle cleanup", () => {
 		expect(autocycle.cancel).toHaveBeenCalledOnce();
 		expect(coder.cancel).toHaveBeenCalledWith("Application exit requested.");
 		expect(coder.shutdown).toHaveBeenCalledOnce();
-		expect(app.activeCoder).toBeNull();
-		expect(app.activeAutocycle).toBeNull();
+		expect(app.session.activeCoder).toBeNull();
+		expect(app.session.activeAutocycle).toBeNull();
 		expect(app.running).toBe(false);
 	});
 
@@ -333,11 +334,22 @@ describe("TakumiApp lifecycle cleanup", () => {
 	it("priority-renders after handled keybindings", () => {
 		const app = createApp() as any;
 		const schedulePriorityRender = vi.fn();
+		const keybinds = { handle: vi.fn(() => true) };
 
-		app.scheduler = { schedulePriorityRender };
-		app.keybinds.handle = vi.fn(() => true);
+		const handleInput = createInputHandler({
+			state: app.state,
+			rootView: app.rootView,
+			keybinds: keybinds as any,
+			agentRunner: null as any,
+			getActiveAutocycle: () => null,
+			getScheduler: () => ({ schedulePriorityRender }),
+			addInfoMessage: vi.fn(),
+			write: vi.fn(),
+			quit: vi.fn(),
+			replayKeyContext: () => undefined,
+		});
 
-		app.handleInput(Buffer.from(KEY_CODES.CTRL_K, "utf-8"));
+		handleInput(Buffer.from(KEY_CODES.CTRL_K, "utf-8"));
 
 		expect(schedulePriorityRender).toHaveBeenCalledOnce();
 	});

@@ -282,10 +282,13 @@ function createCommandContext(
 async function waitForIdle(state: AppState): Promise<void> {
 	if (!state.isStreaming.value) return;
 	await new Promise<void>((resolve) => {
+		const MAX_WAIT = 30_000;
+		const start = Date.now();
 		const poll = setInterval(() => {
-			if (state.isStreaming.value) return;
-			clearInterval(poll);
-			resolve();
+			if (!state.isStreaming.value || Date.now() - start > MAX_WAIT) {
+				clearInterval(poll);
+				resolve();
+			}
 		}, 20);
 	});
 }

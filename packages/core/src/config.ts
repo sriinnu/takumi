@@ -12,11 +12,12 @@ import {
 } from "./provider-env.js";
 import type { TakumiConfig } from "./types.js";
 
-/** Default API endpoints per provider (OpenAI-compatible chat completions). */
+/** Default API endpoints per provider. */
 export const PROVIDER_ENDPOINTS: Record<string, string> = {
 	openai: "https://api.openai.com/v1/chat/completions",
 	// GitHub Models — OpenAI-compatible, uses a `gh auth token` as the API key
 	github: "https://models.inference.ai.azure.com/chat/completions",
+	gemini: "https://generativelanguage.googleapis.com/v1beta/models",
 	groq: "https://api.groq.com/openai/v1/chat/completions",
 	xai: "https://api.x.ai/v1/chat/completions",
 	grok: "https://api.x.ai/v1/chat/completions",
@@ -26,6 +27,8 @@ export const PROVIDER_ENDPOINTS: Record<string, string> = {
 	openrouter: "https://openrouter.ai/api/v1/chat/completions",
 	alibaba: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
 	zai: "https://api.z.ai/api/paas/v4/chat/completions",
+	moonshot: "https://api.moonshot.ai/v1/chat/completions",
+	minimax: "https://api.minimax.io/v1/chat/completions",
 	ollama: "http://localhost:11434/v1/chat/completions",
 };
 
@@ -280,7 +283,9 @@ export function detectProviderFromModel(model: string): string | undefined {
 	if (m.startsWith("claude-")) return "anthropic";
 	if (m.startsWith("grok-")) return "xai";
 	if (m.startsWith("deepseek-")) return "deepseek";
-	if (m.startsWith("kimi-") || m.startsWith("moonshot-")) return "zai";
+	if (m.startsWith("glm-")) return "zai";
+	if (m.startsWith("kimi-") || m.startsWith("moonshot-")) return "moonshot";
+	if (m.startsWith("minimax-")) return "minimax";
 	if (m.startsWith("qwen-")) return "alibaba";
 	if (m.startsWith("mistral-")) return "mistral";
 	// llama/mixtral without an API key likely means local ollama
