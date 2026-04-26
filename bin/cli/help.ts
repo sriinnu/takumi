@@ -86,7 +86,7 @@ Examples:
   OPENAI_API_KEY=... pnpm takumi --provider openai --model gpt-4.1
   ZAI_API_KEY=... pnpm takumi --provider zai --model glm-4.7-flash
   MOONSHOT_API_KEY=... pnpm takumi --provider moonshot --model kimi-k2.5
-  MINIMAX_API_KEY=... pnpm takumi --provider minimax --model MiniMax-M2.5
+  MINIMAX_API_KEY=... pnpm takumi --provider minimax --model MiniMax-M2.7
   pnpm takumi exec --headless --stream=ndjson "Fix auth router"
                                               # emits takumi.exec.v1 envelopes + bootstrap status
   pnpm takumi "Fix tests" -d                    # Run in background

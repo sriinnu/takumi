@@ -76,7 +76,14 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
 	bedrock: ["anthropic.claude-3-7-sonnet-20250219-v1:0", "amazon.nova-pro-v1:0", "meta.llama3-1-70b-instruct-v1:0"],
 	zai: ["glm-4.5-flash", "glm-4.5-air", "glm-4.5", "glm-4.7-flash", "glm-4.7", "glm-5"],
 	moonshot: ["kimi-k2.5", "kimi-k2", "kimi-k2-thinking"],
-	minimax: ["MiniMax-M2.5", "MiniMax-M2.5-highspeed", "MiniMax-M2", "MiniMax-M2-Stable"],
+	minimax: [
+		"MiniMax-M2.7",
+		"MiniMax-M2.7-highspeed",
+		"MiniMax-M2.5",
+		"MiniMax-M2.5-highspeed",
+		"MiniMax-M2",
+		"MiniMax-M2-Stable",
+	],
 	ollama: ["llama3", "codellama", "mistral", "phi3"],
 };
 

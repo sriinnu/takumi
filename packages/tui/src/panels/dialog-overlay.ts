@@ -134,36 +134,15 @@ export class DialogOverlay extends Component {
 	}
 
 	get active(): boolean {
-		return Boolean(this.state.pendingPermission.value || this.extensionPrompt.isOpen || this.state.topDialog);
+		// Permission prompts no longer trigger the modal — they render as an
+		// inline card inside the message list (panels/permission-card.ts) and
+		// their key handling lives in app-input-handler. Keeping the modal
+		// active for permissions caused freezes (the dim overlay overran the
+		// chat after the operator's "yes" never reached the unblock path).
+		return Boolean(this.extensionPrompt.isOpen || this.state.topDialog);
 	}
 
 	handleKey(event: KeyEvent): boolean {
-		const pending = this.state.pendingPermission.value;
-		if (pending) {
-			if (event.key === "y" || event.raw === KEY_CODES.ENTER) {
-				pending.resolve({ allowed: true });
-				this.state.pendingPermission.value = null;
-				if (this.state.topDialog === "permission") this.state.popDialog();
-				this.markDirty();
-				return true;
-			}
-			if (event.key === "a") {
-				pending.resolve({ allowed: true });
-				this.state.pendingPermission.value = null;
-				if (this.state.topDialog === "permission") this.state.popDialog();
-				this.markDirty();
-				return true;
-			}
-			if (event.key === "n" || event.raw === KEY_CODES.ESCAPE) {
-				pending.resolve({ allowed: false });
-				this.state.pendingPermission.value = null;
-				if (this.state.topDialog === "permission") this.state.popDialog();
-				this.markDirty();
-				return true;
-			}
-			return true;
-		}
-
 		if (this.extensionPrompt.isOpen) {
 			const outcome = this.extensionPrompt.handleKey(event);
 			if (outcome.kind === "resolve") {
@@ -233,11 +212,6 @@ export class DialogOverlay extends Component {
 			}
 		}
 
-		const pending = this.state.pendingPermission.value;
-		if (pending) {
-			this.renderPermission(screen, rect, pending.tool, JSON.stringify(pending.args, null, 2));
-			return;
-		}
 		if (this.extensionPrompt.isOpen) {
 			this.renderExtensionPrompt(screen, rect);
 			return;
@@ -288,16 +262,6 @@ export class DialogOverlay extends Component {
 		} catch {
 			return localEntries;
 		}
-	}
-
-	private renderPermission(screen: Screen, rect: Rect, tool: string, args: string): void {
-		const lines = [
-			`Tool permission: ${tool}`,
-			args.length > 80 ? `${args.slice(0, 80)}…` : args,
-			"",
-			"Enter/y = allow   a = allow   n/Esc = deny",
-		];
-		this.renderBox(screen, rect, "Permission", lines, 72);
 	}
 
 	private renderCommandPalette(screen: Screen, rect: Rect): void {

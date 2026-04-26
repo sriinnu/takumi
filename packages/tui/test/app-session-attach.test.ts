@@ -25,7 +25,7 @@ vi.mock("../src/chitragupta/control-plane-lanes.js", () => ({
 	refreshControlPlaneLanesFromDaemon: mockRefreshControlPlaneLanesFromDaemon,
 }));
 
-const { attachSessionToRuntime } = await import("../src/app-session-attach.js");
+const { attachSessionToRuntime } = await import("../src/app-session-lifecycle.js");
 
 function makeLane(overrides: Partial<SessionControlPlaneLaneState> = {}): SessionControlPlaneLaneState {
 	return {

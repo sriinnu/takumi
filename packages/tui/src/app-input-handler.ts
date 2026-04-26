@@ -24,6 +24,7 @@
  *   multiple `data` events, preventing partial paste + garbled input.
  */
 import { StringDecoder } from "node:string_decoder";
+import { KEY_CODES } from "@takumi/core";
 import type { RenderScheduler } from "@takumi/render";
 import type { AgentRunner } from "./agent/agent-runner.js";
 import type { AutocycleAgent } from "./autocycle/autocycle-agent.js";
@@ -145,6 +146,25 @@ function dispatchTokens(deps: InputHandlerDeps, raw: string): void {
 
 		const event = parseKeyEvent(token);
 
+		// ── Pending permission preempts everything except Ctrl+C cancel ──
+		// The card is rendered inline in the message list. We capture decision
+		// keys here, BEFORE keybinds and rootView, so the operator's choice is
+		// never swallowed by a slash command or a focused panel. Ctrl+C still
+		// works as a cancel because its branch runs after this one — but only
+		// if the user hasn't pressed an answer key first.
+		if (deps.state.pendingPermission.value) {
+			if (handlePendingPermission(deps, event)) {
+				scheduler?.schedulePriorityRender();
+				continue;
+			}
+			// While a permission is pending, swallow other input so the
+			// composer doesn't accept stray characters that look like answers.
+			if (!event.ctrl) {
+				scheduler?.schedulePriorityRender();
+				continue;
+			}
+		}
+
 		// ── Ctrl+C: copy selection → cancel agent → cancel autocycle → quit ──
 		if (event.ctrl && event.key === "c") {
 			const selected = deps.rootView.chatView.getSelectedText();
@@ -191,6 +211,84 @@ function dispatchTokens(deps: InputHandlerDeps, raw: string): void {
 		deps.rootView.handleKey(event);
 		scheduler?.schedulePriorityRender();
 	}
+}
+
+/**
+ * Decide what to do with a key while a permission is pending. Returns `true`
+ * when the key was a recognised decision (allow/deny) and was applied; `false`
+ * when the key should fall through (currently never — every non-decision key
+ * is silently swallowed by the caller while a card is open). On allow or deny
+ * we push a one-line audit row into the transcript so the operator's choice
+ * persists in scrollback after the card disappears, and promote the head of
+ * `pendingPermissionQueue` into the visible slot if more requests are waiting.
+ *
+ * Note on `A` (Shift+a): the original modal had a separate "always allow"
+ * outcome with a `remember` flag. That field is gone from `PermissionDecision`
+ * today — there is no allowlist persistence behind it — so `A` is treated as
+ * a plain alias for `a` to avoid Shift-key fumbles, and the audit row says
+ * "allowed" rather than the misleading "always allow" the redesign briefly
+ * shipped with. Restore the distinction once the agent honours `remember`.
+ */
+function handlePendingPermission(
+	deps: InputHandlerDeps,
+	event: { key: string; raw: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean },
+): boolean {
+	const pending = deps.state.pendingPermission.value;
+	if (!pending) return false;
+
+	const isAllow = event.key === "a" || event.key === "A" || event.key === "y" || event.raw === KEY_CODES.ENTER;
+	const isDeny = event.key === "d" || event.key === "n" || event.raw === KEY_CODES.ESCAPE;
+
+	if (!isAllow && !isDeny) return false;
+
+	pending.resolve({ allowed: isAllow });
+
+	// Promote the head of the queue into the visible slot — the next pending
+	// card appears immediately so the operator can keep moving.
+	const queue = deps.state.pendingPermissionQueue.value;
+	if (queue.length > 0) {
+		const [next, ...rest] = queue;
+		deps.state.pendingPermissionQueue.value = rest;
+		deps.state.pendingPermission.value = next;
+	} else {
+		deps.state.pendingPermission.value = null;
+		if (deps.state.topDialog === "permission") deps.state.popDialog();
+	}
+
+	const verb = isDeny ? "denied" : "allowed";
+	const summary = sanitiseForAudit(summarisePermissionArgs(pending.args));
+	const toolLabel = sanitiseForAudit(pending.tool);
+	deps.addInfoMessage(`${verb} · ${toolLabel}${summary ? ` · ${summary}` : ""}`);
+	return true;
+}
+
+/**
+ * Strip ANSI escape sequences and other control characters before pushing a
+ * tool name or argument summary into the transcript. Both `pending.tool` and
+ * `pending.args` are agent-controlled inputs — without this scrubber an agent
+ * could embed cursor-control or screen-clear escapes that the markdown
+ * renderer would emit verbatim, mangling the operator's scrollback.
+ */
+function sanitiseForAudit(text: string): string {
+	if (!text) return text;
+	return text
+		.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")
+		.replace(/\x1b\].*?(?:\x07|\x1b\\)/g, "")
+		.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
+}
+
+/** Single-line summary of permission args for the audit-trail message. */
+function summarisePermissionArgs(args: Record<string, unknown>): string {
+	const cmd = args.command;
+	if (typeof cmd === "string" && cmd.trim().length > 0) {
+		const oneLine = cmd.replace(/\r?\n/g, " ").trim();
+		return oneLine.length > 100 ? `${oneLine.slice(0, 99)}…` : oneLine;
+	}
+	const path = args.file_path ?? args.path;
+	if (typeof path === "string" && path.trim().length > 0) {
+		return path;
+	}
+	return "";
 }
 
 function handleMouse(

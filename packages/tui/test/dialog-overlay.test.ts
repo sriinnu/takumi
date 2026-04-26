@@ -47,13 +47,23 @@ describe("DialogOverlay", () => {
 		expect(rows).toContain("kimi-k2");
 	});
 
-	it("resolves permission prompts and closes the permission dialog", () => {
+	it("does not activate or consume keys for permission prompts (handled inline now)", () => {
+		// Permission rendering moved out of the modal layer into the message
+		// list (panels/permission-card.ts) and key handling moved into the
+		// input handler. The overlay must stay inert for permission state so
+		// the chat keeps drawing and decision keys reach the input pipeline.
 		const state = new AppState();
 		const resolve = vi.fn();
-		state.pendingPermission.value = { tool: "read_file", args: { filePath: "README.md" }, resolve };
-		state.pushDialog("permission");
+		state.pendingPermission.value = {
+			approvalId: "ap-test",
+			tool: "read_file",
+			args: { filePath: "README.md" },
+			resolve,
+		};
 
 		const overlay = new DialogOverlay({ state });
+		expect(overlay.active).toBe(false);
+
 		const consumed = overlay.handleKey({
 			key: "enter",
 			ctrl: false,
@@ -62,11 +72,9 @@ describe("DialogOverlay", () => {
 			meta: false,
 			raw: KEY_CODES.ENTER,
 		});
-
-		expect(consumed).toBe(true);
-		expect(resolve).toHaveBeenCalledWith({ allowed: true });
-		expect(state.pendingPermission.value).toBeNull();
-		expect(state.topDialog).toBeNull();
+		expect(consumed).toBe(false);
+		expect(resolve).not.toHaveBeenCalled();
+		expect(state.pendingPermission.value).not.toBeNull();
 	});
 
 	it("executes command palette keybind items and closes the dialog", () => {

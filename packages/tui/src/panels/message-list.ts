@@ -20,6 +20,7 @@ import {
 	truncateArg,
 } from "./message-list-tools.js";
 import type { LineSegment, RenderedLine } from "./message-list-types.js";
+import { buildPermissionCardLines } from "./permission-card.js";
 
 export interface MessageListPanelProps {
 	state: AppState;
@@ -71,6 +72,11 @@ export class MessageListPanel extends Component {
 			void this.state.provider.value;
 			void this.state.model.value;
 			void this.state.showThinking.value;
+			// Permission prompts render inline as cards in this panel — track
+			// the signal so we re-render when one appears or resolves, and
+			// auto-pin to the bottom so the operator never has to hunt for it.
+			const pending = this.state.pendingPermission.value;
+			if (pending) this.scrollOffset = Number.MAX_SAFE_INTEGER;
 			this.markDirty();
 			return undefined;
 		});
@@ -228,9 +234,17 @@ export class MessageListPanel extends Component {
 			} else {
 				const phase = this.state.agentPhase.value;
 				const tool = this.state.activeTool.value;
-				const label = tool ? `⏳ Running ${tool}…` : phase && phase !== "idle" ? `⏳ ${phase}` : "⏳ Waiting…";
+				const label = tool ? `... running ${tool}` : phase && phase !== "idle" ? `... ${phase}` : "... waiting";
 				this.renderedLines.push({ text: "", fg: -1, bold: false, dim: false });
 				this.renderedLines.push({ text: label, fg: 8, bold: false, dim: true });
+			}
+		}
+
+		const pendingPermission = this.state.pendingPermission.value;
+		if (pendingPermission) {
+			this.renderedLines.push({ text: "", fg: -1, bold: false, dim: false });
+			for (const line of buildPermissionCardLines(pendingPermission.tool, pendingPermission.args, width)) {
+				this.renderedLines.push(line);
 			}
 		}
 
@@ -316,7 +330,7 @@ export class MessageListPanel extends Component {
 
 function buildUserHeaderLine(): RenderedLine {
 	return buildHeaderLine({
-		icon: "●",
+		icon: ">",
 		label: "You",
 		fg: 14,
 		badges: [{ label: "request", fg: 14, bg: 236, bold: true }],
@@ -344,7 +358,7 @@ function buildAssistantHeaderLine(state: AppState, message: Message, showLatestT
 	badges.push({ label: formatUsageSummary(message), fg: 8, bg: 236, bold: false, dim: true });
 
 	return buildHeaderLine({
-		icon: "◆",
+		icon: "*",
 		label: "Takumi",
 		fg: 12,
 		badges,
@@ -390,7 +404,7 @@ function buildHeaderLine(input: { icon: string; label: string; fg: number; badge
 
 function formatUsageSummary(message: Message): string {
 	if (!message.usage) return "response";
-	return `${message.usage.inputTokens} in • ${message.usage.outputTokens} out`;
+	return `${message.usage.inputTokens} in · ${message.usage.outputTokens} out`;
 }
 
 function compactModelLabel(model: string): string {

@@ -3,8 +3,10 @@ import type { HttpBridgeServer } from "@takumi/bridge";
 import type { AgentEvent, Message, TakumiConfig, ToolDefinition } from "@takumi/core";
 import { ANSI, createLogger, generateSessionId, LIMITS, loadSession } from "@takumi/core";
 import {
+	beginSyncUpdate,
 	detectCapabilities,
 	effect,
+	endSyncUpdate,
 	initYoga,
 	osc133CommandDone,
 	osc133CommandStart,
@@ -202,9 +204,12 @@ export class TakumiApp {
 				`Terminal too small (${columns}x${rows}). Minimum: ${LIMITS.MIN_TERMINAL_WIDTH}x${LIMITS.MIN_TERMINAL_HEIGHT}`,
 			);
 		}
-		this.scheduler = new RenderScheduler(columns, rows, {
-			write: (data) => (this.stdout as any).write(data),
-		});
+		// DEC mode 2026 wraps each flush so the terminal commits frames atomically
+		// — kills keystroke flicker on Ghostty/kitty/wezterm/foot. Other terms ignore.
+		const writeFrame = this.terminalCapabilities.synchronizedOutput
+			? (data: string) => (this.stdout as any).write(beginSyncUpdate() + data + endSyncUpdate())
+			: (data: string) => (this.stdout as any).write(data);
+		this.scheduler = new RenderScheduler(columns, rows, { write: writeFrame });
 		if (this.terminalCapabilities.osc133) {
 			this.write(osc133CommandStart());
 		}

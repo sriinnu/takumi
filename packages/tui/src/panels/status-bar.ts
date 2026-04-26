@@ -183,8 +183,8 @@ export class StatusBarPanel extends Component {
 			right: ["authority", "metrics", "context", "scarlett", "keybinds"],
 		};
 
-		// ── Branded anchor: 匠 always pinned at position 0 ──────────────────────
-		const BRAND = " 匠 ";
+		// ── Branded anchor: wordmark pinned at position 0 (halfwidth-safe) ─────
+		const BRAND = " Takumi ";
 		const themeAnsi = typeof this.config.theme === "object" ? this.config.theme.ansi : undefined;
 		const brandFg = themeAnsi?.primary ?? 141;
 		const brandBg = themeAnsi?.bgBrand ?? 55;

@@ -22,7 +22,7 @@ const DEFAULT_STARTUP_MODELS: Record<string, string> = {
 	bedrock: "anthropic.claude-3-7-sonnet-20250219-v1:0",
 	zai: "glm-4.5-flash",
 	moonshot: "kimi-k2.5",
-	minimax: "MiniMax-M2.5",
+	minimax: "MiniMax-M2.7",
 };
 
 /** I only preserve a configured API key when the rebased provider still matches the original provider scope. */

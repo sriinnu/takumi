@@ -12,6 +12,7 @@ import { cmdConfig } from "./cli/config.js";
 import { cmdIde } from "./cli/ide.js";
 import { cmdInit } from "./cli/init.js";
 import { cmdKeybindings } from "./cli/keybindings.js";
+import { fetchKoshaProviderCatalogSafe, unionPerProvider } from "./cli/kosha-catalog.js";
 import { fetchIssueContext, readStdin, runOneShot } from "./cli/one-shot.js";
 import { cmdPlatform } from "./cli/platform.js";
 import { confirmDegradedLocalMode } from "./cli/degraded-local-mode.js";
@@ -72,9 +73,15 @@ async function runInteractiveApp(
 	const tools = new ToolRegistry();
 	registerBuiltinTools(tools);
 
-	// Phase 45 — Build one shared package snapshot for startup consumers
+	// Phase 45 — Build one shared package snapshot for startup consumers.
+	// Kosha (~/.kosha) is fetched in parallel — it's independent of the
+	// runtime bootstrap and the package snapshot, so awaiting it sequentially
+	// would needlessly stretch startup latency. Chitragupta still wins
+	// downstream when running with direct-session providers — deriveStartupProviderTruth
+	// flips to strict mode and ignores the kosha layer.
 	const configuredPaths = getConfiguredPluginPaths(config.plugins);
-	const [runtimeBootstrap, packageSnapshot] = await Promise.all([
+	const [koshaCatalog, runtimeBootstrap, packageSnapshot] = await Promise.all([
+		startupTrace.measure("kosha.catalog", () => fetchKoshaProviderCatalogSafe()),
 		startupTrace.measure("runtime.bootstrap", () =>
 			collectRuntimeBootstrap(config, {
 				cwd,
@@ -88,6 +95,9 @@ async function runInteractiveApp(
 		),
 		startupTrace.measure("packages.snapshot", () => buildPackageRuntimeSnapshot(config, cwd)),
 	]);
+	if (koshaCatalog && Object.keys(koshaCatalog).length > 0) {
+		availableProviderModels = unionPerProvider(availableProviderModels, koshaCatalog);
+	}
 	const packageInspection = buildPackageInspection(packageSnapshot.report);
 	const packageDoctorReport = buildPackageDoctorReport(packageInspection);
 	const bootstrapBridge = runtimeBootstrap.chitragupta?.bridge ?? null;
@@ -125,10 +135,13 @@ async function runInteractiveApp(
 		const localModels = startupProviderTruth.providerStatuses.find((provider) => provider.id === "ollama")?.models.slice(0, 4) ?? [];
 		syncModelTiersFromKosha(availableProviderModels);
 		const startupTraceLines = startupTrace.formatLines("Startup handoff");
+		const koshaWarning =
+			koshaCatalog === null ? "Kosha catalog unavailable — using static fallback for the model picker." : "";
 		const startupNotes = [
 			...runtimeBootstrap.warningLines,
 			...interactiveBootstrap.warnings,
 			...providerResolution.warnings,
+			koshaWarning,
 			...startupTraceLines,
 		]
 			.filter(Boolean)
@@ -146,27 +159,14 @@ async function runInteractiveApp(
 					prefer: providerResolution.startupModelSelection?.prefer,
 				}
 				: undefined;
-		const startupRouteAuthority: "engine" | "takumi-fallback" = interactiveBootstrap.strictPreferredRoute
-			? "engine"
-			: "takumi-fallback";
-		const startupRouteSummary = interactiveBootstrap.primaryLane?.routingDecision
-			? {
-					capability: interactiveBootstrap.primaryLane.routingDecision.capability ?? "coding.patch-cheap",
-					selectedCapabilityId: interactiveBootstrap.primaryLane.routingDecision.selectedCapabilityId ?? undefined,
-					preferredProvider: interactiveBootstrap.preferredProvider,
-					preferredModel: interactiveBootstrap.preferredModel,
-					authority: startupRouteAuthority,
-					degraded: interactiveBootstrap.primaryLane.routingDecision.degraded,
-				}
-			: interactiveBootstrap.routingDecision
-				? {
-						capability: interactiveBootstrap.routingDecision.request.capability,
-						selectedCapabilityId: interactiveBootstrap.routingDecision.selected?.id,
-						preferredProvider: interactiveBootstrap.preferredProvider,
-						preferredModel: interactiveBootstrap.preferredModel,
-						authority: startupRouteAuthority,
-						degraded: interactiveBootstrap.routingDecision.degraded,
-					}
+		const startupRouteAuthority: "engine" | "takumi-fallback" = interactiveBootstrap.strictPreferredRoute ? "engine" : "takumi-fallback";
+		const primaryRoute = interactiveBootstrap.primaryLane?.routingDecision;
+		const fallbackRoute = interactiveBootstrap.routingDecision;
+		const routeBase = { preferredProvider: interactiveBootstrap.preferredProvider, preferredModel: interactiveBootstrap.preferredModel, authority: startupRouteAuthority };
+		const startupRouteSummary = primaryRoute
+			? { ...routeBase, capability: primaryRoute.capability ?? "coding.patch-cheap", selectedCapabilityId: primaryRoute.selectedCapabilityId ?? undefined, degraded: primaryRoute.degraded }
+			: fallbackRoute
+				? { ...routeBase, capability: fallbackRoute.request.capability, selectedCapabilityId: fallbackRoute.selected?.id, degraded: fallbackRoute.degraded }
 				: undefined;
 			const extResult = await startupTrace.measure("extensions.discover", () =>
 				discoverAndLoadExtensionsFromSnapshot(packageSnapshot, configuredPaths, cwd),

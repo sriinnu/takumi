@@ -6,9 +6,11 @@
 
 // ── Spinner frames ───────────────────────────────────────────────────────────
 
-const AURORA_FRAMES = ["⛩", "𑁍"];
-const NEBULA_FRAMES = ["𑁍", "⛩"];
-
+// Braille patterns (U+2800–U+28FF) are halfwidth in every modern monospace
+// font and animate smoothly. The legacy AURORA/NEBULA glyphs (shrine + lotus)
+// drifted layout by a cell on terminals that rendered them fullwidth and fell
+// back to tofu when the font lacked them. Braille works everywhere; both
+// theme names now alias to the same frames so existing config keeps working.
 const BRAILLE_FRAMES = [
 	"\u280B",
 	"\u2819",
@@ -21,6 +23,9 @@ const BRAILLE_FRAMES = [
 	"\u2807",
 	"\u280F",
 ];
+
+const AURORA_FRAMES = BRAILLE_FRAMES;
+const NEBULA_FRAMES = BRAILLE_FRAMES;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

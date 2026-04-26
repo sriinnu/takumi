@@ -146,7 +146,7 @@ ZAI_API_KEY=... takumi --provider zai --model glm-4.7-flash
 MOONSHOT_API_KEY=... takumi --provider moonshot --model kimi-k2.5
 
 # MiniMax
-MINIMAX_API_KEY=... takumi --provider minimax --model MiniMax-M2.5
+MINIMAX_API_KEY=... takumi --provider minimax --model MiniMax-M2.7
 
 # Ollama local runtime
 takumi --provider ollama

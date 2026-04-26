@@ -364,9 +364,9 @@ export class EditorPanel extends Component {
 	render(screen: Screen, rect: Rect): void {
 		const hint =
 			this.editor.text.trim().length === 0
-				? " Enter send • Ctrl+J newline • Alt+↑ history • Tab complete "
+				? " Enter send · Ctrl+J newline · Alt+Up history · Tab complete "
 				: " Composer ";
-		const label = `⛩${hint}`;
+		const label = `─${hint}`;
 		const bar = label + "─".repeat(Math.max(0, rect.width - label.length));
 		screen.writeText(rect.y, rect.x, bar.slice(0, rect.width), { fg: 8, dim: true });
 

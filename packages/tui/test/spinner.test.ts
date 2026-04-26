@@ -117,8 +117,9 @@ describe("ToolSpinner", () => {
 		expect(line.fg).toBe(3); // yellow
 		expect(line.text).toContain("bash");
 		expect(line.text).toContain("pnpm test");
-		// Should start with a torii or lotus frame character
-		expect(line.text[0] === "\u26E9" || line.text[0] === "\u{1104D}").toBe(true);
+		// Should start with a braille pattern frame (U+2800-U+28FF)
+		const code = line.text.codePointAt(0) ?? 0;
+		expect(code >= 0x2800 && code <= 0x28ff).toBe(true);
 	});
 
 	it("returns success line with check mark for completed tool", () => {
